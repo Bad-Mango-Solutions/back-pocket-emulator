@@ -104,8 +104,18 @@ public partial class CharacterPreviewWindow : Window
             }
         }
 
-        // Fall back to default character ROM if no provider or provider has no ROM
-        characterRomData = DefaultCharacterRom.RomData.ToArray();
+        // Fall back to the default character ROM. A missing embedded resource fails the
+        // type initializer; show the empty state instead of letting that escape as a crash.
+        try
+        {
+            characterRomData = DefaultCharacterRom.RomData.ToArray();
+        }
+        catch (TypeInitializationException)
+        {
+            CharsetInfoText.Text = "No character ROM available";
+            return;
+        }
+
         UpdateCharsetInfoText(fromProvider: false);
         RenderCharacters();
     }

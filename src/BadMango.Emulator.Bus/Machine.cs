@@ -15,6 +15,8 @@ using BadMango.Emulator.Core.Signaling;
 
 using Interfaces;
 
+using Serilog;
+
 /// <summary>
 /// Standard implementation of <see cref="IMachine"/> — a running emulator instance with lifecycle management.
 /// </summary>
@@ -44,12 +46,15 @@ using Interfaces;
 /// </remarks>
 public sealed class Machine : IMachine
 {
-    private const int YieldIntervalCycles = 10000;
-    private const int MachineResetSourceId = int.MinValue + 1;
-
     /// <summary>
     /// Interval in cycles between yield points for async execution.
     /// </summary>
+    private const int YieldIntervalCycles = 10000;
+
+    /// <summary>
+    /// The signal-bus source id the machine uses for its own RESET source (<see cref="Reset"/>).
+    /// </summary>
+    private const int MachineResetSourceId = int.MinValue + 1;
 
     /// <summary>
     /// Number of CPU cycles a RESET pulse holds the line low before releasing it. The
@@ -91,6 +96,11 @@ public sealed class Machine : IMachine
     /// in which case the run loop drains requests between slices instead.
     /// </summary>
     private readonly SignalBus? concreteSignals;
+
+    /// <summary>
+    /// Logger for lifecycle diagnostics, including component failures during <see cref="Dispose"/>.
+    /// </summary>
+    private readonly ILogger logger;
 
     private volatile MachineState state = MachineState.Stopped;
 
@@ -143,13 +153,19 @@ public sealed class Machine : IMachine
     /// <param name="scheduler">The event scheduler.</param>
     /// <param name="signals">The signal bus.</param>
     /// <param name="devices">The device registry.</param>
-    /// <exception cref="ArgumentNullException">Thrown when any parameter is <see langword="null"/>.</exception>
+    /// <param name="logger">
+    /// Serilog logger for lifecycle diagnostics. When <see langword="null"/>, a sink-less logger is used
+    /// so disposal still has somewhere to report component failures without touching the static
+    /// <c>Log.Logger</c> facade.
+    /// </param>
+    /// <exception cref="ArgumentNullException">Thrown when any required parameter is <see langword="null"/>.</exception>
     internal Machine(
         ICpu cpu,
         IMemoryBus bus,
         IScheduler scheduler,
         ISignalBus signals,
-        IDeviceRegistry devices)
+        IDeviceRegistry devices,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(cpu, nameof(cpu));
         ArgumentNullException.ThrowIfNull(bus, nameof(bus));
@@ -162,6 +178,7 @@ public sealed class Machine : IMachine
         Scheduler = scheduler;
         Signals = signals;
         Devices = devices;
+        this.logger = logger?.ForContext<Machine>() ?? Serilog.Core.Logger.None;
         Signals.SignalChanged += OnSignalChanged;
 
         concreteSignals = signals as SignalBus;
@@ -443,7 +460,11 @@ public sealed class Machine : IMachine
             }
             catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
             {
-                // Components may already be torn down or race-disposed by another owner.
+                logger.Warning(
+                    ex,
+                    "Disposable component {ComponentType} threw {ExceptionType} during machine disposal.",
+                    disposable.GetType().FullName,
+                    ex.GetType().Name);
             }
         }
     }

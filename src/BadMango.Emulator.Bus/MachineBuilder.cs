@@ -930,7 +930,7 @@ public sealed partial class MachineBuilder
             : CreateDefaultCpu(cpuFamily, tempContext);
 
         // Create machine
-        var machine = new Machine(cpu, bus, scheduler, signals, devices);
+        var machine = new Machine(cpu, bus, scheduler, signals, devices, logger);
 
         // Configure clock speed for CPU throttling
         machine.ClockSpeedHz = clockSpeedHz;
