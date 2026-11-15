@@ -347,7 +347,13 @@ public abstract class ExecutionCommandBase : CommandHandlerBase, ICommandHelp
                     break;
                 }
 
-                if (cpu.Halted)
+                // WAI sets HaltReason, so Halted is true, but it is not terminal while a
+                // machine is attached. The next Step services any interrupt the scheduler
+                // just dispatched and clears WAI inside TryServiceBoundary/CheckInterrupts.
+                // STP and every other halt still stop the loop. With no machine, WAI is
+                // reported after Step returns WaitingForInterrupt.
+                bool waitingForMachineInterrupt = machine is not null && cpu.IsWaitingForInterrupt;
+                if (cpu.Halted && !waitingForMachineInterrupt)
                 {
                     stopReason = $"CPU halted ({cpu.HaltReason})";
                     normalCompletion = true;
