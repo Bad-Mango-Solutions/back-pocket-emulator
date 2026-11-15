@@ -12,7 +12,7 @@ using BadMango.Emulator.Bus;
 /// <remarks>
 /// <para>
 /// Executes instructions continuously until:
-/// - The CPU halts (STP or WAI instruction).
+/// - The CPU halts (STP, or WAI when no interrupt will be delivered).
 /// - The instruction limit is reached.
 /// - The cycle limit is reached.
 /// - A stop is requested (via StopCommand or externally).
@@ -43,7 +43,8 @@ public sealed class RunCommand : ExecutionCommandBase
 
     /// <inheritdoc/>
     public override string DetailedDescription =>
-        "Executes CPU instructions continuously until the processor halts (STP or WAI), " +
+        "Executes CPU instructions continuously until the processor halts (STP, or WAI " +
+        "when no attached machine can deliver an interrupt), " +
         "a breakpoint is hit, or a stop is requested. By default no instruction, cycle, " +
         "or timeout limit is applied — execution continues until externally stopped. " +
         "Use --instructions=<n>, --cycles=<n>, or --timeout=<ms> to enforce explicit limits. " +
