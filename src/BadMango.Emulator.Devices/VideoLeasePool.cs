@@ -22,14 +22,18 @@ using Serilog;
 /// Tickets come from one counter advanced with <c>Interlocked.Increment</c>.
 /// A buffer is freed only when its holder table is empty and it is no longer the cache
 /// entry for the latest sequence. A full holder table, or no free buffer, makes the
-/// acquire return <see langword="false"/> and increments <see cref="VideoPipelineStats.PoolExhausted"/>.
+/// acquire return <see langword="false"/>, increments <see cref="VideoPipelineStats.PoolExhausted"/>,
+/// and logs the exhaustion. The first report is logged immediately. Repeats are summarized
+/// at most once every 5 seconds.
 /// </para>
 /// </remarks>
 internal sealed class VideoLeasePool
 {
+    private const long ExhaustedLogIntervalMilliseconds = 5000;
     private readonly Lock gate = new();
     private readonly ILogger logger;
     private readonly int pixelsPerBuffer;
+    private readonly Func<long> clock;
     private readonly FrameSlot[] frameSlots;
     private readonly FrameSlot[] signalSlots;
     private long nextTicket;
@@ -37,6 +41,8 @@ internal sealed class VideoLeasePool
     private int cachedSignalIndex = -1;
     private ulong latestSequence;
     private long poolExhausted;
+    private long nextExhaustedSummaryAt = long.MinValue;
+    private long suppressedSinceSummary;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VideoLeasePool"/> class.
@@ -44,24 +50,28 @@ internal sealed class VideoLeasePool
     /// <param name="bufferCount">How many frame buffers, and how many signal buffers, to allocate.</param>
     /// <param name="pixelsPerBuffer">The exact pixel length of each frame buffer.</param>
     /// <param name="logger">The logger that receives pool-exhausted warnings.</param>
+    /// <param name="clock">
+    /// Millisecond clock used to rate-limit exhaustion logs. The default is <see cref="Environment.TickCount64"/>.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// Thrown when <paramref name="bufferCount"/> or <paramref name="pixelsPerBuffer"/> is less than 1.
     /// </exception>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="logger"/> is <see langword="null"/>.</exception>
-    internal VideoLeasePool(int bufferCount, int pixelsPerBuffer, ILogger logger)
+    internal VideoLeasePool(int bufferCount, int pixelsPerBuffer, ILogger logger, Func<long>? clock = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(bufferCount, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(pixelsPerBuffer, 1);
         ArgumentNullException.ThrowIfNull(logger);
 
         this.logger = logger.ForContext<VideoLeasePool>();
+        this.clock = clock ?? (static () => Environment.TickCount64);
         this.pixelsPerBuffer = pixelsPerBuffer;
         frameSlots = new FrameSlot[bufferCount];
         signalSlots = new FrameSlot[bufferCount];
         for (int i = 0; i < bufferCount; i++)
         {
             frameSlots[i] = new FrameSlot(pixelsPerBuffer);
-            signalSlots[i] = new FrameSlot(pixelsPerBuffer);
+            signalSlots[i] = new FrameSlot(0);
         }
     }
 
@@ -301,7 +311,27 @@ internal sealed class VideoLeasePool
 
     private void NoteExhausted()
     {
-        long count = Interlocked.Increment(ref poolExhausted);
-        logger.Warning("Video lease pool exhausted ({PoolExhausted} total).", count);
+        // Caller holds gate. Lock is not re-entrant, so this must not take it again.
+        long total = Interlocked.Increment(ref poolExhausted);
+        long now = clock();
+        if (nextExhaustedSummaryAt == long.MinValue)
+        {
+            nextExhaustedSummaryAt = now + ExhaustedLogIntervalMilliseconds;
+            logger.Warning("Video lease pool exhausted ({PoolExhausted} total).", total);
+            return;
+        }
+
+        suppressedSinceSummary++;
+        if (now < nextExhaustedSummaryAt)
+        {
+            return;
+        }
+
+        logger.Warning(
+            "Video lease pool exhausted {SuppressedCount} more times since the last report ({PoolExhausted} total).",
+            suppressedSinceSummary,
+            total);
+        suppressedSinceSummary = 0;
+        nextExhaustedSummaryAt = now + ExhaustedLogIntervalMilliseconds;
     }
 }

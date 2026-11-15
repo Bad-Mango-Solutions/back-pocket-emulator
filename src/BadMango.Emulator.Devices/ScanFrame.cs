@@ -13,10 +13,4 @@ namespace BadMango.Emulator.Devices;
 /// </remarks>
 public sealed class ScanFrame
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ScanFrame"/> class.
-    /// </summary>
-    public ScanFrame()
-    {
-    }
 }

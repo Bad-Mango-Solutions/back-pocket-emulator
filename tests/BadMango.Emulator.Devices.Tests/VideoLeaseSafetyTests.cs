@@ -7,6 +7,8 @@ namespace BadMango.Emulator.Devices.Tests;
 using BadMango.Unit.Components;
 
 using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 
 /// <summary>
 /// Lease-safety tests for the slot, ticket, and holder-table mechanics (§14.31).
@@ -221,9 +223,55 @@ public class VideoLeaseSafetyTests
     }
 #endif
 
+    /// <summary>
+    /// Pool exhaustion is logged on the first failure and then at most once every five seconds.
+    /// </summary>
+    [Test]
+    public void PoolExhausted_IsLoggedImmediately_ThenSummarizedAfterFiveSeconds()
+    {
+        long now = 1_000;
+        var sink = new CollectingSink();
+        ILogger logger = new LoggerConfiguration().WriteTo.Sink(sink).CreateLogger();
+        var pool = new VideoLeasePool(1, PixelsPerBuffer, logger, () => now);
+        uint[] pixels = [4, 4, 4, 4];
+        var holders = new VideoFrame[FrameSlot.MaxHolders];
+        for (int i = 0; i < holders.Length; i++)
+        {
+            Assert.That(pool.TryAcquireFrame(1, 1, 2, 2, 2, pixels, out holders[i]), Is.True);
+        }
+
+        Assert.That(pool.TryAcquireFrame(1, 1, 2, 2, 2, pixels, out VideoFrame firstReject), Is.False);
+        Assert.That(pool.TryAcquireFrame(1, 1, 2, 2, 2, pixels, out VideoFrame secondReject), Is.False);
+        Assert.That(WarningCount(sink), Is.EqualTo(1));
+
+        now += 5_000;
+        Assert.That(pool.TryAcquireFrame(1, 1, 2, 2, 2, pixels, out VideoFrame thirdReject), Is.False);
+        Assert.That(WarningCount(sink), Is.EqualTo(2));
+        Assert.That(pool.Stats.PoolExhausted, Is.EqualTo(3));
+
+        for (int i = 0; i < holders.Length; i++)
+        {
+            holders[i].Dispose();
+        }
+    }
+
     private static VideoLeasePool CreatePool(int bufferCount)
     {
         return new VideoLeasePool(bufferCount, PixelsPerBuffer, Generator.Log().Object);
+    }
+
+    private static int WarningCount(CollectingSink sink)
+    {
+        int count = 0;
+        foreach (LogEvent logEvent in sink.Events)
+        {
+            if (logEvent.Level == LogEventLevel.Warning)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private sealed class ProbeSignal : IVideoSignal
@@ -237,5 +285,16 @@ public class VideoLeaseSafetyTests
         public ulong Sequence { get; }
 
         public ulong Cycle { get; }
+    }
+
+    private sealed class CollectingSink : ILogEventSink
+    {
+        public List<LogEvent> Events { get; } = [];
+
+        public void Emit(LogEvent logEvent)
+        {
+            ArgumentNullException.ThrowIfNull(logEvent);
+            Events.Add(logEvent);
+        }
     }
 }

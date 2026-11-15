@@ -12,8 +12,9 @@ namespace BadMango.Emulator.Devices;
 /// <para>
 /// A sealed class: it owns the buffer. Tickets are recorded in a fixed
 /// <see cref="long"/> table of <see cref="MaxHolders"/> entries. A free entry is 0.
-/// Acquire and release compare-and-swap a ticket into or out of that table, so disposing
-/// twice, disposing a copy, or disposing <c>default</c> cannot release someone else's hold.
+/// The table is updated under the slot lock. A release clears an entry only when it
+/// still contains that ticket, so disposing twice, disposing a copy, or disposing
+/// <c>default</c> cannot release someone else's hold.
 /// </para>
 /// <para>
 /// The buffer returns to the pool only when the table is empty and the slot is no longer
@@ -39,10 +40,12 @@ internal sealed class FrameSlot
     /// <summary>
     /// Initializes a new instance of the <see cref="FrameSlot"/> class.
     /// </summary>
-    /// <param name="pixelLength">The exact pixel-buffer length. Not shared and not oversized.</param>
+    /// <param name="pixelLength">
+    /// The exact pixel-buffer length. Zero means this slot holds a signal and does not allocate a pixel buffer.
+    /// </param>
     internal FrameSlot(int pixelLength)
     {
-        pixels = new uint[pixelLength];
+        pixels = pixelLength == 0 ? Array.Empty<uint>() : new uint[pixelLength];
     }
 
     /// <summary>
@@ -111,8 +114,9 @@ internal sealed class FrameSlot
 
             for (int i = 0; i < holders.Length; i++)
             {
-                if (Interlocked.CompareExchange(ref holders[i], ticket, 0) == 0)
+                if (holders[i] == 0)
                 {
+                    holders[i] = ticket;
                     return true;
                 }
             }
@@ -272,8 +276,9 @@ internal sealed class FrameSlot
     {
         for (int i = 0; i < holders.Length; i++)
         {
-            if (Interlocked.CompareExchange(ref holders[i], 0, ticket) == ticket)
+            if (holders[i] == ticket)
             {
+                holders[i] = 0;
                 return true;
             }
         }
@@ -290,7 +295,7 @@ internal sealed class FrameSlot
 
         for (int i = 0; i < holders.Length; i++)
         {
-            if (Volatile.Read(ref holders[i]) == ticket)
+            if (holders[i] == ticket)
             {
                 return true;
             }
@@ -304,7 +309,7 @@ internal sealed class FrameSlot
         int count = 0;
         for (int i = 0; i < holders.Length; i++)
         {
-            if (Volatile.Read(ref holders[i]) != 0)
+            if (holders[i] != 0)
             {
                 count++;
             }
