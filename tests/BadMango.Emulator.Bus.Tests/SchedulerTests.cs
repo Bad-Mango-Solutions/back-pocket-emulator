@@ -943,36 +943,41 @@ public class SchedulerTests
     }
 
     /// <summary>
-    /// Verifies cancel/reschedule churn above threshold keeps cancelled-handle tracking bounded.
+    /// Verifies cancel/reschedule churn above threshold keeps cancelled-handle tracking bounded
+    /// and that cancelled callbacks never run, including after time reaches their cycles.
     /// </summary>
     [Test]
     public void Cancel_RescheduleChurn_AboveThreshold_KeepsCancelledHandleSetBounded_AndFiresOnlyLiveEvents()
     {
+        const int churnIterations = 5000;
+        const ulong cancelledCycleBase = 10000ul;
+
         int liveFired = 0;
         int cancelledFired = 0;
 
-        for (int i = 0; i < 5000; i++)
+        for (int i = 0; i < churnIterations; i++)
         {
-            var cancelledHandle = scheduler.ScheduleAt((ulong)(10000 + i), ScheduledEventKind.DeviceTimer, 0, _ => cancelledFired++);
+            var cancelledHandle = scheduler.ScheduleAt(cancelledCycleBase + (ulong)i, ScheduledEventKind.DeviceTimer, 0, _ => cancelledFired++);
             scheduler.Cancel(cancelledHandle);
 
             scheduler.ScheduleAt((ulong)(i + 1), ScheduledEventKind.DeviceTimer, 0, _ => liveFired++);
             scheduler.Advance(1ul);
         }
 
-        var cancelledHandlesField = typeof(Scheduler).GetField(
-            "cancelledHandles",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        Assert.That(cancelledHandlesField, Is.Not.Null, "Scheduler internals changed: expected cancelledHandles field.");
+        int cancelledHandleCount = scheduler.CancelledHandleCount;
 
-        var cancelledHandleSet = cancelledHandlesField!.GetValue(scheduler) as HashSet<ulong>;
-        Assert.That(cancelledHandleSet, Is.Not.Null, "Scheduler internals changed: expected HashSet<ulong>.");
+        // The loop stops at cycle 5000. Cancelled events were queued at cycles 10000 and up,
+        // so continue through the last of those cycles. Cleanup that drops cancel marks while
+        // leaving the events queued lets those callbacks run here.
+        ulong lastCancelledCycle = cancelledCycleBase + (ulong)(churnIterations - 1);
+        scheduler.Advance(lastCancelledCycle - scheduler.Now);
 
         Assert.Multiple(() =>
         {
-            Assert.That(liveFired, Is.EqualTo(5000), "All live events should fire during churn.");
+            Assert.That(liveFired, Is.EqualTo(churnIterations), "All live events should fire during churn.");
             Assert.That(cancelledFired, Is.EqualTo(0), "Cancelled events should never fire during churn.");
-            Assert.That(cancelledHandleSet!.Count, Is.LessThanOrEqualTo(1000), "Cancelled-handle tracking must remain bounded.");
+            Assert.That(cancelledHandleCount, Is.LessThanOrEqualTo(1000), "Cancelled-handle tracking must remain bounded.");
+            Assert.That((ulong)scheduler.Now, Is.GreaterThanOrEqualTo(lastCancelledCycle), "The run must reach every cancelled event's cycle.");
         });
     }
 

@@ -103,6 +103,11 @@ public sealed class Scheduler : IScheduler, ISchedulerObserver
     }
 
     /// <summary>
+    /// Gets the number of handles currently marked cancelled.
+    /// </summary>
+    internal int CancelledHandleCount => cancelledHandles.Count;
+
+    /// <summary>
     /// Gets or sets a check that returns <see langword="true"/> when the calling thread may
     /// mutate the scheduler. Used only by debug-build assertions; <see langword="null"/> disables them.
     /// </summary>
