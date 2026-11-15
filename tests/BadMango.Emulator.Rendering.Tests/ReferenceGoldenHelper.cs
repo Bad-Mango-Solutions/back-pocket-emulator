@@ -6,6 +6,7 @@ namespace BadMango.Emulator.Rendering.Tests;
 
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 
 using BadMango.Emulator.Devices;
 
@@ -90,7 +91,7 @@ public static class ReferenceGoldenHelper
     }
 
     /// <summary>
-    /// Writes a rendered frame to the golden output path.
+    /// Writes a rendered frame to the checked-in golden folder and to the build-output copy.
     /// Each pixel is stored as a little-endian BGRA word.
     /// </summary>
     /// <param name="mode">The video mode.</param>
@@ -107,23 +108,21 @@ public static class ReferenceGoldenHelper
         bool flashState,
         ReadOnlySpan<uint> pixels)
     {
-        string filePath = GetGoldenPath(mode, isPage2, colorMode, useAltCharSet, flashState);
-        string? directory = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
         byte[] rawPixels = new byte[pixels.Length * BytesPerPixel];
         for (int i = 0; i < pixels.Length; i++)
         {
             BinaryPrimitives.WriteUInt32LittleEndian(rawPixels.AsSpan(i * BytesPerPixel, BytesPerPixel), pixels[i]);
         }
 
-        using var outStream = File.Create(filePath);
-        using var gzip = new GZipStream(outStream, CompressionLevel.Optimal, leaveOpen: true);
-        gzip.Write(rawPixels, 0, rawPixels.Length);
-        gzip.Flush();
+        string fileName = GetGoldenFileName(mode, isPage2, colorMode, useAltCharSet, flashState);
+        string sourcePath = Path.Combine(GetSourceGoldenDirectory(), fileName);
+        WriteCompressedFrame(sourcePath, rawPixels);
+
+        string outputPath = Path.GetFullPath(Path.Combine("Goldens", "Reference", fileName), AppContext.BaseDirectory);
+        if (!string.Equals(Path.GetFullPath(sourcePath), outputPath, StringComparison.OrdinalIgnoreCase))
+        {
+            WriteCompressedFrame(outputPath, rawPixels);
+        }
     }
 
     /// <summary>
@@ -343,5 +342,88 @@ public static class ReferenceGoldenHelper
         }
 
         return outputGoldenDirectory;
+    }
+
+    /// <summary>
+    /// Locates the checked-in <c>Goldens/Reference</c> folder beside the test project.
+    /// </summary>
+    /// <param name="helperSourcePath">The path of this source file, supplied by the compiler.</param>
+    /// <returns>The absolute path of the checked-in golden folder.</returns>
+    /// <exception cref="InvalidOperationException">The checked-in golden folder could not be found.</exception>
+    private static string GetSourceGoldenDirectory([CallerFilePath] string helperSourcePath = "")
+    {
+        string? besideHelper = null;
+        if (!string.IsNullOrEmpty(helperSourcePath))
+        {
+            besideHelper = TryProjectGoldenDirectory(Path.GetDirectoryName(Path.GetFullPath(helperSourcePath)));
+        }
+
+        if (besideHelper is not null)
+        {
+            return besideHelper;
+        }
+
+        string? fromOutput = TryWalkToTestProjectGoldenDirectory(AppContext.BaseDirectory);
+        if (fromOutput is not null)
+        {
+            return fromOutput;
+        }
+
+        throw new InvalidOperationException(
+            "Unable to locate the checked-in reference goldens at tests/BadMango.Emulator.Rendering.Tests/Goldens/Reference. "
+            + $"Searched beside '{helperSourcePath}' and walked up from '{AppContext.BaseDirectory}' for BadMango.Emulator.Rendering.Tests.csproj.");
+    }
+
+    private static string? TryWalkToTestProjectGoldenDirectory(string startDirectory)
+    {
+        if (string.IsNullOrEmpty(startDirectory))
+        {
+            return null;
+        }
+
+        var directory = new DirectoryInfo(Path.GetFullPath(startDirectory));
+        while (directory is not null)
+        {
+            string? goldenDirectory = TryProjectGoldenDirectory(directory.FullName);
+            if (goldenDirectory is not null)
+            {
+                return goldenDirectory;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
+    }
+
+    private static string? TryProjectGoldenDirectory(string? projectDirectory)
+    {
+        if (string.IsNullOrEmpty(projectDirectory))
+        {
+            return null;
+        }
+
+        string projectFile = Path.Combine(projectDirectory, "BadMango.Emulator.Rendering.Tests.csproj");
+        string goldenDirectory = Path.Combine(projectDirectory, "Goldens", "Reference");
+        if (File.Exists(projectFile) && Directory.Exists(goldenDirectory))
+        {
+            return Path.GetFullPath(goldenDirectory);
+        }
+
+        return null;
+    }
+
+    private static void WriteCompressedFrame(string filePath, byte[] rawPixels)
+    {
+        string? directory = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        using var outStream = File.Create(filePath);
+        using var gzip = new GZipStream(outStream, CompressionLevel.Optimal, leaveOpen: true);
+        gzip.Write(rawPixels, 0, rawPixels.Length);
+        gzip.Flush();
     }
 }

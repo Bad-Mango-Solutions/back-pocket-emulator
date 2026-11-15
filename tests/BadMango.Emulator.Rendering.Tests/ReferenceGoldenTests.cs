@@ -17,7 +17,8 @@ public sealed class ReferenceGoldenTests
     /// Writes all reference frames when the regeneration switch is set.
     /// </summary>
     /// <remarks>
-    /// NUnit calls this once before the fixture. A normal run leaves the files untouched.
+    /// NUnit calls this once before the fixture. A normal run leaves every golden file untouched.
+    /// Update mode rewrites the checked-in folder and the build-output copy.
     /// </remarks>
     [OneTimeSetUp]
     public static void EnsureReferenceGoldensAreCurrent()
