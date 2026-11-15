@@ -590,6 +590,15 @@ public sealed class Machine : IMachine
                 }
             }
         }
+
+        // Components that are not peripherals (KeyboardInput) still have host-side state to drop.
+        foreach (var component in components)
+        {
+            if (component is IPowerOnReset powerOn && done.Add(component))
+            {
+                powerOn.PowerOnReset();
+            }
+        }
     }
 
     private void ClearHardResetMemory()

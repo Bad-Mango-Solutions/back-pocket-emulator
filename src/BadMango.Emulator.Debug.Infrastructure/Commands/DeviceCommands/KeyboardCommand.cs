@@ -7,6 +7,7 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 using System.Globalization;
 
 using BadMango.Emulator.Bus;
+using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.Interfaces;
 
@@ -110,7 +111,7 @@ public sealed class KeyboardCommand : CommandHandlerBase, ICommandHelp
         return args[0].ToLowerInvariant() switch
         {
             "press" => ExecutePress(keyboard, debugContext, args),
-            "type" => ExecuteType(keyboard, debugContext, args),
+            "type" => ExecuteType(machine, debugContext, args),
             "read" => ExecuteRead(keyboard, debugContext, args),
             _ => CommandResult.Error($"Unknown subcommand: '{args[0]}'"),
         };
@@ -136,19 +137,31 @@ public sealed class KeyboardCommand : CommandHandlerBase, ICommandHelp
         return CommandResult.Ok();
     }
 
-    private static CommandResult ExecuteType(IKeyboardDevice keyboard, IDebugContext ctx, string[] args)
+    private static CommandResult ExecuteType(IMachine machine, IDebugContext ctx, string[] args)
     {
         if (args.Length < 2)
         {
             return CommandResult.Error("Usage: keyboard type <string>");
         }
 
+        IKeyboardInput? input = machine.GetComponent<IKeyboardInput>();
+        if (input is null)
+        {
+            return CommandResult.Error("No keyboard input found in this machine.");
+        }
+
         // Join remaining args and process escape sequences
         string text = string.Join(" ", args.Skip(1));
         text = ProcessEscapes(text);
 
-        keyboard.TypeString(text);
-        ctx.Output.WriteLine($"Queued {text.Length} character(s) to type.");
+        TypeTextReceipt receipt = input.TypeText(text);
+        if (receipt.Rejected)
+        {
+            ctx.Output.WriteLine("Typing was rejected; nothing was queued.");
+            return CommandResult.Ok();
+        }
+
+        ctx.Output.WriteLine($"Queued {receipt.Accepted} character(s) to type.");
         return CommandResult.Ok();
     }
 

@@ -5,6 +5,8 @@
 namespace BadMango.Emulator.Devices;
 
 using BadMango.Emulator.Bus;
+using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Devices.Interfaces;
 using BadMango.Emulator.Devices.Speaker;
 
 /// <summary>
@@ -121,7 +123,41 @@ public static class DeviceFactoryExtensions
             // auxiliary RAM layers (zero page, stack, text page, hi-res pages).
             builder.RegisterExtended80ColumnFactory();
 
+            // One KeyboardInput per machine, created after the sink exists. Machines with no
+            // IHostKeyboardSink get no input component.
+            builder.RegisterKeyboardInputFactory();
+
             return builder;
+        }
+
+        /// <summary>
+        /// Registers the factory that adds one <see cref="KeyboardInput"/> when the machine has a keyboard sink.
+        /// </summary>
+        /// <returns>This builder instance for method chaining.</returns>
+        /// <remarks>
+        /// The factory runs at the end of <see cref="MachineBuilder.Build"/>. It uses the machine's
+        /// scheduler and dispatcher, and <see cref="MachineBuilder.ProfileCpuClockHz"/>
+        /// (<c>cpu.clockSpeed</c>, or 1 MHz when the profile does not set one). It does not use
+        /// <see cref="IMachine.ClockSpeedHz"/>, which is 0 when the machine is unthrottled.
+        /// A second registration does not add a second input.
+        /// </remarks>
+        public MachineBuilder RegisterKeyboardInputFactory()
+        {
+            return builder.AddComponentFactory<IKeyboardInput>(machine =>
+            {
+                if (machine.GetComponent<IKeyboardInput>() is not null)
+                {
+                    return null;
+                }
+
+                IHostKeyboardSink? sink = machine.GetComponent<IHostKeyboardSink>();
+                if (sink is null)
+                {
+                    return null;
+                }
+
+                return new KeyboardInput(sink, machine.Scheduler, machine, builder.ProfileCpuClockHz);
+            });
         }
     }
 }

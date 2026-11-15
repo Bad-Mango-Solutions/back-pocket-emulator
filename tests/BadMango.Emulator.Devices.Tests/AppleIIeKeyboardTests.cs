@@ -509,6 +509,89 @@ public class AppleIIeKeyboardTests
     }
 
     /// <summary>
+    /// Verifies that a host letter latches its translated code, sets the strobe, and raises AKD.
+    /// </summary>
+    [Test]
+    public void OnHostKeyDown_Letter_LatchesCodeAndSetsStrobe()
+    {
+        device.OnHostKeyDown(KeyboardKey.A, KeyboardModifiers.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(device.KeyData, Is.EqualTo((byte)('a' | 0x80)));
+            Assert.That(device.HasKeyDown, Is.True);
+            Assert.That(device.IsReadyForTypedKey, Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that AKD stays high until every non-modifier key is released.
+    /// </summary>
+    [Test]
+    public void OnHostKeyUp_DropsAkdOnlyWhenNoNonModifierKeyRemains()
+    {
+        device.OnHostKeyDown(KeyboardKey.A, KeyboardModifiers.None);
+        device.OnHostKeyDown(KeyboardKey.B, KeyboardModifiers.None);
+        device.OnHostKeyUp(KeyboardKey.A, KeyboardModifiers.None);
+
+        Assert.That(device.HasKeyDown, Is.True);
+
+        device.OnHostKeyUp(KeyboardKey.B, KeyboardModifiers.None);
+
+        Assert.That(device.HasKeyDown, Is.False);
+    }
+
+    /// <summary>
+    /// Verifies that a modifier key updates the snapshot and does not strobe or count toward AKD.
+    /// </summary>
+    [Test]
+    public void OnHostKeyDown_Modifier_UpdatesSnapshotWithoutStrobe()
+    {
+        device.OnHostKeyDown(KeyboardKey.LeftShift, KeyboardModifiers.Shift);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(device.HasKeyDown, Is.False);
+            Assert.That(device.KeyData & 0x80, Is.Zero);
+            Assert.That(device.Modifiers, Is.EqualTo(KeyboardModifiers.Shift));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that Reset and Power do not strobe. Routing Reset to the RESET line is later work.
+    /// </summary>
+    [Test]
+    public void OnHostKeyDown_ResetAndPower_DoNotStrobe()
+    {
+        device.OnHostKeyDown(KeyboardKey.Reset, KeyboardModifiers.Control);
+        device.OnHostKeyDown(KeyboardKey.Power, KeyboardModifiers.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(device.HasKeyDown, Is.False);
+            Assert.That(device.KeyData & 0x80, Is.Zero);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that the keystroke lookup round-trips a shifted letter.
+    /// </summary>
+    [Test]
+    public void TryGetKeystroke_ShiftedLetter_RoundTrips()
+    {
+        bool found = device.TryGetKeystroke('A', out HostKeystroke keystroke);
+        byte? code = device.Translator.Translate(keystroke.Key, keystroke.Modifiers);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(found, Is.True);
+            Assert.That(keystroke.Key, Is.EqualTo(KeyboardKey.A));
+            Assert.That(keystroke.Modifiers, Is.EqualTo(KeyboardModifiers.Shift));
+            Assert.That(code, Is.EqualTo((byte)'A'));
+        });
+    }
+
+    /// <summary>
     /// Verifies that reset signal assert clears strobe/type-ahead but preserves held input state.
     /// </summary>
     [Test]

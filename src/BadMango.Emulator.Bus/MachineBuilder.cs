@@ -42,6 +42,8 @@ using Interfaces;
 /// </remarks>
 public sealed partial class MachineBuilder
 {
+    private const long DefaultProfileCpuClockHz = 1_000_000;
+
     private readonly List<object> components = [];
     private readonly List<IScheduledDevice> scheduledDevices = [];
     private readonly List<RomDescriptor> romDescriptors = [];
@@ -56,6 +58,7 @@ public sealed partial class MachineBuilder
     private readonly List<Action<IMachine>> afterSlotCardInstallCallbacks = [];
     private readonly List<Action<IMachine>> beforeSoftSwitchHandlerRegistrationCallbacks = [];
     private readonly List<Action<IMachine>> afterSoftSwitchHandlerRegistrationCallbacks = [];
+    private readonly List<Func<IMachine, object?>> componentFactories = [];
     private readonly Dictionary<string, Func<MachineBuilder, IBusTarget>> compositeHandlerFactories = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Func<MachineBuilder, IMotherboardDevice>> motherboardDeviceFactories = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Func<MachineBuilder, JsonElement?, ISlotCard>> slotCardFactories = new(StringComparer.OrdinalIgnoreCase);
@@ -66,10 +69,29 @@ public sealed partial class MachineBuilder
     private int addressSpaceBits = 16;
     private CpuFamily cpuFamily = CpuFamily.Cpu65C02;
     private long clockSpeedHz;
+    private long profileCpuClockHz = DefaultProfileCpuClockHz;
     private Func<IEventContext, ICpu>? cpuFactory;
     private ProfilePathResolver? profilePathResolver;
     private Serilog.ILogger? logger;
     private int faultRingCapacity = BusFaultRing.DefaultCapacity;
+
+    /// <summary>
+    /// Gets the profile CPU clock in hertz used to convert emulated milliseconds into cycles.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is <c>cpu.clockSpeed</c> from the machine profile. When the profile omits it, or the
+    /// builder is not loaded from a profile, the value is 1,000,000 Hz, the default for
+    /// cycle-accurate timing.
+    /// </para>
+    /// <para>
+    /// It is not the run-loop throttle. <see cref="IMachine.ClockSpeedHz"/> is 0 when throttling
+    /// is off, which is the builder default and the value used when <c>cpu.clockSpeed</c> is absent.
+    /// Typing must not use that 0, or every delay becomes 0 cycles and a strobe wait reschedules
+    /// on the current cycle forever.
+    /// </para>
+    /// </remarks>
+    public long ProfileCpuClockHz => profileCpuClockHz;
 
     /// <summary>
     /// Creates a new <see cref="MachineBuilder"/> instance with pre-configured system services.
@@ -235,17 +257,24 @@ public sealed partial class MachineBuilder
     }
 
     /// <summary>
-    /// Adds a component factory whose result is created after device initialization.
+    /// Adds a component factory whose result is created at the end of <see cref="Build"/>.
     /// </summary>
     /// <typeparam name="T">The component type.</typeparam>
-    /// <param name="factory">The factory used to create the component from the built machine.</param>
+    /// <param name="factory">
+    /// Receives the built machine and returns the component to add, or <see langword="null"/> to add nothing.
+    /// </param>
     /// <returns>This builder instance for method chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is <see langword="null"/>.</exception>
-    public MachineBuilder AddComponentFactory<T>(Func<IMachine, T> factory)
+    /// <remarks>
+    /// Factories run after devices are initialized, slot cards are installed, and post-build
+    /// callbacks have run, so they can see a keyboard sink, the scheduler, and the machine
+    /// dispatcher. A <see langword="null"/> result is not registered.
+    /// </remarks>
+    public MachineBuilder AddComponentFactory<T>(Func<IMachine, T?> factory)
         where T : class
     {
-        ArgumentNullException.ThrowIfNull(factory, nameof(factory));
-        afterDeviceInitCallbacks.Add(machine => ((Machine)machine).AddComponent(factory(machine)));
+        ArgumentNullException.ThrowIfNull(factory);
+        componentFactories.Add(machine => factory(machine));
         return this;
     }
 
@@ -1026,6 +1055,17 @@ public sealed partial class MachineBuilder
         foreach (var callback in postBuildCallbacks)
         {
             callback(machine);
+        }
+
+        // Component factories run last so they can see the assembled machine, including any
+        // keyboard sink initialized above, and register one instance per machine.
+        foreach (Func<IMachine, object?> factory in componentFactories)
+        {
+            object? created = factory(machine);
+            if (created is not null)
+            {
+                machine.AddComponent(created);
+            }
         }
 
         return machine;

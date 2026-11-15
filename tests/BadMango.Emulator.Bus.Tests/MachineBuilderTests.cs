@@ -111,6 +111,42 @@ public class MachineBuilderTests
     }
 
     /// <summary>
+    /// Verifies that a generic component factory runs after the machine exists.
+    /// </summary>
+    [Test]
+    public void AddComponentFactory_AddsComponentAfterBuild()
+    {
+        var mockCpu = CreateMockCpu();
+        var machine = new MachineBuilder()
+            .WithCpuFactory(_ => mockCpu.Object)
+            .AddComponentFactory<TestComponent>(_ => new TestComponent { Name = "FromFactory" })
+            .Build();
+
+        TestComponent? retrieved = machine.GetComponent<TestComponent>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(retrieved, Is.Not.Null);
+            Assert.That(retrieved!.Name, Is.EqualTo("FromFactory"));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a factory result of <see langword="null"/> is not registered.
+    /// </summary>
+    [Test]
+    public void AddComponentFactory_NullResult_IsNotRegistered()
+    {
+        var mockCpu = CreateMockCpu();
+        var machine = new MachineBuilder()
+            .WithCpuFactory(_ => mockCpu.Object)
+            .AddComponentFactory<TestComponent>(_ => null)
+            .Build();
+
+        Assert.That(machine.GetComponent<TestComponent>(), Is.Null);
+    }
+
+    /// <summary>
     /// Verifies that multiple components can be retrieved.
     /// </summary>
     [Test]

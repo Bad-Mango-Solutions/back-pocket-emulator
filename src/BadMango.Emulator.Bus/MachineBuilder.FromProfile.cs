@@ -75,8 +75,10 @@ public sealed partial class MachineBuilder
             _ => throw new NotSupportedException($"CPU type '{profile.Cpu.Type}' is not supported."),
         };
 
-        // Store clock speed for CPU throttling (0 = unthrottled)
+        // Throttle target. 0 leaves the run loop unthrottled. This is not the clock used to
+        // convert emulated milliseconds into cycles; see ProfileCpuClockHz.
         clockSpeedHz = profile.Cpu.ClockSpeed ?? 0;
+        profileCpuClockHz = profile.Cpu.ClockSpeed is > 0 ? profile.Cpu.ClockSpeed.Value : DefaultProfileCpuClockHz;
 
         // Configure memory regions
         var memoryConfig = profile.Memory;
