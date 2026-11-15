@@ -314,13 +314,39 @@ public sealed class Scheduler : IScheduler, ISchedulerObserver
             EventConsumed?.Invoke(nextEvent.Handle, now, nextEvent.Kind);
         }
 
-        // Clean up the cancelled handles set periodically to prevent unbounded growth
-        // Clear when we have a significant number of cancelled handles and either:
-        // 1. The queue is empty, or
-        // 2. The number of cancelled handles exceeds a threshold
-        if (cancelledHandles.Count > 0 && (eventQueue.Count == 0 || cancelledHandles.Count > CancelledHandlesCleanupThreshold))
+        // Clean up cancellation marks periodically to prevent unbounded growth.
+        if (cancelledHandles.Count > 0 && eventQueue.Count == 0)
         {
             cancelledHandles.Clear();
         }
+        else if (cancelledHandles.Count > CancelledHandlesCleanupThreshold)
+        {
+            CompactQueueByDroppingCancelledEvents();
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the queue while dropping cancelled events so their handles can be discarded safely.
+    /// </summary>
+    private void CompactQueueByDroppingCancelledEvents()
+    {
+        var retainedEvents = new List<ScheduledEvent>(eventQueue.Count);
+        while (eventQueue.TryDequeue(out var queuedEvent, out _))
+        {
+            if (cancelledHandles.Remove(queuedEvent.Handle.Id))
+            {
+                continue;
+            }
+
+            retainedEvents.Add(queuedEvent);
+        }
+
+        foreach (var retainedEvent in retainedEvents)
+        {
+            eventQueue.Enqueue(retainedEvent, retainedEvent);
+        }
+
+        // Any remaining marks refer to handles that are no longer in the queue.
+        cancelledHandles.Clear();
     }
 }

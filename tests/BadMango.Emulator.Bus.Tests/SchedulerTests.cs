@@ -912,68 +912,68 @@ public class SchedulerTests
     }
 
     /// <summary>
-    /// Verifies that cancelled handles are cleaned up when threshold is exceeded.
+    /// Verifies that over-threshold cancellation cleanup never resurrects cancelled queued events.
     /// </summary>
     [Test]
-    public void Cancel_ExceedingThreshold_TriggersCleanup()
+    public void Cancel_OverThreshold_DoesNotResurrectCancelledQueuedEvents()
     {
-        // Schedule and cancel more than 1000 events to trigger cleanup
+        int cancelledFired = 0;
+        int liveFired = 0;
         var handles = new List<EventHandle>();
         for (int i = 0; i < 1100; i++)
         {
-            var handle = scheduler.ScheduleAt((ulong)(100 + i), ScheduledEventKind.DeviceTimer, 0, _ => { });
+            var handle = scheduler.ScheduleAt((ulong)(1000 + i), ScheduledEventKind.DeviceTimer, 0, _ => cancelledFired++);
             handles.Add(handle);
         }
 
-        // Cancel all handles
         foreach (var handle in handles)
         {
             scheduler.Cancel(handle);
         }
 
-        // Verify all handles are cancelled
-        Assert.That(scheduler.PendingEventCount, Is.EqualTo(1100), "All events should still be in queue");
+        scheduler.ScheduleAt(5ul, ScheduledEventKind.DeviceTimer, 0, _ => liveFired++);
+        scheduler.Advance(10ul);
+        scheduler.Advance(5000ul);
 
-        // Now advance and dispatch - this should trigger cleanup since we have >1000 cancelled handles
-        scheduler.Advance(100ul);
-
-        // After advancing past the first event, some events should have been processed and removed
-        Assert.That(scheduler.PendingEventCount, Is.LessThan(1100), "Some events should have been dispatched");
+        Assert.Multiple(() =>
+        {
+            Assert.That(liveFired, Is.EqualTo(1), "The live event should fire exactly once.");
+            Assert.That(cancelledFired, Is.EqualTo(0), "Cancelled events must never be resurrected and fired.");
+        });
     }
 
     /// <summary>
-    /// Verifies that cancelled handles cleanup prevents unbounded growth.
+    /// Verifies cancel/reschedule churn above threshold keeps cancelled-handle tracking bounded.
     /// </summary>
     [Test]
-    public void Cancel_ManyHandles_DoesNotCauseUnboundedGrowth()
+    public void Cancel_RescheduleChurn_AboveThreshold_KeepsCancelledHandleSetBounded_AndFiresOnlyLiveEvents()
     {
-        // Schedule many events at different times
-        var handles = new List<EventHandle>();
-        for (int i = 0; i < 1500; i++)
+        int liveFired = 0;
+        int cancelledFired = 0;
+
+        for (int i = 0; i < 5000; i++)
         {
-            var handle = scheduler.ScheduleAt((ulong)(1000 + i), ScheduledEventKind.DeviceTimer, 0, _ => { });
-            handles.Add(handle);
+            var cancelledHandle = scheduler.ScheduleAt((ulong)(10000 + i), ScheduledEventKind.DeviceTimer, 0, _ => cancelledFired++);
+            scheduler.Cancel(cancelledHandle);
+
+            scheduler.ScheduleAt((ulong)(i + 1), ScheduledEventKind.DeviceTimer, 0, _ => liveFired++);
+            scheduler.Advance(1ul);
         }
 
-        // Cancel all of them
-        foreach (var handle in handles)
+        var cancelledHandlesField = typeof(Scheduler).GetField(
+            "cancelledHandles",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.That(cancelledHandlesField, Is.Not.Null, "Scheduler internals changed: expected cancelledHandles field.");
+
+        var cancelledHandleSet = cancelledHandlesField!.GetValue(scheduler) as HashSet<ulong>;
+        Assert.That(cancelledHandleSet, Is.Not.Null, "Scheduler internals changed: expected HashSet<ulong>.");
+
+        Assert.Multiple(() =>
         {
-            scheduler.Cancel(handle);
-        }
-
-        // Advance time to trigger a dispatch (which should trigger cleanup since >1000 cancelled)
-        scheduler.Advance(500ul);
-
-        // The cleanup should have occurred when we tried to dispatch
-        // We can verify this by trying to peek at the next event - it should skip cancelled ones
-        // and return the first valid event. Since all events are cancelled and we haven't reached
-        // any event times yet (all at 1000+), this demonstrates the cleanup is working.
-        var nextDue = scheduler.PeekNextDue();
-
-        // Since we haven't reached any event times yet, nextDue should be the first event (at cycle 1000)
-        // The important thing is that PeekNextDue completes successfully even with many cancelled events
-        Assert.That(nextDue, Is.Not.Null, "PeekNextDue should complete and find next event");
-        Assert.That(nextDue!.Value.Value, Is.GreaterThanOrEqualTo(1000ul), "Next event should be at or after cycle 1000");
+            Assert.That(liveFired, Is.EqualTo(5000), "All live events should fire during churn.");
+            Assert.That(cancelledFired, Is.EqualTo(0), "Cancelled events should never fire during churn.");
+            Assert.That(cancelledHandleSet!.Count, Is.LessThanOrEqualTo(1000), "Cancelled-handle tracking must remain bounded.");
+        });
     }
 
     /// <summary>
