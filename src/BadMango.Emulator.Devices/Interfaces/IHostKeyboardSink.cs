@@ -10,6 +10,11 @@ namespace BadMango.Emulator.Devices.Interfaces;
 public interface IHostKeyboardSink
 {
     /// <summary>
+    /// Gets a value indicating whether the sink accepts another typed key.
+    /// </summary>
+    bool IsReadyForTypedKey { get; }
+
+    /// <summary>
     /// Applies a host key down event to the device.
     /// </summary>
     /// <param name="key">The shared keyboard key.</param>
@@ -30,11 +35,6 @@ public interface IHostKeyboardSink
     /// <param name="keystroke">The resolved host keystroke if one exists.</param>
     /// <returns><see langword="true"/> when a keystroke is available; otherwise, <see langword="false"/>.</returns>
     bool TryGetKeystroke(char c, out HostKeystroke keystroke);
-
-    /// <summary>
-    /// Gets a value indicating whether the sink accepts another typed key.
-    /// </summary>
-    bool IsReadyForTypedKey { get; }
 
     /// <summary>
     /// Release any currently latched typed-key state.

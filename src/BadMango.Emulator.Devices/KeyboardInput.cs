@@ -32,7 +32,6 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
     private bool drainScheduled;
     private bool typingActive;
     private int typingGeneration;
-    private int hostGeneration;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KeyboardInput"/> class.
@@ -58,14 +57,12 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
     /// <inheritdoc />
     public void KeyDown(KeyboardKey key, KeyboardModifiers modifiers)
     {
-        ArgumentNullException.ThrowIfNull(modifiers);
         QueueHostEvent(InputEvent.KeyDownEvent(key, modifiers));
     }
 
     /// <inheritdoc />
     public void KeyUp(KeyboardKey key, KeyboardModifiers modifiers)
     {
-        ArgumentNullException.ThrowIfNull(modifiers);
         QueueHostEvent(InputEvent.KeyUpEvent(key, modifiers));
     }
 
@@ -75,15 +72,13 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
         ArgumentNullException.ThrowIfNull(text);
         var typedOptions = options ?? new TypeTextOptions();
 
-        var accepted = 0;
         var skipped = new List<char>();
         var rejected = false;
         var sequence = BuildTypedSequence(text, typedOptions, skipped, ref rejected, out int acceptedCount);
-        accepted = acceptedCount;
 
         if (sequence.Count == 0)
         {
-            return new TypeTextReceipt(accepted, skipped, rejected);
+            return new TypeTextReceipt(acceptedCount, skipped, rejected);
         }
 
         int generation = ++typingGeneration;
@@ -94,32 +89,24 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
             {
                 typingQueue.Enqueue(item);
             }
+
             typingActive = true;
         }
 
         scheduler.ScheduleAfter(0, ScheduledEventKind.DeviceTimer, 0, _ => ProcessNextTypedKey(generation), TypingTag);
-        return new TypeTextReceipt(accepted, skipped, rejected);
+        return new TypeTextReceipt(acceptedCount, skipped, rejected);
     }
 
     /// <inheritdoc />
     public void CancelTyping()
     {
-        List<JournalEntry>? journalEntries = null;
-        int generation;
-
         lock (sync)
         {
-            generation = ++typingGeneration;
+            typingGeneration++;
             typingQueue.Clear();
             typingActive = false;
             sink.ReleaseAllTypedKeys();
-            journalEntries = [new JournalEntry(scheduler.Now, InputEvent.CancelTypingEvent())];
-            entries.AddRange(journalEntries);
-        }
-
-        foreach (var entry in journalEntries)
-        {
-            _ = entry;
+            entries.Add(new JournalEntry(scheduler.Now, InputEvent.CancelTypingEvent()));
         }
     }
 
@@ -232,7 +219,7 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
             return;
         }
 
-        TypedKeyWorkItem? current = null;
+        TypedKeyWorkItem current;
         lock (sync)
         {
             if (typingQueue.Count == 0)
@@ -243,11 +230,6 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
             }
 
             current = typingQueue.Peek();
-        }
-
-        if (current is null)
-        {
-            return;
         }
 
         if (current.WaitForConsumption && !sink.IsReadyForTypedKey)
@@ -338,7 +320,6 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
         var sequence = new List<TypedKeyWorkItem>();
         acceptedCount = 0;
 
-        bool nextIsReturn = false;
         for (var i = 0; i < text.Length; i++)
         {
             char ch = text[i];
@@ -348,7 +329,9 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
                 ch = '\r';
             }
 
-            if (ch == '\r' || ch == '\n')
+            if (ch == '
+' || ch == '
+')
             {
                 var evaluated = CharacterToKey(char.ToUpperInvariant('r'), options, out bool mapped);
                 if (mapped)
@@ -360,9 +343,9 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
                 continue;
             }
 
-            if (ch == '\t')
+            if (ch == '	')
             {
-                var evaluated = CharacterToKey('\t', options, out bool mapped);
+                var evaluated = CharacterToKey('	', options, out bool mapped);
                 if (mapped)
                 {
                     sequence.Add(evaluated);
@@ -372,9 +355,9 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
                 continue;
             }
 
-            if (ch == '\b')
+            if (ch == '')
             {
-                var evaluated = CharacterToKey('\b', options, out bool mapped);
+                var evaluated = CharacterToKey('', options, out bool mapped);
                 if (mapped)
                 {
                     sequence.Add(evaluated);
@@ -396,30 +379,27 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
                 sequence.Add(item);
                 acceptedCount++;
             }
-            else
+            else if (options.Unmappable == UnmappableCharacterPolicy.Reject)
             {
-                if (options.Unmappable == UnmappableCharacterPolicy.Reject)
+                rejected = true;
+            }
+            else if (options.Unmappable == UnmappableCharacterPolicy.Replace)
+            {
+                var replacement = options.ReplacementChar;
+                var replacementItem = CharacterToKey(replacement, options, out bool replacementMapped);
+                if (replacementMapped)
                 {
-                    rejected = true;
-                }
-                else if (options.Unmappable == UnmappableCharacterPolicy.Replace)
-                {
-                    var replacement = options.ReplacementChar;
-                    var replacementItem = CharacterToKey(replacement, options, out bool replacementMapped);
-                    if (replacementMapped)
-                    {
-                        sequence.Add(replacementItem);
-                        acceptedCount++;
-                    }
-                    else
-                    {
-                        rejected = true;
-                    }
+                    sequence.Add(replacementItem);
+                    acceptedCount++;
                 }
                 else
                 {
-                    skipped.Add(ch);
+                    rejected = true;
                 }
+            }
+            else
+            {
+                skipped.Add(ch);
             }
         }
 
@@ -435,10 +415,12 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
 
         KeyboardKey mappedKey = value switch
         {
-            '\r' => KeyboardKey.Return,
-            '\n' => KeyboardKey.Return,
-            '\t' => KeyboardKey.Tab,
-            '\b' => KeyboardKey.Backspace,
+            '
+' => KeyboardKey.Return,
+            '
+' => KeyboardKey.Return,
+            '	' => KeyboardKey.Tab,
+            '' => KeyboardKey.Backspace,
             _ => KeyboardKey.None,
         };
 
@@ -460,7 +442,9 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
 
     private static HostKeystroke? CharacterToHostKeystroke(char value)
     {
-        if (value is '\r' or '\n' or '\t' or '\b')
+        if (value is '
+' or '
+' or '	' or '')
         {
             return null;
         }
@@ -487,12 +471,7 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
 
     private static ulong MillisecondsToCycles(int milliseconds)
     {
-        return (ulong)Math.Max(0, (long)Math.Floor(milliseconds * 1_020_484d / 1000.0));
-    }
-
-    private static ulong MillisecondsToCycles(long milliseconds)
-    {
-        return (ulong)Math.Max(0, (long)Math.Floor(milliseconds * 1_020_484d / 1000.0));
+        return (ulong)Math.Max(0L, (long)Math.Floor(milliseconds * (1_020_484d / 1000.0)));
     }
 
     private readonly record struct TypedKeyWorkItem(

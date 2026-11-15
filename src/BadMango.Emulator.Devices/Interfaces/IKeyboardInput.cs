@@ -10,6 +10,16 @@ namespace BadMango.Emulator.Devices.Interfaces;
 public interface IKeyboardInput
 {
     /// <summary>
+    /// Gets a value indicating whether text is currently being typed.
+    /// </summary>
+    bool IsTyping { get; }
+
+    /// <summary>
+    /// Gets the journal of applied input events.
+    /// </summary>
+    IKeyboardInputJournal Journal { get; }
+
+    /// <summary>
     /// Signals that a host key is pressed.
     /// </summary>
     /// <param name="key">The shared keyboard key.</param>
@@ -35,14 +45,4 @@ public interface IKeyboardInput
     /// Cancels any pending typed-text work.
     /// </summary>
     void CancelTyping();
-
-    /// <summary>
-    /// Gets a value indicating whether text is currently being typed.
-    /// </summary>
-    bool IsTyping { get; }
-
-    /// <summary>
-    /// Gets the journal of applied input events.
-    /// </summary>
-    IKeyboardInputJournal Journal { get; }
 }
