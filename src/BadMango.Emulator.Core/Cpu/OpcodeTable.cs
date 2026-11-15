@@ -12,15 +12,21 @@ using Interfaces.Cpu;
 /// Represents an opcode lookup table for 6502-family CPUs.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This class encapsulates the opcode table, providing O(1) opcode dispatch.
 /// The table maps 8-bit opcodes (0x00-0xFF) to instruction handlers.
 /// Handlers receive the CPU instance for accessing state and memory through the bus.
+/// </para>
+/// <para>
+/// Each slot is an <see cref="OpcodeEntry"/>. <see cref="Execute"/> always calls
+/// <see cref="OpcodeEntry.Fn"/> and passes that same entry by readonly reference.
+/// Every opcode still points at <see cref="LegacyTrampoline"/>, which invokes
+/// <see cref="OpcodeEntry.Legacy"/>. Nothing is stored in a static field, so two
+/// tables on one thread cannot observe each other's handler.
+/// </para>
 /// </remarks>
 public unsafe class OpcodeTable
 {
-    [ThreadStatic]
-    private static OpcodeHandler? currentLegacyHandler;
-
     private readonly OpcodeEntry[] entries;
 
     /// <summary>
@@ -67,8 +73,7 @@ public unsafe class OpcodeTable
     public void Execute(byte opcode, ICpu cpu)
     {
         ref readonly OpcodeEntry entry = ref entries[opcode];
-        currentLegacyHandler = entry.Legacy;
-        entry.Fn(cpu);
+        entry.Fn(cpu, in entry);
     }
 
     /// <summary>
@@ -93,8 +98,13 @@ public unsafe class OpcodeTable
         return entries[opcode].Metadata;
     }
 
-    private static void LegacyTrampoline(ICpu cpu)
+    /// <summary>
+    /// Invokes the legacy delegate on the entry <see cref="Execute"/> passed in.
+    /// </summary>
+    /// <param name="cpu">The CPU instance to pass to the legacy delegate.</param>
+    /// <param name="entry">The opcode entry whose <see cref="OpcodeEntry.Legacy"/> delegate runs.</param>
+    private static void LegacyTrampoline(ICpu cpu, in OpcodeEntry entry)
     {
-        currentLegacyHandler!(cpu);
+        entry.Legacy!(cpu);
     }
 }
