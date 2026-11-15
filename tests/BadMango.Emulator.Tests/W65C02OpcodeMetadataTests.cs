@@ -343,10 +343,10 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
     /// the address crosses a page. <c>STA abs,X</c> does this. <c>$9E</c> is wired to
     /// <c>AddressingModes.AbsoluteX</c>, which adds that cycle only on a page cross,
     /// so a same-page <c>STZ abs,X</c> takes 4. The handler is left unchanged.
-    /// Remove <see cref="IgnoreAttribute"/> when the handler is fixed; this test should then pass.
+    /// Remove <see cref="IgnoreAttribute"/> when issue #422 is fixed; this test should then pass.
     /// </remarks>
     [Test]
-    [Ignore("Handler charges 4 cycles for STZ abs,X ($9E); W65C02S indexed-store base is 5. Do not change emulation in this change.")]
+    [Ignore("Handler charges 4 cycles for STZ abs,X ($9E); W65C02S indexed-store base is 5. Tracked by issue #422.")]
     public void StzAbsoluteX_HandlerChargesDatasheetBaseCycles()
     {
         var table = Cpu65C02OpcodeTableBuilder.Build();
