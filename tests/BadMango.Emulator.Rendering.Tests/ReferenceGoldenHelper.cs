@@ -4,6 +4,7 @@
 
 namespace BadMango.Emulator.Rendering.Tests;
 
+using System.Buffers.Binary;
 using System.IO.Compression;
 
 using BadMango.Emulator.Devices;
@@ -46,6 +47,7 @@ public static class ReferenceGoldenHelper
 
     /// <summary>
     /// Loads a reference frame from the frozen set for the given matrix cell.
+    /// Each pixel is a little-endian BGRA word.
     /// </summary>
     /// <param name="mode">The video mode.</param>
     /// <param name="isPage2">Whether page 2 is active.</param>
@@ -81,7 +83,7 @@ public static class ReferenceGoldenHelper
         var pixels = new uint[PixelCount];
         for (int i = 0; i < PixelCount; i++)
         {
-            pixels[i] = BitConverter.ToUInt32(rawPixels, i * BytesPerPixel);
+            pixels[i] = BinaryPrimitives.ReadUInt32LittleEndian(rawPixels.AsSpan(i * BytesPerPixel, BytesPerPixel));
         }
 
         return pixels;
@@ -89,6 +91,7 @@ public static class ReferenceGoldenHelper
 
     /// <summary>
     /// Writes a rendered frame to the golden output path.
+    /// Each pixel is stored as a little-endian BGRA word.
     /// </summary>
     /// <param name="mode">The video mode.</param>
     /// <param name="isPage2">Whether page 2 is active.</param>
@@ -114,7 +117,7 @@ public static class ReferenceGoldenHelper
         byte[] rawPixels = new byte[pixels.Length * BytesPerPixel];
         for (int i = 0; i < pixels.Length; i++)
         {
-            BitConverter.TryWriteBytes(rawPixels.AsSpan(i * BytesPerPixel, BytesPerPixel), pixels[i]);
+            BinaryPrimitives.WriteUInt32LittleEndian(rawPixels.AsSpan(i * BytesPerPixel, BytesPerPixel), pixels[i]);
         }
 
         using var outStream = File.Create(filePath);
@@ -139,7 +142,7 @@ public static class ReferenceGoldenHelper
         bool useAltCharSet,
         bool flashState)
     {
-        (byte[] mainMemory, byte[] auxMemory) = CreateDeterministicVideoMemory(isPage2);
+        (byte[] mainMemory, byte[] auxMemory) = CreateReferenceVideoMemory(isPage2);
         var renderer = new Pocket2VideoRenderer();
         var pixels = new uint[PixelCount];
         renderer.Clear(pixels);
@@ -226,11 +229,15 @@ public static class ReferenceGoldenHelper
     }
 
     /// <summary>
-    /// Creates a deterministic memory fixture that covers all of the Apple II display bytes read by the renderer.
+    /// Creates the deterministic main and auxiliary video RAM shared by the reference goldens.
     /// </summary>
     /// <param name="isPage2">Whether to bias the pattern for page 2.</param>
     /// <returns>The main and auxiliary memories for the current frame.</returns>
-    private static (byte[] MainMemory, byte[] AuxMemory) CreateDeterministicVideoMemory(bool isPage2)
+    /// <remarks>
+    /// The pattern covers every display byte the legacy renderer reads. Step 6's parity test
+    /// passes this same fixture to the new scanner so both paths see identical video RAM.
+    /// </remarks>
+    public static (byte[] MainMemory, byte[] AuxMemory) CreateReferenceVideoMemory(bool isPage2)
     {
         var mainMemory = new byte[ushort.MaxValue + 1];
         var auxMemory = new byte[ushort.MaxValue + 1];

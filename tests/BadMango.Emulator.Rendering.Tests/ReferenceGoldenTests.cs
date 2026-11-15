@@ -16,6 +16,10 @@ public sealed class ReferenceGoldenTests
     /// <summary>
     /// Writes all reference frames when the regeneration switch is set.
     /// </summary>
+    /// <remarks>
+    /// NUnit calls this once before the fixture. A normal run leaves the files untouched.
+    /// </remarks>
+    [OneTimeSetUp]
     public static void EnsureReferenceGoldensAreCurrent()
     {
         if (!string.Equals(Environment.GetEnvironmentVariable(ReferenceGoldenHelper.UpdateGoldenEnvironmentVariable), "1", StringComparison.Ordinal))
