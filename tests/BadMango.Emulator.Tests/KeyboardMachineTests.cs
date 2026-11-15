@@ -268,6 +268,38 @@ public sealed class KeyboardMachineTests
     }
 
     /// <summary>
+    /// Verifies that an unthrottled machine (<see cref="IMachine.ClockSpeedHz"/> is 0) still types
+    /// on the profile CPU clock. With no profile, that default is 1 MHz, so a 50 ms hold is 50,000 cycles.
+    /// </summary>
+    [Test]
+    public void UnthrottledMachine_TypeTextUsesProfileCpuClockNotThrottle()
+    {
+        var keyboard = new AppleIIeKeyboard();
+        IMachine machine = new MachineBuilder()
+            .AsPocket2e()
+            .WithStubRom()
+            .AddMotherboardDevice(keyboard)
+            .RegisterKeyboardInputFactory()
+            .Build();
+        IKeyboardInput input = machine.GetComponent<IKeyboardInput>()!;
+
+        input.TypeText("A", new TypeTextOptions { HoldMs = 50, WaitForConsumption = false });
+        machine.Scheduler.DispatchDue();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(machine.ClockSpeedHz, Is.Zero, "The builder default leaves throttling off");
+            Assert.That(keyboard.HasKeyDown, Is.True, "The key must still be down after the drain");
+        });
+
+        machine.Scheduler.Advance(49_999);
+        Assert.That(keyboard.HasKeyDown, Is.True, "49,999 cycles is short of a 50 ms hold at 1 MHz");
+
+        machine.Scheduler.Advance(1);
+        Assert.That(keyboard.HasKeyDown, Is.False, "The key releases at 50,000 cycles");
+    }
+
+    /// <summary>
     /// Verifies that two machines in one process keep separate keyboard input. Typing into one
     /// leaves the other's <c>$C000</c> unchanged.
     /// </summary>

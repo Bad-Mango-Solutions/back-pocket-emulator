@@ -42,6 +42,8 @@ using Interfaces;
 /// </remarks>
 public sealed partial class MachineBuilder
 {
+    private const long DefaultProfileCpuClockHz = 1_000_000;
+
     private readonly List<object> components = [];
     private readonly List<IScheduledDevice> scheduledDevices = [];
     private readonly List<RomDescriptor> romDescriptors = [];
@@ -67,10 +69,29 @@ public sealed partial class MachineBuilder
     private int addressSpaceBits = 16;
     private CpuFamily cpuFamily = CpuFamily.Cpu65C02;
     private long clockSpeedHz;
+    private long profileCpuClockHz = DefaultProfileCpuClockHz;
     private Func<IEventContext, ICpu>? cpuFactory;
     private ProfilePathResolver? profilePathResolver;
     private Serilog.ILogger? logger;
     private int faultRingCapacity = BusFaultRing.DefaultCapacity;
+
+    /// <summary>
+    /// Gets the profile CPU clock in hertz used to convert emulated milliseconds into cycles.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is <c>cpu.clockSpeed</c> from the machine profile. When the profile omits it, or the
+    /// builder is not loaded from a profile, the value is 1,000,000 Hz, the default for
+    /// cycle-accurate timing.
+    /// </para>
+    /// <para>
+    /// It is not the run-loop throttle. <see cref="IMachine.ClockSpeedHz"/> is 0 when throttling
+    /// is off, which is the builder default and the value used when <c>cpu.clockSpeed</c> is absent.
+    /// Typing must not use that 0, or every delay becomes 0 cycles and a strobe wait reschedules
+    /// on the current cycle forever.
+    /// </para>
+    /// </remarks>
+    public long ProfileCpuClockHz => profileCpuClockHz;
 
     /// <summary>
     /// Creates a new <see cref="MachineBuilder"/> instance with pre-configured system services.

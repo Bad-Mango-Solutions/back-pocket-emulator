@@ -330,6 +330,52 @@ public sealed class KeyboardInputTests
     }
 
     /// <summary>
+    /// Verifies that a CPU clock of zero is rejected. A zero clock turns every delay into 0 cycles,
+    /// and a strobe wait then reschedules on the current cycle forever.
+    /// </summary>
+    [Test]
+    public void Constructor_ZeroClock_Throws()
+    {
+        var sink = new FakeSink();
+        var scheduler = new ManualScheduler();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new KeyboardInput(sink, scheduler, new InlineDispatcher(), cpuClockHz: 0));
+    }
+
+    /// <summary>
+    /// Verifies that a strobe-wait poll of 0 milliseconds is rejected before any timer is scheduled.
+    /// </summary>
+    [Test]
+    public void TypeText_ZeroStrobeWaitPoll_Throws()
+    {
+        var harness = Create();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            harness.Input.TypeText("A", new TypeTextOptions { WaitForConsumption = true, StrobeWaitPollMs = 0 }));
+    }
+
+    /// <summary>
+    /// Verifies that a positive delay is at least one cycle, even when the clock would round it to zero.
+    /// </summary>
+    [Test]
+    public void TypeText_TinyClock_HoldsKeyForAtLeastOneCycle()
+    {
+        var sink = new FakeSink();
+        var scheduler = new ManualScheduler();
+        var input = new KeyboardInput(sink, scheduler, new InlineDispatcher(), cpuClockHz: 1);
+
+        input.TypeText("A", new TypeTextOptions { HoldMs = 1, WaitForConsumption = false });
+        scheduler.DispatchDue();
+
+        Assert.That(sink.Held, Is.EqualTo(KeyboardKey.A), "A 1 ms hold at 1 Hz must not release in the same cycle");
+
+        scheduler.Advance(1);
+
+        Assert.That(sink.Held, Is.Null);
+    }
+
+    /// <summary>
     /// Verifies that a null dispatcher still applies the batch through deferred work.
     /// </summary>
     [Test]

@@ -136,12 +136,14 @@ public static class DeviceFactoryExtensions
         /// <returns>This builder instance for method chaining.</returns>
         /// <remarks>
         /// The factory runs at the end of <see cref="MachineBuilder.Build"/>. It uses the machine's
-        /// scheduler, dispatcher, and <see cref="IMachine.ClockSpeedHz"/> so typed text is timed from
-        /// the profile clock. A second registration does not add a second input.
+        /// scheduler and dispatcher, and <see cref="MachineBuilder.ProfileCpuClockHz"/>
+        /// (<c>cpu.clockSpeed</c>, or 1 MHz when the profile does not set one). It does not use
+        /// <see cref="IMachine.ClockSpeedHz"/>, which is 0 when the machine is unthrottled.
+        /// A second registration does not add a second input.
         /// </remarks>
         public MachineBuilder RegisterKeyboardInputFactory()
         {
-            return builder.AddComponentFactory(static machine =>
+            return builder.AddComponentFactory(machine =>
             {
                 if (machine.GetComponent<IKeyboardInput>() is not null)
                 {
@@ -154,7 +156,7 @@ public static class DeviceFactoryExtensions
                     return null;
                 }
 
-                return new KeyboardInput(sink, machine.Scheduler, machine, machine.ClockSpeedHz);
+                return new KeyboardInput(sink, machine.Scheduler, machine, builder.ProfileCpuClockHz);
             });
         }
     }

@@ -67,14 +67,14 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
     /// <param name="dispatcher">Marshals the drain onto the machine thread. <see langword="null"/> runs the drain inline.</param>
     /// <param name="cpuClockHz">The profile CPU clock in hertz, used to convert typing delays into cycles.</param>
     /// <exception cref="ArgumentNullException"><paramref name="sink"/> or <paramref name="scheduler"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="cpuClockHz"/> is negative or not a finite number.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="cpuClockHz"/> is not a positive finite number.</exception>
     public KeyboardInput(IHostKeyboardSink sink, IScheduler scheduler, IMachineDispatcher? dispatcher, double cpuClockHz)
     {
         ArgumentNullException.ThrowIfNull(sink);
         ArgumentNullException.ThrowIfNull(scheduler);
-        if (double.IsNaN(cpuClockHz) || double.IsInfinity(cpuClockHz) || cpuClockHz < 0)
+        if (double.IsNaN(cpuClockHz) || double.IsInfinity(cpuClockHz) || cpuClockHz <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(cpuClockHz), cpuClockHz, "CPU clock must be a non-negative finite number of hertz.");
+            throw new ArgumentOutOfRangeException(nameof(cpuClockHz), cpuClockHz, "CPU clock must be a positive finite number of hertz.");
         }
 
         this.sink = sink;
@@ -553,12 +553,15 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
 
     private ulong MillisecondsToCycles(int milliseconds)
     {
-        if (milliseconds <= 0 || cpuClockHz <= 0)
+        if (milliseconds <= 0)
         {
             return 0;
         }
 
-        return (ulong)(long)(milliseconds * cpuClockHz / 1000.0);
+        // Round down, but keep at least one cycle. A 0-cycle delay is due on the current cycle,
+        // and DispatchEventsUntil would run it again immediately.
+        long cycles = (long)(milliseconds * cpuClockHz / 1000.0);
+        return cycles < 1 ? 1UL : (ulong)cycles;
     }
 
     private void Validate(TypeTextOptions options)
@@ -573,9 +576,9 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
             throw new ArgumentOutOfRangeException(nameof(options), options.GapMs, "GapMs cannot be negative.");
         }
 
-        if (options.StrobeWaitPollMs < 0)
+        if (options.StrobeWaitPollMs < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(options), options.StrobeWaitPollMs, "StrobeWaitPollMs cannot be negative.");
+            throw new ArgumentOutOfRangeException(nameof(options), options.StrobeWaitPollMs, "StrobeWaitPollMs must be at least 1.");
         }
 
         if (options.ReturnDelayMs < 0)
