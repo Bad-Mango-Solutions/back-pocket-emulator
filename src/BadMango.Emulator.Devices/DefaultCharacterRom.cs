@@ -30,12 +30,15 @@ public static class DefaultCharacterRom
 {
     private const string ResourceName = "BadMango.Emulator.Devices.Resources.pocket2-charset.rom";
     private const int ExpectedSize = 4096;
-    private static readonly byte[] CachedRom = LoadRom();
+    private static readonly Lazy<byte[]> CachedRom = new(LoadRom);
 
     /// <summary>
     /// Gets the default character ROM data as an immutable span.
     /// </summary>
-    public static ReadOnlySpan<byte> RomData => CachedRom;
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the embedded resource cannot be found or is invalid.
+    /// </exception>
+    public static ReadOnlySpan<byte> RomData => CachedRom.Value;
 
     /// <summary>
     /// Loads the default character ROM into a character device.
@@ -47,13 +50,13 @@ public static class DefaultCharacterRom
     /// <exception cref="InvalidOperationException">
     /// Thrown when the embedded resource cannot be found or is invalid.
     /// </exception>
+    /// <remarks>
+    /// <see cref="Interfaces.ICharacterDevice.LoadCharacterRom"/> copies the bytes, so the shared image stays private.
+    /// </remarks>
     public static void LoadIntoCharacterDevice(Interfaces.ICharacterDevice characterDevice)
     {
         ArgumentNullException.ThrowIfNull(characterDevice);
-
-        byte[] romCopy = new byte[ExpectedSize];
-        CachedRom.CopyTo(romCopy, 0);
-        characterDevice.LoadCharacterRom(romCopy);
+        characterDevice.LoadCharacterRom(CachedRom.Value);
     }
 
     private static byte[] LoadRom()

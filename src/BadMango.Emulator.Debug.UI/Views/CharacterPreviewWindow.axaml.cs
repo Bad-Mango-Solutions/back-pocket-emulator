@@ -104,13 +104,13 @@ public partial class CharacterPreviewWindow : Window
             }
         }
 
-        // Fall back to the default character ROM. A missing embedded resource fails the
-        // type initializer; show the empty state instead of letting that escape as a crash.
+        // Fall back to the default character ROM. A missing resource throws
+        // InvalidOperationException; show the empty state instead of letting it escape.
         try
         {
             characterRomData = DefaultCharacterRom.RomData.ToArray();
         }
-        catch (TypeInitializationException)
+        catch (InvalidOperationException)
         {
             CharsetInfoText.Text = "No character ROM available";
             return;
