@@ -445,14 +445,13 @@ public class CompositeIOTargetTests
     }
 
     /// <summary>
-    /// Verifies that INTCXROM does NOT affect expansion ROM region.
-    /// The expansion ROM region ($C800-$CFFF) is always controlled by slot selection,
-    /// regardless of INTCXROM state.
+    /// Verifies that INTCXROM overlays internal ROM in the expansion ROM region.
     /// </summary>
     [Test]
-    public void Read8_IntCxRomEnabled_DoesNotAffectExpansionRomRegion()
+    public void Read8_IntCxRomEnabled_OverlaysInternalRomInExpansionRomRegion()
     {
         var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        internalMemory.AsSpan()[0x800] = 0xAB;
         var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
 
         var expMemory = new PhysicalMemory(2048, "ExpansionRom");
@@ -462,15 +461,12 @@ public class CompositeIOTargetTests
         ioPage.SetInternalRom(internalRom);
         ioPage.SetIntCxRom(true);
 
-        // Even with INTCXROM enabled, expansion ROM is controlled by slot selection
-        mockSlotManager.Setup(m => m.ActiveExpansionSlot).Returns(6);
         mockSlotManager.Setup(m => m.GetVisibleExpansionRom()).Returns(expRom);
 
         var access = CreateTestAccess(0xC800, AccessIntent.DataRead);
         byte result = ioPage.Read8(0x800, in access);
 
-        // Should return expansion ROM data, not internal ROM
-        Assert.That(result, Is.EqualTo(0xEE));
+        Assert.That(result, Is.EqualTo(0xAB));
     }
 
     /// <summary>
@@ -536,10 +532,10 @@ public class CompositeIOTargetTests
     }
 
     /// <summary>
-    /// Verifies that reading $CFFF returns floating bus (not internal ROM data).
+    /// Verifies that reading $CFFF returns internal ROM data when INTCXROM is enabled.
     /// </summary>
     [Test]
-    public void Read8_CFFF_IntCxRomEnabled_ReturnsFloatingBus()
+    public void Read8_CFFF_IntCxRomEnabled_ReturnsInternalRom()
     {
         var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
         internalMemory.AsSpan()[0xFFF] = 0xAB; // Data at $CFFF
@@ -549,13 +545,10 @@ public class CompositeIOTargetTests
         ioPage.SetIntCxRom(true);
 
         mockSlotManager.Setup(m => m.DeselectExpansionSlot());
-        mockSlotManager.Setup(m => m.GetVisibleExpansionRom()).Returns((IBusTarget?)null);
-
         var access = CreateTestAccess(0xCFFF, AccessIntent.DataRead);
         byte result = ioPage.Read8(0xFFF, in access);
 
-        // $CFFF returns floating bus when no default ROM is available
-        Assert.That(result, Is.EqualTo(FloatingBusValue));
+        Assert.That(result, Is.EqualTo(0xAB));
     }
 
     /// <summary>
@@ -601,6 +594,222 @@ public class CompositeIOTargetTests
     #endregion
 
     #region INTC3ROM Tests
+
+    /// <summary>
+    /// Verifies that reading $C3xx with internal C3 ROM selected sets INTC8ROM
+    /// and maps internal ROM at $C800-$CFFF.
+    /// </summary>
+    [Test]
+    public void C3xxRead_WithInternalC3Rom_SetsIntC8Rom_AndMapsInternalRomAtC800()
+    {
+        var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        internalMemory.AsSpan()[0x300] = 0x31;
+        internalMemory.AsSpan()[0x800] = 0x81;
+        var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
+
+        var cardExpansionMemory = new PhysicalMemory(0x800, "CardExpansionRom");
+        cardExpansionMemory.AsSpan()[0x000] = 0x52;
+        var cardExpansionRom = new RomTarget(cardExpansionMemory.Slice(0, 0x800));
+
+        ioPage.SetInternalRom(internalRom);
+        ioPage.SetIntC3Rom(true);
+
+        mockSlotManager.Setup(m => m.SelectExpansionSlot(3));
+        mockSlotManager.Setup(m => m.GetVisibleExpansionRom()).Returns(cardExpansionRom);
+
+        var c300Access = CreateTestAccess(0xC300, AccessIntent.DataRead);
+        var c800Access = CreateTestAccess(0xC800, AccessIntent.DataRead);
+
+        byte c300Value = ioPage.Read8(0x300, in c300Access);
+        byte c800Value = ioPage.Read8(0x800, in c800Access);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(c300Value, Is.EqualTo(0x31));
+            Assert.That(c800Value, Is.EqualTo(0x81), "INTC8ROM should map internal ROM at $C800 after $C3xx access.");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that reading $C3xx with slot C3 ROM selected does not set INTC8ROM.
+    /// </summary>
+    [Test]
+    public void C3xxRead_WithSlotC3Rom_DoesNotSetIntC8Rom()
+    {
+        var slot3Memory = new PhysicalMemory(0x100, "Slot3Rom");
+        slot3Memory.AsSpan()[0x00] = 0x73;
+        var slot3Rom = new RomTarget(slot3Memory.Slice(0, 0x100));
+
+        var cardExpansionMemory = new PhysicalMemory(0x800, "CardExpansionRom");
+        cardExpansionMemory.AsSpan()[0x000] = 0x52;
+        var cardExpansionRom = new RomTarget(cardExpansionMemory.Slice(0, 0x800));
+
+        ioPage.SetIntC3Rom(false);
+        mockSlotManager.Setup(m => m.SelectExpansionSlot(3));
+        mockSlotManager.Setup(m => m.GetSlotRomRegion(3)).Returns(slot3Rom);
+        mockSlotManager.Setup(m => m.GetVisibleExpansionRom()).Returns(cardExpansionRom);
+
+        var c300Access = CreateTestAccess(0xC300, AccessIntent.DataRead);
+        var c800Access = CreateTestAccess(0xC800, AccessIntent.DataRead);
+
+        byte c300Value = ioPage.Read8(0x300, in c300Access);
+        byte c800Value = ioPage.Read8(0x800, in c800Access);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(c300Value, Is.EqualTo(0x73));
+            Assert.That(c800Value, Is.EqualTo(0x52), "Slot C3 ROM should not arm INTC8ROM.");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that accessing $CFFF clears INTC8ROM.
+    /// </summary>
+    [Test]
+    public void CfffAccess_ClearsIntC8Rom()
+    {
+        var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        internalMemory.AsSpan()[0x300] = 0x31;
+        internalMemory.AsSpan()[0x800] = 0x81;
+        var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
+
+        var cardExpansionMemory = new PhysicalMemory(0x800, "CardExpansionRom");
+        cardExpansionMemory.AsSpan()[0x000] = 0x52;
+        cardExpansionMemory.AsSpan()[0x7FF] = 0x5F;
+        var cardExpansionRom = new RomTarget(cardExpansionMemory.Slice(0, 0x800));
+
+        ioPage.SetInternalRom(internalRom);
+        ioPage.SetIntC3Rom(true);
+
+        mockSlotManager.Setup(m => m.SelectExpansionSlot(3));
+        mockSlotManager.Setup(m => m.DeselectExpansionSlot());
+        mockSlotManager.Setup(m => m.GetVisibleExpansionRom()).Returns(cardExpansionRom);
+
+        var c300Access = CreateTestAccess(0xC300, AccessIntent.DataRead);
+        var c800Access = CreateTestAccess(0xC800, AccessIntent.DataRead);
+        var cfffAccess = CreateTestAccess(0xCFFF, AccessIntent.DataRead);
+
+        byte latchedValue = ioPage.Read8(0x800, in c800Access);
+        _ = ioPage.Read8(0x300, in c300Access);
+        latchedValue = ioPage.Read8(0x800, in c800Access);
+        _ = ioPage.Read8(0xFFF, in cfffAccess);
+        byte clearedValue = ioPage.Read8(0x800, in c800Access);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(latchedValue, Is.EqualTo(0x81), "INTC8ROM should map internal ROM before $CFFF clear.");
+            Assert.That(clearedValue, Is.EqualTo(0x52), "After $CFFF, expansion ROM should be visible again.");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that RESET clears INTC8ROM.
+    /// </summary>
+    [Test]
+    public void Reset_ClearsIntC8Rom()
+    {
+        var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        internalMemory.AsSpan()[0x300] = 0x31;
+        internalMemory.AsSpan()[0x800] = 0x81;
+        var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
+
+        var cardExpansionMemory = new PhysicalMemory(0x800, "CardExpansionRom");
+        cardExpansionMemory.AsSpan()[0x000] = 0x52;
+        var cardExpansionRom = new RomTarget(cardExpansionMemory.Slice(0, 0x800));
+
+        ioPage.SetInternalRom(internalRom);
+        ioPage.SetIntC3Rom(true);
+
+        mockSlotManager.Setup(m => m.SelectExpansionSlot(3));
+        mockSlotManager.Setup(m => m.GetVisibleExpansionRom()).Returns(cardExpansionRom);
+
+        var c300Access = CreateTestAccess(0xC300, AccessIntent.DataRead);
+        var c800Access = CreateTestAccess(0xC800, AccessIntent.DataRead);
+
+        _ = ioPage.Read8(0x300, in c300Access);
+        byte latchedValue = ioPage.Read8(0x800, in c800Access);
+
+        object resetCandidate = ioPage;
+        Assert.That(resetCandidate, Is.AssignableTo<IResetReceiver>(), "CompositeIOTarget must clear INTC8ROM on RESET.");
+        if (resetCandidate is IResetReceiver resetReceiver)
+        {
+            resetReceiver.OnResetReleased(0);
+        }
+
+        byte clearedValue = ioPage.Read8(0x800, in c800Access);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(latchedValue, Is.EqualTo(0x81));
+            Assert.That(clearedValue, Is.EqualTo(0x52), "RESET should clear INTC8ROM and restore expansion-ROM visibility.");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that INTCXROM overlays $C800-$CFFF regardless of INTC8ROM state.
+    /// </summary>
+    [Test]
+    public void IntCxRomOn_OverridesRegardlessOfIntC8Rom()
+    {
+        var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        internalMemory.AsSpan()[0x300] = 0x31;
+        internalMemory.AsSpan()[0x800] = 0x81;
+        var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
+
+        var slot3Memory = new PhysicalMemory(0x100, "Slot3Rom");
+        slot3Memory.AsSpan()[0x00] = 0x73;
+        var slot3Rom = new RomTarget(slot3Memory.Slice(0, 0x100));
+
+        var cardExpansionMemory = new PhysicalMemory(0x800, "CardExpansionRom");
+        cardExpansionMemory.AsSpan()[0x000] = 0x52;
+        var cardExpansionRom = new RomTarget(cardExpansionMemory.Slice(0, 0x800));
+
+        ioPage.SetInternalRom(internalRom);
+        ioPage.SetIntC3Rom(false);
+        ioPage.SetIntCxRom(true);
+
+        mockSlotManager.Setup(m => m.GetSlotRomRegion(3)).Returns(slot3Rom);
+        mockSlotManager.Setup(m => m.GetVisibleExpansionRom()).Returns(cardExpansionRom);
+
+        var c300Access = CreateTestAccess(0xC300, AccessIntent.DataRead);
+        var c800Access = CreateTestAccess(0xC800, AccessIntent.DataRead);
+
+        _ = ioPage.Read8(0x300, in c300Access);
+        byte c800Value = ioPage.Read8(0x800, in c800Access);
+
+        Assert.That(c800Value, Is.EqualTo(0x81), "INTCXROM should force internal ROM at $C800-$CFFF even when INTC8ROM is not armed.");
+    }
+
+    /// <summary>
+    /// Verifies that a $C300 read while INTCXROM is on still arms INTC8ROM when internal C3 ROM is active.
+    /// </summary>
+    [Test]
+    public void Read8_IntCxRomEnabled_ArmsIntC8RomOnC300Access_ThenRemainsLatchedAfterDisablingIntCxRom()
+    {
+        var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        internalMemory.AsSpan()[0x300] = 0x77;
+        internalMemory.AsSpan()[0x800] = 0x81;
+        var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
+
+        ioPage.SetInternalRom(internalRom);
+        ioPage.SetIntC3Rom(true);
+        ioPage.SetIntCxRom(true);
+
+        var c300Access = CreateTestAccess(0xC300, AccessIntent.DataRead);
+        var c800Access = CreateTestAccess(0xC800, AccessIntent.DataRead);
+
+        byte c300Value = ioPage.Read8(0x300, in c300Access);
+
+        Assert.That(c300Value, Is.EqualTo(0x77), "INTCXROM should still read the internal C3 ROM image.");
+
+        ioPage.SetIntCxRom(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ioPage.IsIntC8RomEnabled, Is.True, "INTC8ROM should remain latched after the INTCXROM overlay is disabled.");
+            Assert.That(ioPage.Read8(0x800, in c800Access), Is.EqualTo(0x81), "The latched $C800-$CFFF overlay should remain on the internal ROM.");
+        });
+    }
 
     /// <summary>
     /// Verifies that INTC3ROM defaults to enabled.

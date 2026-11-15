@@ -261,6 +261,7 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
             new("INTCXROM", 0xC006, intcxrom, "Internal ROM at $C100-$CFFF"),
             new("ALTZP", 0xC008, altzp, "Alternate zero page/stack enabled"),
             new("SLOTC3ROM", 0xC00A, slotc3rom, "Slot 3 ROM at $C300 (vs internal)"),
+            new("INTC8ROM", 0xCFFF, internalRomHandler?.IsIntC8RomEnabled ?? false, "Read-only latch: internal ROM at $C800-$CFFF"),
             new("80COL", 0xC00C, col80, "80-column display mode enabled"),
             new("PAGE2", 0xC054, page2, "Page 2 selected for 80STORE"),
             new("HIRES", 0xC056, hires, "Hi-res mode for 80STORE"),
