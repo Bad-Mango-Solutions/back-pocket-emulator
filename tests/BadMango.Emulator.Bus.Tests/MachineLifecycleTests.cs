@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Bus.Tests;
 
+using System.Reflection;
+
 using BadMango.Emulator.Core.Cpu;
 using BadMango.Emulator.Core.Interfaces.Cpu;
 
@@ -131,6 +133,155 @@ public class MachineLifecycleTests
         machine.Dispose();
     }
 
+    /// <summary>
+    /// A component that throws <see cref="NotSupportedException"/> does not stop disposal of the others,
+    /// and each of them still runs exactly once.
+    /// </summary>
+    [Test]
+    public void Dispose_WhenComponentThrowsNotSupportedException_DisposesTheOthersOnce()
+    {
+        var order = new List<string>();
+        var sink = new CollectingSink();
+        ILogger logger = new LoggerConfiguration().WriteTo.Sink(sink).CreateLogger();
+        var first = new RecordingDisposable("first", order);
+        var throwsUnsupported = new ThrowingDisposable(
+            "throws-unsupported",
+            order,
+            new NotSupportedException("throws-unsupported"));
+        var last = new RecordingDisposable("last", order);
+        IMachine machine = new MachineBuilder()
+            .WithLogger(logger)
+            .WithCpuFactory(_ => CreateCpu().Object)
+            .AddComponent(first)
+            .AddComponent(throwsUnsupported)
+            .AddComponent(last)
+            .Build();
+
+        Assert.That(() => machine.Dispose(), Throws.Nothing);
+        machine.Dispose();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(order, Is.EqualTo(new[] { "last", "throws-unsupported", "first" }));
+            Assert.That(first.DisposeCount, Is.EqualTo(1));
+            Assert.That(throwsUnsupported.DisposeCount, Is.EqualTo(1));
+            Assert.That(last.DisposeCount, Is.EqualTo(1));
+            bool loggedUnsupported = false;
+            foreach (LogEvent logEvent in sink.Events)
+            {
+                if (logEvent.Level == LogEventLevel.Warning && logEvent.Exception is NotSupportedException)
+                {
+                    loggedUnsupported = true;
+                }
+            }
+
+            Assert.That(loggedUnsupported, Is.True);
+        });
+    }
+
+    /// <summary>
+    /// Dispose waits for an active <see cref="IMachine.Run"/> to leave its loop
+    /// before the first component is disposed.
+    /// </summary>
+    [Test]
+    public void Dispose_WhileRunIsActive_ExitsTheLoopBeforeDisposingComponents()
+    {
+        var order = new List<string>();
+        int inStep = 0;
+        int stopRequested = 0;
+        using var entered = new ManualResetEventSlim(false);
+        int generationAtFirstDispose = -1;
+        int inStepAtFirstDispose = -1;
+
+        var cpu = new Mock<ICpu>();
+        cpu.Setup(mock => mock.Halted).Returns(false);
+        cpu.Setup(mock => mock.IsStopRequested).Returns(() => Volatile.Read(ref stopRequested) != 0);
+        cpu.Setup(mock => mock.RequestStop()).Callback(() => Volatile.Write(ref stopRequested, 1));
+        cpu.Setup(mock => mock.ClearStopRequest()).Callback(() => Volatile.Write(ref stopRequested, 0));
+        cpu.Setup(mock => mock.Step()).Returns(() =>
+        {
+            Interlocked.Increment(ref inStep);
+            entered.Set();
+            while (Volatile.Read(ref stopRequested) == 0)
+            {
+                Thread.Sleep(1);
+            }
+
+            Interlocked.Decrement(ref inStep);
+            return new CpuStepResult(CpuRunState.Running, 1);
+        });
+
+        var trailing = new RecordingDisposable("trailing", order);
+        IMachine? built = null;
+        built = new MachineBuilder()
+            .WithCpuFactory(_ => cpu.Object)
+            .AddComponent(trailing)
+            .AddComponent(new ObservingDisposable("first-disposed", order, () =>
+            {
+                generationAtFirstDispose = ActiveLoopGeneration(built!);
+                inStepAtFirstDispose = Volatile.Read(ref inStep);
+            }))
+            .Build();
+        IMachine machine = built!;
+
+        var runThread = new Thread(() => machine.Run())
+        {
+            IsBackground = true,
+            Name = "lifecycle-run",
+        };
+        runThread.Start();
+        Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True, "The run loop never stepped the CPU.");
+
+        machine.Dispose();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(runThread.Join(TimeSpan.FromSeconds(5)), Is.True, "Run did not return after Dispose.");
+            Assert.That(generationAtFirstDispose, Is.EqualTo(0));
+            Assert.That(inStepAtFirstDispose, Is.EqualTo(0));
+            Assert.That(order, Is.EqualTo(new[] { "first-disposed", "trailing" }));
+            Assert.That(trailing.DisposeCount, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
+    /// Run, Step, and Resume throw <see cref="ObjectDisposedException"/> after the machine is disposed.
+    /// </summary>
+    [Test]
+    public void Run_Step_AndResume_AfterDispose_ThrowObjectDisposedException()
+    {
+        var cpu = new Mock<ICpu>();
+        cpu.Setup(mock => mock.Halted).Returns(false);
+        cpu.Setup(mock => mock.IsStopRequested).Returns(false);
+        cpu.Setup(mock => mock.Step()).Returns(new CpuStepResult(CpuRunState.Stopped, 1));
+
+        IMachine machine = new MachineBuilder()
+            .WithCpuFactory(_ => cpu.Object)
+            .Build();
+
+        machine.Dispose();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => machine.Run(), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => machine.Step(), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(
+                async () => await machine.ResumeAsync().ConfigureAwait(false),
+                Throws.TypeOf<ObjectDisposedException>());
+        });
+    }
+
+    private static int ActiveLoopGeneration(IMachine machine)
+    {
+        FieldInfo? field = machine.GetType().GetField(
+            "activeLoopGeneration",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(field, Is.Not.Null);
+        object? value = field.GetValue(machine);
+        Assert.That(value, Is.Not.Null);
+        return (int)value!;
+    }
+
     private static Mock<ICpu> CreateCpu()
     {
         var cpu = new Mock<ICpu>();
@@ -200,6 +351,30 @@ public class MachineLifecycleTests
 
     private sealed class Marker
     {
+    }
+
+    private sealed class ObservingDisposable : IDisposable
+    {
+        private readonly List<string> order;
+        private readonly Action observe;
+
+        public ObservingDisposable(string name, List<string> order, Action observe)
+        {
+            Name = name;
+            this.order = order;
+            this.observe = observe;
+        }
+
+        public string Name { get; }
+
+        public int DisposeCount { get; private set; }
+
+        public void Dispose()
+        {
+            DisposeCount++;
+            order.Add(Name);
+            observe();
+        }
     }
 
     private sealed class CollectingSink : ILogEventSink
