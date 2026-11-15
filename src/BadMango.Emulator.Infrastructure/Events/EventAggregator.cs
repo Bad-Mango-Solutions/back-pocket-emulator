@@ -15,7 +15,7 @@ public class EventAggregator : IEventAggregator
 {
     private readonly ConcurrentDictionary<Type, List<object>> subscriptions = new();
     private readonly ILogger<EventAggregator>? logger;
-    private readonly object subscriptionLock = new();
+    private readonly Lock subscriptionLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EventAggregator"/> class.

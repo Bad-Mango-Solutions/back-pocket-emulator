@@ -85,7 +85,7 @@ public class Extended80ColumnDeviceTests
 
         var states = device.GetSoftSwitchStates();
 
-        Assert.That(states, Has.Count.EqualTo(9));
+        Assert.That(states, Has.Count.EqualTo(10));
         Assert.Multiple(() =>
         {
             Assert.That(states[0].Name, Is.EqualTo("80STORE"));
@@ -100,12 +100,14 @@ public class Extended80ColumnDeviceTests
             Assert.That(states[4].Address, Is.EqualTo(0xC008));
             Assert.That(states[5].Name, Is.EqualTo("SLOTC3ROM"));
             Assert.That(states[5].Address, Is.EqualTo(0xC00A));
-            Assert.That(states[6].Name, Is.EqualTo("80COL"));
-            Assert.That(states[6].Address, Is.EqualTo(0xC00C));
-            Assert.That(states[7].Name, Is.EqualTo("PAGE2"));
-            Assert.That(states[7].Address, Is.EqualTo(0xC054));
-            Assert.That(states[8].Name, Is.EqualTo("HIRES"));
-            Assert.That(states[8].Address, Is.EqualTo(0xC056));
+            Assert.That(states[6].Name, Is.EqualTo("INTC8ROM"));
+            Assert.That(states[6].Address, Is.EqualTo(0xCFFF));
+            Assert.That(states[7].Name, Is.EqualTo("80COL"));
+            Assert.That(states[7].Address, Is.EqualTo(0xC00C));
+            Assert.That(states[8].Name, Is.EqualTo("PAGE2"));
+            Assert.That(states[8].Address, Is.EqualTo(0xC054));
+            Assert.That(states[9].Name, Is.EqualTo("HIRES"));
+            Assert.That(states[9].Address, Is.EqualTo(0xC056));
         });
     }
 

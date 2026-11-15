@@ -39,7 +39,7 @@ public sealed class AvaloniaBootstrapper : IDisposable
     /// </summary>
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
 
-    private static readonly object SyncLock = new();
+    private static readonly Lock SyncLock = new();
     private static AvaloniaBootstrapper? instance;
     private static bool isInitialized;
 
