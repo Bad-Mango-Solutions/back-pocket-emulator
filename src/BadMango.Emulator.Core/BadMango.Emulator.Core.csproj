@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <RootNamespace>BadMango.Emulator.Core</RootNamespace>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <!-- Package Metadata -->
     <Product>BackPocket Emulator - Emulator Core</Product>

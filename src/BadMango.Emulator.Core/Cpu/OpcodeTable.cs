@@ -20,13 +20,19 @@ using Interfaces.Cpu;
 /// <para>
 /// Each slot is an <see cref="OpcodeEntry"/>. <see cref="Execute"/> always calls
 /// <see cref="OpcodeEntry.Fn"/> and passes that same entry by readonly reference.
-/// Every opcode still points at <see cref="LegacyTrampoline"/>, which invokes
-/// <see cref="OpcodeEntry.Legacy"/>. Nothing is stored in a static field, so two
-/// tables on one thread cannot observe each other's handler.
+/// Every opcode shares <see cref="SharedLegacyTrampoline"/>, one static readonly delegate,
+/// which invokes <see cref="OpcodeEntry.Legacy"/>. Nothing is stored in a mutable
+/// static field.
 /// </para>
 /// </remarks>
-public unsafe class OpcodeTable
+public class OpcodeTable
 {
+    /// <summary>
+    /// The single legacy trampoline instance. Converted opcodes use the same cache
+    /// shape: one static readonly <see cref="OpcodeDispatch"/> per static method.
+    /// </summary>
+    private static readonly OpcodeDispatch SharedLegacyTrampoline = LegacyTrampoline;
+
     private readonly OpcodeEntry[] entries;
 
     /// <summary>
@@ -60,7 +66,7 @@ public unsafe class OpcodeTable
         entries = new OpcodeEntry[256];
         for (int i = 0; i < handlers.Length; i++)
         {
-            entries[i] = new(&LegacyTrampoline, handlers[i], metadata[i]);
+            entries[i] = new(SharedLegacyTrampoline, handlers[i], metadata[i]);
         }
     }
 

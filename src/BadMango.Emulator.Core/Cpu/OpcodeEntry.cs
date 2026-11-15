@@ -4,37 +4,25 @@
 
 namespace BadMango.Emulator.Core.Cpu;
 
-using Interfaces.Cpu;
-
 /// <summary>
 /// Represents a single opcode dispatch entry in the CPU opcode table.
 /// </summary>
-/// <param name="fn">The function pointer used by the dispatch call site.</param>
+/// <param name="fn">The cached dispatch delegate used by the call site.</param>
 /// <param name="legacy">The legacy delegate implementation for the opcode.</param>
 /// <param name="metadata">The opcode metadata used by analysis and disassembly paths.</param>
 /// <remarks>
-/// <para>
-/// <see cref="Fn"/> is <c>delegate* managed&lt;ICpu, in OpcodeEntry, void&gt;</c>.
-/// The call site is always <c>entry.Fn(cpu, in entry)</c>. Unconverted opcodes share one
-/// trampoline that reads <see cref="Legacy"/> from that entry. A converted opcode is a
-/// static method with the same signature that does not read the entry.
-/// </para>
-/// <para>
-/// The extra argument is the entry the caller already has, passed by readonly reference.
-/// Passing <see cref="OpcodeHandler"/> instead would make every call, including a converted
-/// opcode, load and pass the delegate. The managed calling convention is spelled out;
-/// C# function pointers are managed unless <c>unmanaged</c> is written.
-/// </para>
+/// <see cref="Fn"/> is an <see cref="OpcodeDispatch"/>. The call site is always
+/// <c>entry.Fn(cpu, in entry)</c>. Unconverted opcodes share one trampoline that
+/// reads <see cref="Legacy"/> from that entry. A converted opcode is a static method
+/// with the same signature, cached as its own static readonly delegate, that does
+/// not read the entry.
 /// </remarks>
-public readonly unsafe struct OpcodeEntry(
-    delegate* managed<ICpu, in OpcodeEntry, void> fn,
-    OpcodeHandler? legacy,
-    OpcodeInfo metadata)
+public readonly struct OpcodeEntry(OpcodeDispatch fn, OpcodeHandler? legacy, OpcodeInfo metadata)
 {
     /// <summary>
-    /// Gets the function pointer used at dispatch time.
+    /// Gets the dispatch delegate used at dispatch time.
     /// </summary>
-    public delegate* managed<ICpu, in OpcodeEntry, void> Fn { get; } = fn;
+    public OpcodeDispatch Fn { get; } = fn;
 
     /// <summary>
     /// Gets the legacy delegate implementation for this opcode.
