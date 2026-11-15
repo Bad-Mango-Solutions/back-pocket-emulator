@@ -229,6 +229,10 @@ public abstract class CpuBase : ICpu
     public void DetachDebugger()
     {
         debugListener = null;
+
+        // Clear trace state so handlers that inspect it (e.g. immediate-mode operand capture)
+        // do not keep acting on a stale trace from the last debugged instruction.
+        trace = default;
     }
 
     /// <inheritdoc/>
