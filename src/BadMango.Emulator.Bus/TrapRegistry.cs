@@ -674,7 +674,12 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
             return true;
         }
 
-        return internalRomHandler.IsIntC3RomEnabled && address >= 0xC300 && address <= 0xC3FF;
+        if (internalRomHandler.IsIntC3RomEnabled && address >= 0xC300 && address <= 0xC3FF)
+        {
+            return true;
+        }
+
+        return internalRomHandler.IsIntC8RomEnabled && address >= 0xC800 && address <= 0xCFFF;
     }
 
     /// <summary>

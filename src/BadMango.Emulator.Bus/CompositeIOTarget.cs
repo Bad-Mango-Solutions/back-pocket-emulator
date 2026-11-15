@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Bus;
 
+using BadMango.Emulator.Core;
+
 using Interfaces;
 
 /// <summary>
@@ -27,19 +29,19 @@ using Interfaces;
 /// The Apple IIe provides INTCXROM and INTC3ROM soft switches to control internal ROM overlay:
 /// </para>
 /// <list type="bullet">
-/// <item><description>INTCXROM: When ON, internal ROM overlays slot ROMs ($x100-$x7FF only)</description></item>
+/// <item><description>INTCXROM: When ON, internal ROM overlays slot ROMs ($x100-$xFFF)</description></item>
 /// <item><description>INTC3ROM: When ON, internal 80-column firmware overlays slot 3 ($x300 region)</description></item>
 /// </list>
 /// <para>
-/// IMPORTANT: INTCXROM does NOT affect the expansion ROM region ($x800-$xFFF). The expansion
-/// ROM region is always controlled by slot selection, which occurs when accessing slot ROM
-/// (even when internal ROM is providing the data due to INTCXROM/INTC3ROM).
+/// INTCXROM overlays the full ROM window ($x100-$xFFF). In addition, IIe INTC8ROM latch
+/// behavior is emulated: internal C3 ROM access can arm an overlay of $x800-$xFFF until
+/// $xFFF (or RESET) clears it.
 /// </para>
 /// <para>
 /// Use the handler type "composite-io" in profile JSON to instantiate this target.
 /// </para>
 /// </remarks>
-public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, IInternalRomHandler
+public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, IInternalRomHandler, IResetReceiver
 {
     /// <summary>
     /// Offset boundary for soft switch region ($x000-$x0FF).
@@ -67,6 +69,7 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
     private IBusTarget? internalRom;
     private bool intCxRomEnabled;
     private bool intC3RomEnabled = true; // Defaults to ON
+    private bool intC8RomEnabled;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CompositeIOTarget"/> class.
@@ -102,6 +105,9 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
 
     /// <inheritdoc />
     public bool IsIntC3RomEnabled => intC3RomEnabled;
+
+    /// <inheritdoc />
+    public bool IsIntC8RomEnabled => intC8RomEnabled;
 
     /// <inheritdoc />
     public override byte Read8(Addr offset, in BusAccess access)
@@ -141,7 +147,6 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
                 break;
             default:
                 // Expansion ROM: Ignore write, but check for $xFFF deselection
-                // Note: INTCXROM does NOT affect the expansion ROM region
                 WriteExpansionRom(maskedOffset);
                 break;
         }
@@ -207,6 +212,18 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
         // This device doesn't schedule any recurring events.
     }
 
+    /// <inheritdoc />
+    public void OnResetAsserted(Cycle cycle)
+    {
+        intC8RomEnabled = false;
+    }
+
+    /// <inheritdoc />
+    public void OnResetReleased(Cycle cycle)
+    {
+        intC8RomEnabled = false;
+    }
+
     /// <summary>
     /// Sets the INTCXROM state (internal ROM overlay for $x100-$xFFF).
     /// </summary>
@@ -261,10 +278,19 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
         // Extract slot number from address: $xn00 ? slot n
         int slot = (offset >> 8) & 0x07;
 
+        // Check for INTC3ROM independent control of $x300 region before the INTCXROM early return.
+        // Per IIe behavior, any internal $C3xx access while internal C3 ROM is active arms INTC8ROM
+        // even if INTCXROM is currently enabled; the expansion ROM still stays suppressed until $CFFF.
+        if (slot == 3 && intC3RomEnabled && internalRom is not null)
+        {
+            intC8RomEnabled = true;
+        }
+
         // Check for INTCXROM override (internal ROM overlays all slot ROMs $C100-$C7FF)
         if (intCxRomEnabled && internalRom is not null)
         {
-            // INTCXROM is enabled - internal ROM provides data, no slot selection occurs
+            // INTCXROM is enabled - internal ROM provides data, no slot selection occurs.
+            // The INTC8ROM latch must still have been armed by the $C3xx access above.
             return internalRom.Read8(offset, in access);
         }
 
@@ -319,14 +345,22 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
     /// </remarks>
     private void WriteSlotRom(Word offset)
     {
+        // Extract slot number from address: $xn00 ? slot n
+        int slot = (offset >> 8) & 0x07;
+
+        // Per IIe behavior, any $C3xx access while the internal C3 ROM is active arms INTC8ROM
+        // before the INTCXROM override suppresses slot selection; this must happen even when
+        // INTCXROM is enabled because the latch is a stateful side effect.
+        if (slot == 3 && intC3RomEnabled)
+        {
+            intC8RomEnabled = true;
+        }
+
         // Check for INTCXROM override - when enabled, no slot selection occurs
         if (intCxRomEnabled)
         {
             return;
         }
-
-        // Extract slot number from address: $xn00 ? slot n
-        int slot = (offset >> 8) & 0x07;
 
         // For slot 3 with INTC3ROM enabled, still trigger expansion ROM selection
         // because the internal 80-column firmware has expansion ROM
@@ -351,11 +385,9 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
     /// <returns>The byte value at the specified offset.</returns>
     /// <remarks>
     /// <para>
-    /// IMPORTANT: INTCXROM does NOT affect the expansion ROM region ($C800-$CFFF).
-    /// INTCXROM only controls the slot ROM region ($C100-$C7FF).
-    /// </para>
-    /// <para>
-    /// The expansion ROM region is controlled by:
+    /// INTCXROM overlays the full internal ROM window at $C100-$CFFF.
+    /// INTC8ROM latch can also overlay $C800-$CFFF after internal $C3xx access.
+    /// When neither applies, the expansion ROM region is controlled by:
     /// </para>
     /// <list type="bullet">
     /// <item><description>Default: Extended 80-Column Card's expansion ROM (if installed)</description></item>
@@ -368,7 +400,13 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
         // Special case: $xFFF deselects expansion ROM (removes layer, reveals default)
         if (offset == ExpansionRomDeselectOffset)
         {
+            intC8RomEnabled = false;
             slotManager.DeselectExpansionSlot();
+
+            if (intCxRomEnabled && internalRom is not null)
+            {
+                return internalRom.Read8(offset, in access);
+            }
 
             // After deselection, return the default expansion ROM data if available
             var defaultRom = slotManager.GetVisibleExpansionRom();
@@ -379,6 +417,11 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
             }
 
             return FloatingBusValue;
+        }
+
+        if ((intCxRomEnabled || intC8RomEnabled) && internalRom is not null)
+        {
+            return internalRom.Read8(offset, in access);
         }
 
         // Return data from visible expansion ROM (selected slot or default)
@@ -399,13 +442,13 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
     /// <param name="offset">Offset within the 4KB I/O page.</param>
     /// <remarks>
     /// Writes to ROM are ignored, but $xFFF still triggers deselection.
-    /// Note: INTCXROM does NOT affect this region.
     /// </remarks>
     private void WriteExpansionRom(Word offset)
     {
         // Special case: $xFFF deselects expansion ROM even on writes
         if (offset == ExpansionRomDeselectOffset)
         {
+            intC8RomEnabled = false;
             slotManager.DeselectExpansionSlot();
         }
     }
@@ -428,7 +471,7 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
         // Check for INTC3ROM independent control of $x300 region
         if (slot == 3 && intC3RomEnabled && internalRom is not null)
         {
-            return internalRom;
+            return this;
         }
 
         // Prefer the card's own slot ROM; fall back to the motherboard's CXROM
@@ -450,8 +493,8 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
     /// the MainBus would pass the I/O page offset directly.
     /// </para>
     /// <para>
-    /// Note: INTCXROM does NOT affect expansion ROM resolution.
-    /// The expansion ROM is always controlled by slot selection.
+    /// Expansion ROM accesses are resolved through this target so it can apply
+    /// INTCXROM and INTC8ROM overlay behavior before falling back to slot ROM selection.
     /// </para>
     /// </remarks>
     private IBusTarget? ResolveExpansionRomTarget(Word offset)

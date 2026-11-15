@@ -7,7 +7,9 @@ namespace BadMango.Emulator.Tests;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Cpu;
+using BadMango.Emulator.Core.Signaling;
 using BadMango.Emulator.Devices;
+using BadMango.Emulator.Emulation.Cpu;
 using BadMango.Emulator.Systems;
 
 using Moq;
@@ -545,6 +547,65 @@ public class Pocket2eIntegrationTests
             card3.Verify(c => c.OnExpansionROMSelected(), Times.Once(), "Card 3 should have been selected");
             card3.Verify(c => c.OnExpansionROMDeselected(), Times.Once(), "Card 3 should have been deselected when switching to card 5");
             card5.Verify(c => c.OnExpansionROMSelected(), Times.Once(), "Card 5 should be selected");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that JSR $C300 reaches internal $C800 code rather than an active slot expansion ROM.
+    /// </summary>
+    [Test]
+    public void Cpu_JsrC300_InternalC3JmpC800_ExecutesInternalC800Rom()
+    {
+        var bus = new MainBus(16);
+        var mainMemory = new PhysicalMemory(0x10000, "MainMemory");
+        var mainTarget = new RamTarget(mainMemory.Slice(0, 0x10000));
+        bus.MapPageRange(0, 16, 0, RegionTag.Ram, PagePerms.All, mainTarget.Capabilities, mainTarget, 0);
+
+        var dispatcher = new IOPageDispatcher();
+        var slotManager = new SlotManager(dispatcher);
+        var ioPage = new CompositeIOTarget("I/O Page", dispatcher, slotManager);
+        bus.MapRegion(0xC000, 0x1000, 1, RegionTag.Composite, PagePerms.ReadWrite, ioPage.Capabilities, ioPage, 0);
+
+        var internalRomMemory = new PhysicalMemory(0x1000, "InternalRom");
+        internalRomMemory.AsSpan()[0x300] = 0x4C; // JMP $C800
+        internalRomMemory.AsSpan()[0x301] = 0x00;
+        internalRomMemory.AsSpan()[0x302] = 0xC8;
+        internalRomMemory.AsSpan()[0x800] = 0xA9; // LDA #$42
+        internalRomMemory.AsSpan()[0x801] = 0x42;
+        internalRomMemory.AsSpan()[0x802] = 0xDB; // STP
+        ioPage.SetInternalRom(new RomTarget(internalRomMemory.Slice(0, 0x1000)));
+        ioPage.SetIntC3Rom(true);
+
+        var slot5ExpansionMemory = new PhysicalMemory(0x800, "Slot5ExpansionRom");
+        slot5ExpansionMemory.AsSpan()[0x000] = 0xA9; // LDA #$99 (wrong path marker)
+        slot5ExpansionMemory.AsSpan()[0x001] = 0x99;
+        slot5ExpansionMemory.AsSpan()[0x002] = 0xDB; // STP
+        var slot5ExpansionRom = new RomTarget(slot5ExpansionMemory.Slice(0, 0x800));
+
+        var slot5Card = CreateMockSlotCard("Slot 5 Card");
+        slot5Card.Setup(c => c.ExpansionROMRegion).Returns(slot5ExpansionRom);
+        slotManager.Install(5, slot5Card.Object);
+        slotManager.SelectExpansionSlot(5);
+
+        var cpu = new Cpu65C02(new EventContext(new Scheduler(), new SignalBus(), bus));
+
+        mainMemory.AsSpan()[0xFFFC] = 0x00;
+        mainMemory.AsSpan()[0xFFFD] = 0x02;
+        mainMemory.AsSpan()[0x0200] = 0x20; // JSR $C300
+        mainMemory.AsSpan()[0x0201] = 0x00;
+        mainMemory.AsSpan()[0x0202] = 0xC3;
+        mainMemory.AsSpan()[0x0203] = 0xDB; // fallback STP
+
+        cpu.Reset();
+        cpu.Step(); // JSR $C300
+        cpu.Step(); // Execute $C300 firmware (JMP $C800)
+        cpu.Step(); // Execute $C800 firmware (LDA #$42) or wrong slot ROM marker
+        cpu.Step(); // STP at $C802 (internal) or $C802 (slot5)
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cpu.Registers.A.GetByte(), Is.EqualTo(0x42), "Execution should continue in internal ROM at $C800.");
+            Assert.That(cpu.Halted, Is.True, "CPU should halt after ROM STP.");
         });
     }
 
