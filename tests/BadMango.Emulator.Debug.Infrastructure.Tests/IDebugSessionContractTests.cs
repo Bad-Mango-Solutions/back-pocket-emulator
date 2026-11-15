@@ -24,11 +24,21 @@ public abstract class IDebugSessionContractTests
         IDebugSession Session { get; }
 
         /// <summary>
+        /// Gets a value indicating whether the machine is stopped.
+        /// </summary>
+        bool IsMachineStopped { get; }
+
+        /// <summary>
         /// Loads a tiny test program and resets execution to its start address.
         /// </summary>
         /// <param name="startAddress">The start address.</param>
         /// <param name="bytes">The instruction bytes.</param>
         void LoadProgram(ushort startAddress, params byte[] bytes);
+
+        /// <summary>
+        /// Makes the next instruction execution throw.
+        /// </summary>
+        void ArmExecutionFault();
     }
 
     /// <summary>
@@ -111,6 +121,89 @@ public abstract class IDebugSessionContractTests
             Assert.That(result.StopReason, Is.EqualTo(StopReason.CycleCount));
             Assert.That(result.StopReason, Is.Not.EqualTo(StopReason.Budget));
             Assert.That(result.CycleCount, Is.GreaterThanOrEqualTo(4));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a breakpoint condition stops when the breakpoint is reached.
+    /// </summary>
+    [Test]
+    public void RunUntil_BreakpointCondition_StopsAtBreakpoint()
+    {
+        using var harness = CreateHarness();
+        harness.LoadProgram(0x1000, 0xEA, 0xEA, 0xEA, 0xDB);
+        harness.Session.AddBreakpoint(0x1002);
+
+        RunResult result = harness.Session.RunUntil(
+            new(RunConditionKind.Breakpoint, BreakpointAddress: 0x1002),
+            new(MaxCycles: 20));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.StopReason, Is.EqualTo(StopReason.Breakpoint));
+            Assert.That(result.ProgramCounter, Is.EqualTo(0x1002u));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a watchpoint condition stops when a store hits the watched address.
+    /// </summary>
+    [Test]
+    public void RunUntil_WatchpointCondition_StopsOnStore()
+    {
+        using var harness = CreateHarness();
+        harness.LoadProgram(0x1000, 0xA9, 0x42, 0x85, 0x80, 0xDB);
+        harness.Session.AddWatchpoint(0x0080, WatchAccess.Write);
+
+        RunResult result = harness.Session.RunUntil(
+            new(RunConditionKind.Watchpoint, WatchAddress: 0x0080),
+            new(MaxCycles: 20));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.StopReason, Is.EqualTo(StopReason.Watchpoint));
+            Assert.That(harness.Session.ReadMemory(0x0080, 1).Data[0], Is.EqualTo(0x42));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a memory-equals condition stops once the bytes match.
+    /// </summary>
+    [Test]
+    public void RunUntil_MemoryEqualsCondition_StopsWhenBytesMatch()
+    {
+        using var harness = CreateHarness();
+        harness.LoadProgram(0x1000, 0xA9, 0x42, 0x85, 0x80, 0xDB);
+
+        RunResult result = harness.Session.RunUntil(
+            new(RunConditionKind.MemoryEquals, MemoryAddress: 0x0080, MemoryValue: [0x42]),
+            new(MaxCycles: 20));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.StopReason, Is.EqualTo(StopReason.MemoryCondition));
+            Assert.That(result.ProgramCounter, Is.EqualTo(0x1004u));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that an execution exception stops the run as a fault and stops the machine.
+    /// </summary>
+    [Test]
+    public void RunUntil_WhenStepThrows_ReturnsFaultAndStopsMachine()
+    {
+        using var harness = CreateHarness();
+        harness.LoadProgram(0x1000, 0xEA, 0xEA);
+        harness.ArmExecutionFault();
+
+        RunResult result = harness.Session.RunUntil(
+            new(RunConditionKind.ProgramCounter, Address: 0x2000),
+            new(MaxCycles: 20));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.StopReason, Is.EqualTo(StopReason.Fault));
+            Assert.That(harness.IsMachineStopped, Is.True);
         });
     }
 

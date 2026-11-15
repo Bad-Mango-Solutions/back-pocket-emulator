@@ -72,11 +72,19 @@ public interface IDebugSession
     RunResult? GetRunStatus(Guid runId);
 
     /// <summary>
-    /// Requests cancellation for a background run.
+    /// Requests cancellation for a background run and waits until that run has finished.
     /// </summary>
     /// <param name="runId">The run identifier.</param>
+    /// <param name="timeout">
+    /// How long to wait for the run to finish. <see langword="null"/> uses the implementation default.
+    /// </param>
     /// <returns><see langword="true"/> if the run was found; otherwise, <see langword="false"/>.</returns>
-    bool StopRun(Guid runId);
+    /// <remarks>
+    /// A finished run is a no-op. An active run is cancelled, and the method does not return
+    /// until the run has left the in-flight table or the wait times out. Callers can write
+    /// memory immediately after a successful return.
+    /// </remarks>
+    bool StopRun(Guid runId, TimeSpan? timeout = null);
 
     /// <summary>
     /// Pauses the running machine.

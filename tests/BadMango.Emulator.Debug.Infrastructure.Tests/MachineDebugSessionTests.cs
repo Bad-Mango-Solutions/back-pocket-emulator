@@ -12,7 +12,9 @@ using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
 using BadMango.Emulator.Core.Configuration;
 using BadMango.Emulator.Core.Cpu;
+using BadMango.Emulator.Core.Debugger;
 using BadMango.Emulator.Core.Interfaces.Cpu;
+using BadMango.Emulator.Core.Interfaces.Debugging;
 using BadMango.Emulator.Debug.Abstractions;
 
 using Moq;
@@ -23,35 +25,6 @@ using Moq;
 [TestFixture]
 public sealed class MachineDebugSessionTests : IDebugSessionContractTests
 {
-    /// <summary>
-    /// Verifies run faults are surfaced as <see cref="StopReason.Fault"/> and leave the machine stopped.
-    /// </summary>
-    [Test]
-    public void RunUntil_WhenStepThrows_ReturnsFaultAndStopsMachine()
-    {
-        var cpu = new Mock<ICpu>(MockBehavior.Strict);
-        cpu.SetupGet(x => x.Halted).Returns(false);
-        cpu.Setup(x => x.GetPC()).Returns(0x1000u);
-
-        var machine = new Mock<IMachine>(MockBehavior.Strict);
-        machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
-        machine.Setup(x => x.Step()).Throws(new InvalidOperationException("simulated run fault"));
-        machine.Setup(x => x.Stop());
-
-        var context = new Mock<IDebugContext>(MockBehavior.Strict);
-        context.SetupGet(x => x.Machine).Returns(machine.Object);
-        context.SetupGet(x => x.Breakpoints).Returns(new BreakpointManager());
-        context.SetupGet(x => x.Watchpoints).Returns(new WatchpointManager());
-
-        var session = new MachineDebugSession(context.Object);
-        RunResult result = session.RunUntil(
-            new(RunConditionKind.ProgramCounter, Address: 0x2000),
-            new(MaxCycles: 100));
-
-        Assert.That(result.StopReason, Is.EqualTo(StopReason.Fault));
-        machine.Verify(x => x.Stop(), Times.Once);
-    }
-
     /// <summary>
     /// Verifies debugger reads and writes of a soft switch do not toggle it.
     /// </summary>
@@ -202,14 +175,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
             releaseStep.Set();
             if (session is not null && runId != Guid.Empty)
             {
-                try
-                {
-                    session.StopRun(runId);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // Cleanup only. The assertions above record the product failure.
-                }
+                session.StopRun(runId);
             }
 
             releaseStep.Dispose();
@@ -401,8 +367,8 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
     public void WriteMemory_AfterBackgroundRunStops_WritesTheBus()
     {
         using var run = BlockedBackgroundRun.Start();
-        Assert.That(run.Session.StopRun(run.RunId), Is.True);
         run.ReleaseStep();
+        Assert.That(run.Session.StopRun(run.RunId), Is.True);
 
         RunResult? result = WaitForBackgroundResult(run.Session, run.RunId);
         Assert.That(result, Is.Not.Null);
@@ -791,21 +757,21 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
             }
 
             disposed = true;
-            try
+            releaseStep.Set();
+            if (RunId != Guid.Empty)
             {
-                if (RunId != Guid.Empty)
-                {
-                    Session.StopRun(RunId);
-                }
+                Session.StopRun(RunId);
             }
-            catch (ObjectDisposedException)
-            {
-                // The assertion under test records this failure. Cleanup still has to release Step.
-            }
-            finally
-            {
-                releaseStep.Set();
-            }
+        }
+    }
+
+    private sealed class ThrowingStepListener : IDebugStepListener
+    {
+        public void OnBeforeStep(in DebugStepEventArgs eventData) =>
+            throw new InvalidOperationException("simulated execution fault");
+
+        public void OnAfterStep(in DebugStepEventArgs eventData)
+        {
         }
     }
 
@@ -826,11 +792,18 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
 
         public IDebugSession Session { get; }
 
+        public bool IsMachineStopped => machine.State == MachineState.Stopped;
+
         public void LoadProgram(ushort startAddress, params byte[] bytes)
         {
             Session.WriteMemory(startAddress, bytes);
             Session.WriteMemory(0xFFFC, [(byte)(startAddress & 0xFF), (byte)(startAddress >> 8)]);
             Session.Reset(ResetKind.Warm);
+        }
+
+        public void ArmExecutionFault()
+        {
+            context.StepListener!.Add(new ThrowingStepListener());
         }
 
         public void Dispose()

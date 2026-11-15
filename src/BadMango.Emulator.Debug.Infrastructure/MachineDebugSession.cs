@@ -22,10 +22,15 @@ using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
 /// <para>
 /// <see cref="Step"/>, <see cref="RunUntil"/>, <see cref="WriteMemory"/>, and <see cref="Reset"/>
 /// share one <see cref="System.Threading.Lock"/> so those calls cannot interleave.
-/// <see cref="WriteMemory"/> and <see cref="Reset"/> throw <see cref="InvalidOperationException"/>
-/// when a background run is active instead of waiting for it. That run holds the execution lock
-/// until it stops, so waiting would stall the caller and can deadlock completion bookkeeping.
-/// Stop the background run first. A foreground <see cref="Step"/> or <see cref="RunUntil"/> is waited on.
+/// All four throw <see cref="InvalidOperationException"/> when a background run is active
+/// instead of waiting for it. That run holds the execution lock until it stops.
+/// Stop the background run first.
+/// </para>
+/// <para>
+/// The attached machine is read from the debug context on every call. A null machine throws
+/// <see cref="InvalidOperationException"/>. Replacing the machine while a background run is active
+/// cancels that run without further calls on the detached instance. Calls made before the run
+/// observes the replacement still see an active background run.
 /// </para>
 /// <para>
 /// <see cref="GetRegisters"/>, <see cref="ReadMemory"/>, <see cref="Disassemble"/>,
@@ -35,18 +40,21 @@ using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
 /// </para>
 /// <para>
 /// The in-flight run table drops a background run when its task ends, including after
-/// <see cref="StopRun"/>. <see cref="GetRunStatus"/> keeps that result until the next
-/// <see cref="StartRun"/>. <see cref="StopRun"/> on a finished run does not cancel a disposed token.
+/// <see cref="StopRun(Guid, TimeSpan?)"/>. That method waits, up to a bounded timeout, until the
+/// run has finished. <see cref="GetRunStatus"/> keeps the result until the next <see cref="StartRun"/>.
+/// <see cref="StopRun(Guid, TimeSpan?)"/> on a finished run does not cancel a disposed token.
 /// </para>
 /// </remarks>
 public sealed class MachineDebugSession : IDebugSession
 {
     private const int ExecutionLockPollMilliseconds = 15;
+    private const string NoMachineMessage = "No machine is attached to the debug context.";
+
+    private static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(5);
 
     private readonly Lock executionLock = new();
     private readonly Lock backgroundRunLock = new();
     private readonly IDebugContext debugContext;
-    private readonly IMachine machine;
     private readonly Dictionary<Guid, BackgroundRunState> backgroundRuns = [];
     private readonly Dictionary<Guid, RunResult> completedRuns = [];
     private Guid? activeRunId;
@@ -56,20 +64,20 @@ public sealed class MachineDebugSession : IDebugSession
     /// </summary>
     /// <param name="debugContext">The attached debug context.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="debugContext"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the context is missing required machine components.</exception>
     public MachineDebugSession(IDebugContext debugContext)
     {
         ArgumentNullException.ThrowIfNull(debugContext);
         this.debugContext = debugContext;
-        machine = debugContext.Machine ?? throw new InvalidOperationException("No machine is attached to the debug context.");
     }
+
+    private IMachine Machine => debugContext.Machine ?? throw new InvalidOperationException(NoMachineMessage);
 
     /// <inheritdoc />
     public RegisterSnapshot GetRegisters()
     {
-        var registers = machine.Cpu.GetRegisters();
+        var registers = Machine.Cpu.GetRegisters();
         return new RegisterSnapshot(
-            CpuType: debugContext.MachineInfo?.CpuType ?? machine.Cpu.GetType().Name,
+            CpuType: debugContext.MachineInfo?.CpuType ?? Machine.Cpu.GetType().Name,
             ProgramCounter: registers.PC.GetAddr(),
             Accumulator: registers.A.GetDWord(),
             XRegister: registers.X.GetDWord(),
@@ -91,7 +99,7 @@ public sealed class MachineDebugSession : IDebugSession
         for (int offset = 0; offset < length; offset++)
         {
             var access = CreateDebugReadAccess(address + (uint)offset);
-            var read = machine.Bus.TryRead8(access);
+            var read = Machine.Bus.TryRead8(access);
             if (read.Failed)
             {
                 throw new InvalidOperationException($"Failed to read memory at ${access.Address:X8}: {read.Fault.Kind}.");
@@ -117,7 +125,7 @@ public sealed class MachineDebugSession : IDebugSession
             for (int offset = 0; offset < data.Length; offset++)
             {
                 var access = CreateDebugWriteAccess(address + (uint)offset, data[offset]);
-                var write = machine.Bus.TryWrite8(access, data[offset]);
+                var write = Machine.Bus.TryWrite8(access, data[offset]);
                 if (write.Failed)
                 {
                     throw new InvalidOperationException($"Failed to write memory at ${access.Address:X8}: {write.Fault.Kind}.");
@@ -152,6 +160,7 @@ public sealed class MachineDebugSession : IDebugSession
     }
 
     /// <inheritdoc />
+    /// <exception cref="InvalidOperationException">A background run is active, or the attached machine was replaced.</exception>
     public ulong Step(int count = 1, CancellationToken cancellationToken = default)
     {
         if (count <= 0)
@@ -159,18 +168,22 @@ public sealed class MachineDebugSession : IDebugSession
             throw new ArgumentOutOfRangeException(nameof(count), "Step count must be greater than zero.");
         }
 
+        ThrowIfBackgroundRunActive();
+        IMachine bound = Machine;
         ulong executed = 0;
         lock (executionLock)
         {
+            ThrowIfBackgroundRunActive();
             for (int i = 0; i < count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (machine.Cpu.Halted)
+                EnsureStillAttached(bound);
+                if (bound.Cpu.Halted)
                 {
                     break;
                 }
 
-                machine.Step();
+                bound.Step();
                 executed++;
             }
         }
@@ -179,14 +192,18 @@ public sealed class MachineDebugSession : IDebugSession
     }
 
     /// <inheritdoc />
+    /// <exception cref="InvalidOperationException">A background run is active.</exception>
     public RunResult RunUntil(RunCondition condition, RunBudget budget, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(condition);
         ArgumentNullException.ThrowIfNull(budget);
         ValidateCondition(condition);
+        ThrowIfBackgroundRunActive();
 
+        IMachine bound = Machine;
         lock (executionLock)
         {
+            ThrowIfBackgroundRunActive();
             var stopwatch = Stopwatch.StartNew();
             ulong instructionCount = 0;
             ulong cycleCount = 0;
@@ -194,57 +211,61 @@ public sealed class MachineDebugSession : IDebugSession
             debugContext.Breakpoints.ResetLastHit();
             debugContext.Watchpoints.ResetLastHit();
 
-            if (TryResolveStop(condition, cycleCount, out StopReason initialStopReason, out string initialMessage))
+            if (TryResolveStop(bound, condition, cycleCount, out StopReason initialStopReason, out string initialMessage))
             {
-                return CreateResult(initialStopReason, instructionCount, cycleCount, stopwatch.Elapsed, initialMessage);
+                return CreateResult(bound, initialStopReason, instructionCount, cycleCount, stopwatch.Elapsed, initialMessage);
             }
 
             while (true)
             {
+                if (Replaced(bound, instructionCount, cycleCount, stopwatch.Elapsed) is RunResult replaced)
+                {
+                    return replaced;
+                }
+
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                 }
                 catch (OperationCanceledException)
                 {
-                    machine.Pause();
-                    return CreateResult(StopReason.Cancelled, instructionCount, cycleCount, stopwatch.Elapsed, "Run cancelled.");
+                    return Finish(bound, StopReason.Cancelled, instructionCount, cycleCount, stopwatch.Elapsed, "Run cancelled.", stopMachine: false);
                 }
 
                 if (budget.WallClock is TimeSpan wallClock && stopwatch.Elapsed >= wallClock)
                 {
-                    machine.Pause();
-                    return CreateResult(StopReason.WallClockLimit, instructionCount, cycleCount, stopwatch.Elapsed, "Wall-clock budget exhausted.");
+                    return Finish(bound, StopReason.WallClockLimit, instructionCount, cycleCount, stopwatch.Elapsed, "Wall-clock budget exhausted.", stopMachine: false);
                 }
 
                 if (cycleCount >= budget.MaxCycles)
                 {
-                    machine.Pause();
-                    return CreateResult(StopReason.Budget, instructionCount, cycleCount, stopwatch.Elapsed, "Cycle budget exhausted.");
+                    return Finish(bound, StopReason.Budget, instructionCount, cycleCount, stopwatch.Elapsed, "Cycle budget exhausted.", stopMachine: false);
                 }
 
-                if (machine.Cpu.Halted)
+                if (bound.Cpu.Halted)
                 {
-                    machine.Pause();
-                    return CreateResult(StopReason.Halted, instructionCount, cycleCount, stopwatch.Elapsed, "CPU halted.");
+                    return Finish(bound, StopReason.Halted, instructionCount, cycleCount, stopwatch.Elapsed, "CPU halted.", stopMachine: false);
                 }
 
                 try
                 {
-                    var stepResult = machine.Step();
+                    var stepResult = bound.Step();
                     instructionCount++;
                     cycleCount += stepResult.CyclesConsumed.Value;
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex) when (ex is not OperationCanceledException && !IsCriticalException(ex))
                 {
-                    machine.Stop();
-                    return CreateResult(StopReason.Fault, instructionCount, cycleCount, stopwatch.Elapsed, ex.Message);
+                    return Finish(bound, StopReason.Fault, instructionCount, cycleCount, stopwatch.Elapsed, ex.Message, stopMachine: true);
                 }
 
-                if (TryResolveStop(condition, cycleCount, out StopReason stopReason, out string message))
+                if (Replaced(bound, instructionCount, cycleCount, stopwatch.Elapsed) is RunResult replacedAfterStep)
                 {
-                    machine.Pause();
-                    return CreateResult(stopReason, instructionCount, cycleCount, stopwatch.Elapsed, message);
+                    return replacedAfterStep;
+                }
+
+                if (TryResolveStop(bound, condition, cycleCount, out StopReason stopReason, out string message))
+                {
+                    return Finish(bound, stopReason, instructionCount, cycleCount, stopwatch.Elapsed, message, stopMachine: false);
                 }
             }
         }
@@ -299,15 +320,27 @@ public sealed class MachineDebugSession : IDebugSession
     /// <inheritdoc />
     /// <remarks>
     /// Stopping a run that has already finished is a no-op and does not throw.
+    /// An active run is cancelled and this method waits until that run has left the
+    /// in-flight table, so a following mutation is not rejected as still running.
+    /// <see langword="null"/> waits up to five seconds.
     /// </remarks>
-    public bool StopRun(Guid runId)
+    /// <exception cref="TimeoutException">The run did not finish within <paramref name="timeout"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeout"/> is negative.</exception>
+    public bool StopRun(Guid runId, TimeSpan? timeout = null)
     {
+        if (timeout is { } requested && requested < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Stop timeout must be zero or greater.");
+        }
+
+        Task? task;
         lock (backgroundRunLock)
         {
             if (backgroundRuns.TryGetValue(runId, out BackgroundRunState? state))
             {
                 // Cancel under the same lock that disposes the source when the task ends.
                 state.TryCancel();
+                task = state.Task;
             }
             else if (completedRuns.ContainsKey(runId))
             {
@@ -319,12 +352,22 @@ public sealed class MachineDebugSession : IDebugSession
             }
         }
 
-        machine.Pause();
+        if (debugContext.Machine is IMachine attached)
+        {
+            attached.Pause();
+        }
+
+        TimeSpan wait = timeout ?? DefaultStopTimeout;
+        if (task is not null && !task.Wait(wait))
+        {
+            throw new TimeoutException($"Background run '{runId}' did not stop within {wait.TotalSeconds:0.###} seconds.");
+        }
+
         return true;
     }
 
     /// <inheritdoc />
-    public void Pause() => machine.Pause();
+    public void Pause() => Machine.Pause();
 
     /// <inheritdoc />
     /// <remarks>
@@ -337,7 +380,7 @@ public sealed class MachineDebugSession : IDebugSession
         try
         {
             ThrowIfBackgroundRunActive();
-            machine.Reset(resetKind is ResetKind.Hard or ResetKind.PowerOn);
+            Machine.Reset(resetKind is ResetKind.Hard or ResetKind.PowerOn);
         }
         finally
         {
@@ -401,7 +444,7 @@ public sealed class MachineDebugSession : IDebugSession
             return new(
                 Name: "unknown",
                 DisplayName: "Unknown Machine",
-                CpuType: machine.Cpu.GetType().Name,
+                CpuType: Machine.Cpu.GetType().Name,
                 MemorySize: 0,
                 Description: null);
         }
@@ -413,6 +456,18 @@ public sealed class MachineDebugSession : IDebugSession
             MemorySize: info.MemorySize,
             Description: info.Description);
     }
+
+    private static bool IsCriticalException(Exception ex) =>
+        ex is OutOfMemoryException or AccessViolationException or InvalidProgramException or BadImageFormatException;
+
+    private static RunResult CreateResult(IMachine bound, StopReason stopReason, ulong instructions, ulong cycles, TimeSpan elapsed, string message) =>
+        new(
+            StopReason: stopReason,
+            InstructionCount: instructions,
+            CycleCount: cycles,
+            Elapsed: elapsed,
+            ProgramCounter: bound.Cpu.GetPC(),
+            Message: message);
 
     private static BusAccess CreateDebugReadAccess(uint address) =>
         new(
@@ -494,17 +549,20 @@ public sealed class MachineDebugSession : IDebugSession
     {
         lock (backgroundRunLock)
         {
-            if (activeRunId is Guid activeId && backgroundRuns.ContainsKey(activeId))
+            if (activeRunId is Guid activeId
+                && backgroundRuns.TryGetValue(activeId, out BackgroundRunState? state)
+                && state.Task?.Id != Task.CurrentId)
             {
                 throw new InvalidOperationException(
-                    "A background run is active. Stop the run before writing memory or resetting the machine.");
+                    "A background run is active. Stop the run before stepping, running, writing memory, or resetting the machine.");
             }
         }
     }
 
     private void CompleteBackgroundRun(Guid runId, BackgroundRunState state, RunCondition condition, RunBudget budget)
     {
-        RunResult result;
+        RunResult? result = null;
+        Exception? critical = null;
         try
         {
             result = RunUntil(condition, budget, state.CancellationTokenSource.Token);
@@ -513,14 +571,22 @@ public sealed class MachineDebugSession : IDebugSession
         {
             result = new RunResult(StopReason.Cancelled, 0, 0, TimeSpan.Zero, TryGetProgramCounter(), "Run cancelled.");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsCriticalException(ex))
         {
             result = new RunResult(StopReason.Fault, 0, 0, TimeSpan.Zero, TryGetProgramCounter(), ex.Message);
+        }
+        catch (Exception ex)
+        {
+            critical = ex;
         }
 
         lock (backgroundRunLock)
         {
-            completedRuns[runId] = result;
+            if (result is not null)
+            {
+                completedRuns[runId] = result;
+            }
+
             backgroundRuns.Remove(runId);
             if (activeRunId == runId)
             {
@@ -529,21 +595,69 @@ public sealed class MachineDebugSession : IDebugSession
 
             state.DisposeCancellationSource();
         }
+
+        if (critical is not null)
+        {
+            throw critical;
+        }
     }
 
     private uint TryGetProgramCounter()
     {
         try
         {
-            return machine.Cpu.GetPC();
+            IMachine? attached = debugContext.Machine;
+            if (attached is null)
+            {
+                return 0;
+            }
+
+            return attached.Cpu.GetPC();
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is ObjectDisposedException or NullReferenceException or InvalidOperationException)
         {
             return 0;
         }
     }
 
-    private bool TryResolveStop(RunCondition condition, ulong cycleCount, out StopReason stopReason, out string message)
+    private void EnsureStillAttached(IMachine bound)
+    {
+        if (!ReferenceEquals(debugContext.Machine, bound))
+        {
+            throw new InvalidOperationException("The attached machine was replaced.");
+        }
+    }
+
+    private RunResult? Replaced(IMachine bound, ulong instructions, ulong cycles, TimeSpan elapsed)
+    {
+        if (ReferenceEquals(debugContext.Machine, bound))
+        {
+            return null;
+        }
+
+        return new RunResult(StopReason.Cancelled, instructions, cycles, elapsed, 0, "The attached machine was replaced.");
+    }
+
+    private RunResult Finish(IMachine bound, StopReason stopReason, ulong instructions, ulong cycles, TimeSpan elapsed, string message, bool stopMachine)
+    {
+        if (Replaced(bound, instructions, cycles, elapsed) is RunResult replaced)
+        {
+            return replaced;
+        }
+
+        if (stopMachine)
+        {
+            bound.Stop();
+        }
+        else
+        {
+            bound.Pause();
+        }
+
+        return CreateResult(bound, stopReason, instructions, cycles, elapsed, message);
+    }
+
+    private bool TryResolveStop(IMachine bound, RunCondition condition, ulong cycleCount, out StopReason stopReason, out string message)
     {
         stopReason = StopReason.Paused;
         message = string.Empty;
@@ -552,7 +666,7 @@ public sealed class MachineDebugSession : IDebugSession
             case RunConditionKind.ProgramCounter:
             {
                 uint expected = condition.Address.GetValueOrDefault();
-                if (machine.Cpu.GetPC() != expected)
+                if (bound.Cpu.GetPC() != expected)
                 {
                     return false;
                 }
@@ -597,7 +711,7 @@ public sealed class MachineDebugSession : IDebugSession
                 for (int i = 0; i < expected.Count; i++)
                 {
                     var access = CreateDebugReadAccess(memoryAddress + (uint)i);
-                    var read = machine.Bus.TryRead8(access);
+                    var read = bound.Bus.TryRead8(access);
                     if (read.Failed || read.Value != expected[i])
                     {
                         return false;
@@ -617,7 +731,7 @@ public sealed class MachineDebugSession : IDebugSession
                     return false;
                 }
 
-                stopReason = StopReason.Budget;
+                stopReason = StopReason.CycleCount;
                 message = $"Cycle condition reached {targetCycles:N0} cycles.";
                 return true;
             }
@@ -626,15 +740,6 @@ public sealed class MachineDebugSession : IDebugSession
                 return false;
         }
     }
-
-    private RunResult CreateResult(StopReason stopReason, ulong instructions, ulong cycles, TimeSpan elapsed, string message) =>
-        new(
-            StopReason: stopReason,
-            InstructionCount: instructions,
-            CycleCount: cycles,
-            Elapsed: elapsed,
-            ProgramCounter: machine.Cpu.GetPC(),
-            Message: message);
 
     private sealed class BackgroundRunState(CancellationTokenSource cancellationTokenSource)
     {
