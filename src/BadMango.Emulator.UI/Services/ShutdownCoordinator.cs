@@ -16,7 +16,7 @@ public class ShutdownCoordinator : IShutdownCoordinator
     private readonly IWindowManager windowManager;
     private readonly ILogger<ShutdownCoordinator>? logger;
     private readonly List<Func<Task<IReadOnlyList<UnsavedWorkItem>>>> unsavedWorkProviders = [];
-    private readonly object providersLock = new();
+    private readonly Lock providersLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ShutdownCoordinator"/> class.

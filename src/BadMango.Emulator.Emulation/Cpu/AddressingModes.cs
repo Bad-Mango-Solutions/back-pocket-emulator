@@ -80,7 +80,9 @@ public static class AddressingModes
     public static Addr ZeroPage(ICpu cpu)
     {
         byte addrCycles = 0;
-        byte zpOffset = cpu.Read8(cpu.Registers.PC.addr++);
+        Addr zpOperandAddr = cpu.Registers.PC.GetAddr();
+        cpu.Registers.PC.Advance();
+        byte zpOffset = cpu.Read8(zpOperandAddr);
         addrCycles++; // 1 cycle to fetch the ZP address
 
         Word directPage = cpu.Registers.D.GetWord();
@@ -759,11 +761,15 @@ public static class AddressingModes
         byte addrCycles = 0;
 
         // Fetch ZP address (first operand)
-        byte zpAddr = cpu.Read8(cpu.Registers.PC.addr++);
+        Addr zpOperandAddr = cpu.Registers.PC.GetAddr();
+        cpu.Registers.PC.Advance();
+        byte zpAddr = cpu.Read8(zpOperandAddr);
         addrCycles++; // 1 cycle to fetch ZP address
 
         // Fetch relative offset (second operand)
-        byte relativeOffset = cpu.Read8(cpu.Registers.PC.addr++);
+        Addr relativeOperandAddr = cpu.Registers.PC.GetAddr();
+        cpu.Registers.PC.Advance();
+        byte relativeOffset = cpu.Read8(relativeOperandAddr);
         addrCycles++; // 1 cycle to fetch relative offset
 
         cpu.Registers.TCU += addrCycles;
