@@ -175,9 +175,9 @@ public sealed class AppleIIeKeyTranslatorTests
     }
 
     /// <summary>
-    /// Verifies that modifier-only keys produce no translator code.
+    /// Verifies that keys that intentionally do not map to an Apple IIe code produce no translator result.
     /// </summary>
-    /// <param name="key">The modifier key under test.</param>
+    /// <param name="key">The key under test.</param>
     [TestCaseSource(nameof(ModifierKeys))]
     public void Translate_ModifierKey_ReturnsNull(KeyboardKey key)
     {

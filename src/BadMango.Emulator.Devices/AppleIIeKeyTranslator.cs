@@ -5,7 +5,7 @@
 namespace BadMango.Emulator.Devices;
 
 /// <summary>
-/// Translates physical host keys into Apple IIe keyboard codes for a US layout.
+/// Maps shared <see cref="KeyboardKey"/> values and modifier state to Apple IIe keyboard codes for a US layout.
 /// </summary>
 /// <remarks>
 /// <para>

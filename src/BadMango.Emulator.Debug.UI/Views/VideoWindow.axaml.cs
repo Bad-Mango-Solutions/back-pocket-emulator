@@ -361,7 +361,7 @@ public partial class VideoWindow : Window
         // Handle modifier keys
         UpdateModifiers(e);
 
-        // Map the Avalonia key to a physical host key, then let the machine's keyboard translate it.
+        // Map the Avalonia key to the shared KeyboardKey model, then let the machine's keyboard translate it.
         byte? keyCode = TranslateKey(e.Key, e.KeyModifiers, capsLockActive);
         if (keyCode.HasValue)
         {
@@ -407,10 +407,10 @@ public partial class VideoWindow : Window
     }
 
     /// <summary>
-    /// Maps an Avalonia key to the physical <see cref="KeyboardKey"/> it represents.
+    /// Maps an Avalonia key to the shared <see cref="KeyboardKey"/> value it represents.
     /// </summary>
     /// <param name="key">The Avalonia key code.</param>
-    /// <returns>The host key, or <see cref="KeyboardKey.None"/> if the key has no host-key equivalent.</returns>
+    /// <returns>The shared <see cref="KeyboardKey"/> value, or <see cref="KeyboardKey.None"/> if the key has no equivalent.</returns>
     private static KeyboardKey MapToKeyboardKey(Key key)
     {
         if (key is >= Key.A and <= Key.Z)
@@ -471,8 +471,8 @@ public partial class VideoWindow : Window
             return null;
         }
 
-        KeyboardKey hostKey = MapToKeyboardKey(key);
-        if (hostKey == KeyboardKey.None)
+        KeyboardKey keyboardKey = MapToKeyboardKey(key);
+        if (keyboardKey == KeyboardKey.None)
         {
             return null;
         }
@@ -493,7 +493,7 @@ public partial class VideoWindow : Window
             keyboardModifiers |= KeyboardModifiers.CapsLock;
         }
 
-        return keyboardDevice.Translator.Translate(hostKey, keyboardModifiers);
+        return keyboardDevice.Translator.Translate(keyboardKey, keyboardModifiers);
     }
 
     /// <summary>

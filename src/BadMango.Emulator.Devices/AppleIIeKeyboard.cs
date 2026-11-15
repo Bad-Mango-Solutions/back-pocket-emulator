@@ -113,7 +113,7 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, ISoftSwitchProvider, IRe
     /// Initializes a new instance of the <see cref="AppleIIeKeyboard"/> class with the specified
     /// key translator.
     /// </summary>
-    /// <param name="translator">The translator that turns host keys into this keyboard's codes.</param>
+    /// <param name="translator">The translator that maps shared <see cref="KeyboardKey"/> values and modifiers into this keyboard's codes.</param>
     /// <exception cref="ArgumentNullException"><paramref name="translator"/> is <see langword="null"/>.</exception>
     public AppleIIeKeyboard(IKeyTranslator translator)
     {

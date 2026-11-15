@@ -7,12 +7,12 @@ namespace BadMango.Emulator.Devices.Interfaces;
 using BadMango.Emulator.Bus.Interfaces;
 
 /// <summary>
-/// Keyboard device interface for host input injection.
+/// Keyboard device interface for injecting shared <see cref="KeyboardKey"/> input into the emulated system.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This interface defines the host-facing API for the keyboard device,
-/// allowing the emulator frontend to inject key events into the emulated system.
+/// This interface defines the device-facing API for the keyboard, allowing input sources to inject
+/// key events described by the shared Apple II Extended Keyboard II key model.
 /// </para>
 /// <para>
 /// The Apple II keyboard presents a simple interface to software:
@@ -43,14 +43,14 @@ public interface IKeyboardDevice : IMotherboardDevice, IResetSource
     KeyboardModifiers Modifiers { get; }
 
     /// <summary>
-    /// Gets the translator that turns physical host keys into this keyboard's key codes.
+    /// Gets the translator that turns shared <see cref="KeyboardKey"/> values into this keyboard's key codes.
     /// </summary>
     /// <value>The key translator owned by this keyboard.</value>
     /// <remarks>
     /// Input sources such as the video window use this to translate a <see cref="KeyboardKey"/> and the
     /// active modifiers before calling <see cref="KeyDown"/>, so they never construct or choose a
-    /// translator themselves. This is interim: the planned per-machine keyboard input layer will
-    /// accept host keys directly and keep the translator private to the keyboard.
+    /// translator themselves. The keyboard keeps the translator private to the device while the shared
+    /// key model remains the common input contract.
     /// </remarks>
     IKeyTranslator Translator { get; }
 
