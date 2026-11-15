@@ -283,6 +283,10 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
         FF BBS ZeroPageRelative 3 5
         """;
 
+    private const byte AslAbsoluteXOpcode = 0x1E;
+    private const byte RolAbsoluteXOpcode = 0x3E;
+    private const byte LsrAbsoluteXOpcode = 0x5E;
+    private const byte RorAbsoluteXOpcode = 0x7E;
     private const byte StzAbsoluteXOpcode = 0x9E;
     private const byte DecAbsoluteXOpcode = 0xDE;
     private const byte IncAbsoluteXOpcode = 0xFE;
@@ -403,7 +407,7 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
         WriteWord(0x1001, baseAddress);
         Write(effectiveAddress, initialValue);
         Cpu.Reset();
-        Cpu.Registers.P = 0;
+        Cpu.Registers.P = ProcessorStatusFlags.R;
         Cpu.Registers.X.SetByte(x);
 
         var result = Cpu.Step();
@@ -418,21 +422,29 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
     }
 
     /// <summary>
-    /// Verifies shift/rotate <c>abs,X</c> remain at 6 cycles (+1 on page crossing).
+    /// Verifies shift/rotate <c>abs,X</c> remain at 6 cycles (+1 on page crossing)
+    /// and write the exact result of operating on <c>0x12</c> with carry clear:
+    /// ASL and ROL store <c>0x24</c>; LSR and ROR store <c>0x09</c>.
     /// </summary>
     /// <param name="opcode">The shift/rotate opcode under test.</param>
     /// <param name="baseAddress">The instruction operand before indexing.</param>
     /// <param name="x">The X register value added to <paramref name="baseAddress"/>.</param>
     /// <param name="expectedCycles">The expected cycle count for this addressing case.</param>
-    [TestCase((byte)0x1E, (ushort)0x2000, (byte)0x10, 6UL)]
-    [TestCase((byte)0x1E, (ushort)0x20FF, (byte)0x01, 7UL)]
-    [TestCase((byte)0x5E, (ushort)0x2000, (byte)0x10, 6UL)]
-    [TestCase((byte)0x5E, (ushort)0x20FF, (byte)0x01, 7UL)]
-    [TestCase((byte)0x3E, (ushort)0x2000, (byte)0x10, 6UL)]
-    [TestCase((byte)0x3E, (ushort)0x20FF, (byte)0x01, 7UL)]
-    [TestCase((byte)0x7E, (ushort)0x2000, (byte)0x10, 6UL)]
-    [TestCase((byte)0x7E, (ushort)0x20FF, (byte)0x01, 7UL)]
-    public void ShiftAndRotateAbsoluteX_KeepSixPlusPageCrossTiming(byte opcode, ushort baseAddress, byte x, ulong expectedCycles)
+    /// <param name="expectedValue">The byte stored at the effective address.</param>
+    [TestCase(AslAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, 6UL, (byte)0x24)]
+    [TestCase(AslAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, 7UL, (byte)0x24)]
+    [TestCase(LsrAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, 6UL, (byte)0x09)]
+    [TestCase(LsrAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, 7UL, (byte)0x09)]
+    [TestCase(RolAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, 6UL, (byte)0x24)]
+    [TestCase(RolAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, 7UL, (byte)0x24)]
+    [TestCase(RorAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, 6UL, (byte)0x09)]
+    [TestCase(RorAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, 7UL, (byte)0x09)]
+    public void ShiftAndRotateAbsoluteX_KeepSixPlusPageCrossTiming(
+        byte opcode,
+        ushort baseAddress,
+        byte x,
+        ulong expectedCycles,
+        byte expectedValue)
     {
         ushort effectiveAddress = (ushort)(baseAddress + x);
         WriteWord(0xFFFC, 0x1000);
@@ -440,7 +452,7 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
         WriteWord(0x1001, baseAddress);
         Write(effectiveAddress, 0x12);
         Cpu.Reset();
-        Cpu.Registers.P = 0;
+        Cpu.Registers.P = ProcessorStatusFlags.R;
         Cpu.Registers.X.SetByte(x);
 
         var result = Cpu.Step();
@@ -448,7 +460,7 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
         Assert.Multiple(() =>
         {
             Assert.That(result.CyclesConsumed.Value, Is.EqualTo(expectedCycles));
-            Assert.That(Read(effectiveAddress), Is.Not.EqualTo(0x12));
+            Assert.That(Read(effectiveAddress), Is.EqualTo(expectedValue));
         });
     }
 
