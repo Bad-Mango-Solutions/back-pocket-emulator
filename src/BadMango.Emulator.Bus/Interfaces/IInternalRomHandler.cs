@@ -14,11 +14,11 @@ namespace BadMango.Emulator.Bus.Interfaces;
 /// <list type="bullet">
 /// <item><description>INTCXROM ($C006/$C007): When ON, internal ROM overlays slot ROMs ($C100-$C7FF only)</description></item>
 /// <item><description>INTC3ROM ($C00A/$C00B): When ON, internal 80-column firmware overlays slot 3 ($C300 region)</description></item>
+/// <item><description>INTC8ROM latch: Armed by internal $C3xx access, overlays $C800-$CFFF until $CFFF or RESET</description></item>
 /// </list>
 /// <para>
-/// IMPORTANT: These switches do NOT affect the expansion ROM region ($C800-$CFFF). The expansion
-/// ROM is always controlled by slot selection. When INTC3ROM is enabled and $C300 is accessed,
-/// the internal ROM provides the data BUT slot 3's expansion ROM is still selected at $C800-$CFFF.
+/// INTC8ROM is a read-only latch, not a writable soft switch. It is set by any access in
+/// $C300-$C3FF while the internal C3 ROM is active, and cleared by any access to $CFFF or RESET.
 /// </para>
 /// <para>
 /// This interface allows motherboard devices (like the Extended 80-Column Card) to register
@@ -36,6 +36,14 @@ public interface IInternalRomHandler
     /// Gets a value indicating whether the INTC3ROM (internal ROM overlay for $C300-$C3FF) is currently enabled.
     /// </summary>
     bool IsIntC3RomEnabled { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the INTC8ROM latch is currently enabled.
+    /// </summary>
+    /// <remarks>
+    /// When enabled, internal ROM overlays $C800-$CFFF regardless of slot expansion-ROM selection.
+    /// </remarks>
+    bool IsIntC8RomEnabled { get; }
 
     /// <summary>
     /// Sets the internal ROM target for INTCXROM/INTC3ROM switching.
