@@ -4,8 +4,14 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Tests;
 
+using System.Diagnostics;
+using System.Reflection;
+
+using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Core;
 using BadMango.Emulator.Core.Configuration;
+using BadMango.Emulator.Core.Cpu;
 using BadMango.Emulator.Core.Interfaces.Cpu;
 using BadMango.Emulator.Debug.Abstractions;
 
@@ -46,8 +52,438 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         machine.Verify(x => x.Stop(), Times.Once);
     }
 
+    /// <summary>
+    /// Verifies that stopping a run after it has finished does not touch a disposed cancellation source.
+    /// </summary>
+    [Test]
+    public void StopRun_AfterCompletion_DoesNotThrow()
+    {
+        using var harness = CreateHarness();
+        harness.LoadProgram(0x1000, 0xEA, 0xDB);
+
+        for (int i = 0; i < 8; i++)
+        {
+            Guid runId = harness.Session.StartRun(
+                new RunCondition(RunConditionKind.ProgramCounter, Address: 0x1000),
+                new RunBudget(MaxCycles: 20));
+            RunResult? result = WaitForBackgroundResult(harness.Session, runId);
+            Assert.That(result, Is.Not.Null, $"Run {i} did not complete.");
+
+            Exception? error = null;
+            bool stopped = false;
+            try
+            {
+                stopped = harness.Session.StopRun(runId);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(error, Is.Null, $"StopRun threw after run {i} finished.");
+                Assert.That(stopped, Is.True);
+            });
+        }
+    }
+
+    /// <summary>
+    /// Verifies a memory write during a background run is rejected instead of racing the run.
+    /// </summary>
+    [Test]
+    public void WriteMemory_DuringBackgroundRun_IsRejectedWithoutTouchingMemory()
+    {
+        using var run = BlockedBackgroundRun.Start();
+        var write = Task.Run(() => run.Session.WriteMemory(0x0300, [0x5A]));
+        (bool completed, Exception? error) = WaitForTask(write, TimeSpan.FromMilliseconds(500));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(completed, Is.True, "WriteMemory blocked while a background run owned execution.");
+            Assert.That(error, Is.InstanceOf<InvalidOperationException>());
+            if (error is not null)
+            {
+                Assert.That(error.Message, Does.Contain("background run").IgnoreCase);
+            }
+
+            Assert.That(run.BusWrites, Is.Zero, "WriteMemory mutated the bus while the background run was inside Step.");
+        });
+    }
+
+    /// <summary>
+    /// Verifies a reset during a background run is rejected instead of racing the run.
+    /// </summary>
+    [Test]
+    public void Reset_DuringBackgroundRun_IsRejectedWithoutResetting()
+    {
+        using var run = BlockedBackgroundRun.Start();
+        var reset = Task.Run(() => run.Session.Reset(ResetKind.Hard));
+        (bool completed, Exception? error) = WaitForTask(reset, TimeSpan.FromMilliseconds(500));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(completed, Is.True, "Reset blocked while a background run owned execution.");
+            Assert.That(error, Is.InstanceOf<InvalidOperationException>());
+            if (error is not null)
+            {
+                Assert.That(error.Message, Does.Contain("background run").IgnoreCase);
+            }
+
+            Assert.That(run.Resets, Is.Zero, "Reset ran while the background run was inside Step.");
+        });
+    }
+
+    /// <summary>
+    /// Verifies a write waits for a foreground step instead of entering the bus beside it.
+    /// </summary>
+    [Test]
+    public void WriteMemory_WhileForegroundStepOwnsExecution_DoesNotOverlapTheStep()
+    {
+        var stepEntered = new ManualResetEventSlim(false);
+        var releaseStep = new ManualResetEventSlim(false);
+        var writeEntered = new ManualResetEventSlim(false);
+        try
+        {
+            var cpu = new Mock<ICpu>(MockBehavior.Strict);
+            cpu.SetupGet(x => x.Halted).Returns(false);
+
+            var bus = new Mock<IMemoryBus>(MockBehavior.Strict);
+            bus.Setup(x => x.TryWrite8(It.Ref<BusAccess>.IsAny, It.IsAny<byte>()))
+                .Returns(() =>
+                {
+                    writeEntered.Set();
+                    return BusResult.Success();
+                });
+
+            var machine = new Mock<IMachine>(MockBehavior.Strict);
+            machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
+            machine.SetupGet(x => x.Bus).Returns(bus.Object);
+            machine.Setup(x => x.Step()).Returns(() =>
+            {
+                stepEntered.Set();
+                Assert.That(releaseStep.Wait(TimeSpan.FromSeconds(3)), Is.True, "Step was not released.");
+                return new CpuStepResult(CpuRunState.Running, new Cycle(2));
+            });
+
+            var context = new Mock<IDebugContext>(MockBehavior.Strict);
+            context.SetupGet(x => x.Machine).Returns(machine.Object);
+            var session = new MachineDebugSession(context.Object);
+
+            var stepTask = Task.Run(() => session.Step(1));
+            Assert.That(stepEntered.Wait(TimeSpan.FromSeconds(2)), Is.True, "Foreground step did not start.");
+
+            var writeStarted = new ManualResetEventSlim(false);
+            var writeTask = Task.Run(() =>
+            {
+                writeStarted.Set();
+                session.WriteMemory(0x0300, [0xAB]);
+            });
+
+            Assert.That(writeStarted.Wait(TimeSpan.FromSeconds(2)), Is.True, "Write task did not start.");
+            bool overlapped = writeEntered.Wait(TimeSpan.FromMilliseconds(400));
+            releaseStep.Set();
+
+            (bool stepCompleted, Exception? stepError) = WaitForTask(stepTask, TimeSpan.FromSeconds(2));
+            (bool writeCompleted, Exception? writeError) = WaitForTask(writeTask, TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(overlapped, Is.False, "WriteMemory entered the bus while Step held execution.");
+                Assert.That(stepCompleted, Is.True);
+                Assert.That(stepError, Is.Null);
+                Assert.That(writeCompleted, Is.True);
+                Assert.That(writeError, Is.Null);
+                Assert.That(writeEntered.IsSet, Is.True, "WriteMemory did not run after Step released execution.");
+            });
+        }
+        finally
+        {
+            releaseStep.Set();
+            stepEntered.Dispose();
+            releaseStep.Dispose();
+            writeEntered.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verifies overlapping memory writes are serialized with each other.
+    /// </summary>
+    [Test]
+    public void WriteMemory_ConcurrentCalls_DoNotOverlap()
+    {
+        var release = new ManualResetEventSlim(false);
+        int inside = 0;
+        try
+        {
+            var bus = new Mock<IMemoryBus>(MockBehavior.Strict);
+            bus.Setup(x => x.TryWrite8(It.Ref<BusAccess>.IsAny, It.IsAny<byte>()))
+                .Returns(() =>
+                {
+                    Interlocked.Increment(ref inside);
+                    Assert.That(release.Wait(TimeSpan.FromSeconds(3)), Is.True, "Write was not released.");
+                    Interlocked.Decrement(ref inside);
+                    return BusResult.Success();
+                });
+
+            var machine = new Mock<IMachine>(MockBehavior.Strict);
+            machine.SetupGet(x => x.Bus).Returns(bus.Object);
+            var context = new Mock<IDebugContext>(MockBehavior.Strict);
+            context.SetupGet(x => x.Machine).Returns(machine.Object);
+            var session = new MachineDebugSession(context.Object);
+
+            var firstStarted = new ManualResetEventSlim(false);
+            var first = Task.Run(() =>
+            {
+                firstStarted.Set();
+                session.WriteMemory(0x0200, [0x01]);
+            });
+            Assert.That(firstStarted.Wait(TimeSpan.FromSeconds(2)), Is.True, "First write did not start.");
+            Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref inside) > 0, TimeSpan.FromSeconds(2)), Is.True);
+
+            var secondStarted = new ManualResetEventSlim(false);
+            var second = Task.Run(() =>
+            {
+                secondStarted.Set();
+                session.WriteMemory(0x0201, [0x02]);
+            });
+            Assert.That(secondStarted.Wait(TimeSpan.FromSeconds(2)), Is.True, "Second write did not start.");
+            bool overlapped = SpinWait.SpinUntil(() => Volatile.Read(ref inside) > 1, TimeSpan.FromMilliseconds(400));
+            release.Set();
+
+            (bool firstCompleted, Exception? firstError) = WaitForTask(first, TimeSpan.FromSeconds(2));
+            (bool secondCompleted, Exception? secondError) = WaitForTask(second, TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(overlapped, Is.False, "Concurrent WriteMemory calls overlapped inside the bus write.");
+                Assert.That(firstCompleted, Is.True);
+                Assert.That(firstError, Is.Null);
+                Assert.That(secondCompleted, Is.True);
+                Assert.That(secondError, Is.Null);
+            });
+        }
+        finally
+        {
+            release.Set();
+            release.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verifies finished runs are removed from the in-flight table and earlier results do not accumulate.
+    /// </summary>
+    [Test]
+    public void CompletedBackgroundRuns_DoNotAccumulate()
+    {
+        using var harness = CreateHarness();
+        harness.LoadProgram(0x1000, 0xEA, 0xDB);
+        var session = (MachineDebugSession)harness.Session;
+        var runIds = new List<Guid>();
+
+        for (int i = 0; i < 4; i++)
+        {
+            Guid runId = session.StartRun(
+                new RunCondition(RunConditionKind.ProgramCounter, Address: 0x1000),
+                new RunBudget(MaxCycles: 20));
+            runIds.Add(runId);
+
+            RunResult? result = WaitForBackgroundResult(session, runId);
+            Assert.That(result, Is.Not.Null, $"Run {i} did not complete.");
+            Assert.That(CountInFlightRuns(session), Is.Zero, $"Run {i} stayed in the in-flight table after completion.");
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(session.GetRunStatus(runIds[^1]), Is.Not.Null);
+            for (int i = 0; i < runIds.Count - 1; i++)
+            {
+                Assert.That(session.GetRunStatus(runIds[i]), Is.Null, $"Finished run {i} was still retained.");
+            }
+
+            Assert.That(CountRetainedRunEntries(session), Is.LessThanOrEqualTo(1));
+        });
+    }
+
     /// <inheritdoc />
     protected override ISessionHarness CreateHarness() => new MachineSessionHarness();
+
+    private static RunResult? WaitForBackgroundResult(IDebugSession session, Guid runId)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < TimeSpan.FromSeconds(2))
+        {
+            RunResult? result = session.GetRunStatus(runId);
+            if (result is not null)
+            {
+                return result;
+            }
+
+            Thread.Sleep(10);
+        }
+
+        return session.GetRunStatus(runId);
+    }
+
+    private static (bool Completed, Exception? Error) WaitForTask(Task task, TimeSpan timeout)
+    {
+        try
+        {
+            return (task.Wait(timeout), null);
+        }
+        catch (AggregateException ex)
+        {
+            return (true, ex.InnerExceptions.Count == 1 ? ex.InnerException : ex);
+        }
+    }
+
+    private static int CountInFlightRuns(MachineDebugSession session)
+    {
+        object table = GetRequiredField(session, "backgroundRuns");
+        return ReadCount(table);
+    }
+
+    private static int CountRetainedRunEntries(MachineDebugSession session)
+    {
+        int total = 0;
+        foreach (FieldInfo field in typeof(MachineDebugSession).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+        {
+            object? value = field.GetValue(session);
+            if (value is null || !value.GetType().Name.Contains("Dictionary", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            total += ReadCount(value);
+        }
+
+        return total;
+    }
+
+    private static object GetRequiredField(MachineDebugSession session, string fieldName)
+    {
+        FieldInfo? field = typeof(MachineDebugSession).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(field, Is.Not.Null, $"Expected private field '{fieldName}'.");
+        object? value = field!.GetValue(session);
+        Assert.That(value, Is.Not.Null);
+        return value!;
+    }
+
+    private static int ReadCount(object value)
+    {
+        PropertyInfo? count = value.GetType().GetProperty("Count");
+        Assert.That(count, Is.Not.Null);
+        return (int)count!.GetValue(value)!;
+    }
+
+    /// <summary>
+    /// A background run parked inside <see cref="IMachine.Step"/> so other calls can race it.
+    /// </summary>
+    private sealed class BlockedBackgroundRun : IDisposable
+    {
+        private readonly ManualResetEventSlim releaseStep = new(false);
+        private readonly ManualResetEventSlim stepEntered = new(false);
+        private int busWrites;
+        private int resets;
+        private bool disposed;
+
+        private BlockedBackgroundRun()
+        {
+            var cpu = new Mock<ICpu>(MockBehavior.Strict);
+            cpu.SetupGet(x => x.Halted).Returns(false);
+            cpu.Setup(x => x.GetPC()).Returns(0x1000u);
+
+            var bus = new Mock<IMemoryBus>(MockBehavior.Strict);
+            bus.Setup(x => x.TryWrite8(It.Ref<BusAccess>.IsAny, It.IsAny<byte>()))
+                .Returns(() =>
+                {
+                    Interlocked.Increment(ref busWrites);
+                    return BusResult.Success();
+                });
+
+            var machine = new Mock<IMachine>(MockBehavior.Strict);
+            machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
+            machine.SetupGet(x => x.Bus).Returns(bus.Object);
+            machine.Setup(x => x.Pause());
+            machine.Setup(x => x.Reset(It.IsAny<bool>())).Callback(() => Interlocked.Increment(ref resets));
+            machine.Setup(x => x.Step()).Returns(() =>
+            {
+                stepEntered.Set();
+                Assert.That(releaseStep.Wait(TimeSpan.FromSeconds(5)), Is.True, "Blocked step was not released.");
+                return new CpuStepResult(CpuRunState.Running, new Cycle(2));
+            });
+
+            var context = new Mock<IDebugContext>(MockBehavior.Strict);
+            context.SetupGet(x => x.Machine).Returns(machine.Object);
+            context.SetupGet(x => x.Breakpoints).Returns(new BreakpointManager());
+            context.SetupGet(x => x.Watchpoints).Returns(new WatchpointManager());
+            Session = new MachineDebugSession(context.Object);
+        }
+
+        /// <summary>
+        /// Gets the session whose background run is parked inside a step.
+        /// </summary>
+        public MachineDebugSession Session { get; }
+
+        /// <summary>
+        /// Gets how many bus writes the parked run has observed.
+        /// </summary>
+        public int BusWrites => Volatile.Read(ref busWrites);
+
+        /// <summary>
+        /// Gets how many machine resets the parked run has observed.
+        /// </summary>
+        public int Resets => Volatile.Read(ref resets);
+
+        private Guid RunId { get; set; }
+
+        public static BlockedBackgroundRun Start()
+        {
+            var run = new BlockedBackgroundRun();
+            try
+            {
+                run.RunId = run.Session.StartRun(
+                    new RunCondition(RunConditionKind.ProgramCounter, Address: 0x2000),
+                    new RunBudget(MaxCycles: 1_000_000));
+                if (!run.stepEntered.Wait(TimeSpan.FromSeconds(2)))
+                {
+                    Assert.Fail("Background run did not enter Step.");
+                }
+
+                return run;
+            }
+            catch
+            {
+                run.Dispose();
+                throw;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            try
+            {
+                if (RunId != Guid.Empty)
+                {
+                    Session.StopRun(RunId);
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // The assertion under test records this failure. Cleanup still has to release Step.
+            }
+            finally
+            {
+                releaseStep.Set();
+            }
+        }
+    }
 
     private sealed class MachineSessionHarness : ISessionHarness
     {
