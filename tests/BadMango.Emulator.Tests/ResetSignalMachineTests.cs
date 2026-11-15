@@ -328,11 +328,11 @@ public sealed class ResetSignalMachineTests
     public void WiredOr_KeyboardHoldsLineAfterMachinePulse()
     {
         var machine = CreateMachine();
-        var keyboard = machine.GetComponent<IKeyboardDevice>()!;
+        IKeyboardInput input = machine.GetComponent<IKeyboardInput>()!;
         WriteLoop(machine);
 
-        keyboard.SetModifiers(KeyboardModifiers.Control);
-        keyboard.PressResetKey();
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.Control);
+        machine.Scheduler.DispatchDue();
         Assume.That(machine.Signals.IsAsserted(SignalLine.Reset), Is.True);
 
         machine.Reset();
@@ -345,8 +345,8 @@ public sealed class ResetSignalMachineTests
         bool stillAsserted = machine.Signals.IsAsserted(SignalLine.Reset);
         uint pcWhileHeld = machine.Cpu.GetPC();
 
-        keyboard.ReleaseResetKey();
-        keyboard.SetModifiers(KeyboardModifiers.None);
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
         bool assertedAfterRelease = machine.Signals.IsAsserted(SignalLine.Reset);
         machine.Cpu.Step();
 
@@ -366,13 +366,15 @@ public sealed class ResetSignalMachineTests
     public void WiredOr_ResetKeyWithoutControl_DoesNotAssertTheLine()
     {
         var machine = CreateMachine();
-        var keyboard = machine.GetComponent<IKeyboardDevice>()!;
+        IKeyboardInput input = machine.GetComponent<IKeyboardInput>()!;
         WriteLoop(machine);
 
-        keyboard.PressResetKey();
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
         bool asserted = machine.Signals.IsAsserted(SignalLine.Reset);
         StepFor(machine, 100);
-        keyboard.ReleaseResetKey();
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
 
         Assert.Multiple(() =>
         {

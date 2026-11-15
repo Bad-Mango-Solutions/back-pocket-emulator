@@ -122,9 +122,10 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
 
         if (debugContext.Machine is { } machine)
         {
-            if (machine.GetComponent<IKeyboardDevice>() is { } keyboard)
+            if (machine.GetComponent<IKeyboardDevice>() is { } keyboard &&
+                machine.GetComponent<IKeyboardInput>() is { } keyboardInput)
             {
-                TriggerKeyboardReset(machine, keyboard, holdOpenApple, holdClosedApple, hardReset);
+                TriggerKeyboardReset(machine, keyboard, keyboardInput, holdOpenApple, holdClosedApple, hardReset);
             }
             else
             {
@@ -170,17 +171,18 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
     /// </summary>
     /// <param name="machine">The machine to reset.</param>
     /// <param name="keyboard">The keyboard whose Reset key drives the line.</param>
+    /// <param name="input">The keyboard input source used to send Reset and modifier snapshots.</param>
     /// <param name="holdOpenApple"><see langword="true"/> to hold Open Apple through the ROM reset sampling window.</param>
     /// <param name="holdClosedApple"><see langword="true"/> to hold Closed Apple through the ROM reset sampling window.</param>
     /// <param name="hardReset"><see langword="true"/> to treat the pulse as a power-on reset while the line is held.</param>
     /// <remarks>
     /// The Apple-key bits are intentionally left active after RESET deasserts so the ROM's reset
     /// handler can sample them before the temporary reset-only flags are cleared. The release callback
-    /// restores Control and releases the Reset key, but only the reset-added Apple keys are released
-    /// later on a short scheduler-based delay that preserves any user-held modifiers present in the
-    /// meantime.
+    /// releases Reset with a snapshot that keeps the reset-added Apple keys active, then those temporary
+    /// Apple keys are released later on a short scheduler-based delay that preserves any user-held
+    /// modifiers present in the meantime.
     /// </remarks>
-    private static void TriggerKeyboardReset(IMachine machine, IKeyboardDevice keyboard, bool holdOpenApple, bool holdClosedApple, bool hardReset)
+    private static void TriggerKeyboardReset(IMachine machine, IKeyboardDevice keyboard, IKeyboardInput input, bool holdOpenApple, bool holdClosedApple, bool hardReset)
     {
         KeyboardModifiers originalModifiers = KeyboardModifiers.None;
         KeyboardModifiers resetOnlyModifiers = KeyboardModifiers.None;
@@ -207,13 +209,13 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
                     }
                 }
 
-                keyboard.SetModifiers(resetModifiers);
-                keyboard.PressResetKey();
+                input.KeyDown(KeyboardKey.Reset, resetModifiers);
+                machine.Scheduler.DispatchDue();
             },
             () =>
             {
-                keyboard.ReleaseResetKey();
-                keyboard.SetModifiers(originalModifiers | resetOnlyModifiers);
+                input.KeyUp(KeyboardKey.Reset, originalModifiers | resetOnlyModifiers);
+                machine.Scheduler.DispatchDue();
 
                 if (resetOnlyModifiers == KeyboardModifiers.None)
                 {
@@ -229,7 +231,8 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
                     {
                         var pendingModifiers = keyboard.Modifiers;
                         pendingModifiers &= ~resetOnlyModifiers;
-                        keyboard.SetModifiers(pendingModifiers);
+                        input.KeyUp(KeyboardKey.None, pendingModifiers);
+                        machine.Scheduler.DispatchDue();
                     },
                     tag: "reset-apple-release");
             },

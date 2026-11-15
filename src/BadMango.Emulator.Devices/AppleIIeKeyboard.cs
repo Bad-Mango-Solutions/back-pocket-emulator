@@ -245,13 +245,19 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
     public void OnHostKeyDown(KeyboardKey key, KeyboardModifiers modifiers)
     {
         this.modifiers = modifiers;
+        if (key == KeyboardKey.Reset)
+        {
+            resetKeyPressed = true;
+            UpdateResetLineState();
+            return;
+        }
+
         UpdateResetLineState();
 
         byte? code = translator.Translate(key, modifiers);
         if (code is null)
         {
-            // Modifier keys, Reset, and Power update the snapshot and the soft switches only.
-            // Reset routing to the RESET line is a later change; until then Reset translates to null.
+            // Modifier keys and Power update the snapshot and the soft switches only.
             return;
         }
 
@@ -265,6 +271,13 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
     public void OnHostKeyUp(KeyboardKey key, KeyboardModifiers modifiers)
     {
         this.modifiers = modifiers;
+        if (key == KeyboardKey.Reset)
+        {
+            resetKeyPressed = false;
+            UpdateResetLineState();
+            return;
+        }
+
         UpdateResetLineState();
 
         if (heldKeys.TryGetValue(key, out int count))
