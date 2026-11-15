@@ -13,11 +13,15 @@ using BadMango.Emulator.Devices;
 /// </summary>
 public static class ReferenceGoldenHelper
 {
+    /// <summary>
+    /// Environment variable that allows the goldens to be refreshed.
+    /// </summary>
+    public const string UpdateGoldenEnvironmentVariable = "BPE_UPDATE_REFERENCE_GOLDENS";
+
     private const int CanonicalWidth = 560;
     private const int CanonicalHeight = 384;
     private const int BytesPerPixel = 4;
     private const int PixelCount = CanonicalWidth * CanonicalHeight;
-    public const string UpdateGoldenEnvironmentVariable = "BPE_UPDATE_REFERENCE_GOLDENS";
 
     /// <summary>
     /// Gets the full path to the frozen reference frame for a matrix cell.
@@ -243,22 +247,22 @@ public static class ReferenceGoldenHelper
             {
                 int row = (address - 0x0400) / 128;
                 int col = (address - 0x0400) % 128;
-                mainValue = (byte)((row * 29 + col * 13 + (isPage2 ? 0x5A : 0x10)) & 0xFF);
+                mainValue = (byte)(((row * 29) + (col * 13) + (isPage2 ? 0x5A : 0x10)) & 0xFF);
                 auxValue = (byte)((mainValue + 0x3C) & 0xFF);
             }
             else if (address >= 0x0800 && address < 0x0C00)
             {
                 int row = (address - 0x0800) / 128;
                 int col = (address - 0x0800) % 128;
-                mainValue = (byte)((row * 19 + col * 7 + (isPage2 ? 0xA5 : 0x3C)) & 0xFF);
+                mainValue = (byte)(((row * 19) + (col * 7) + (isPage2 ? 0xA5 : 0x3C)) & 0xFF);
                 auxValue = (byte)((mainValue ^ 0xA5) & 0xFF);
             }
             else if (address >= 0x2000 && address <= 0x3FFF)
             {
                 int scanline = (address - 0x2000) >> 6;
                 int byteCol = (address - 0x2000) & 0x3F;
-                byte hiResPattern = (byte)((((byteCol * 9) ^ (scanline * 13) ^ (isPage2 ? 0xAA : 0x55)) & 0x7F)
-                    | (((byteCol ^ scanline) & 1) == 0 ? 0x80 : 0x00));
+                byte hiResPattern = (byte)(((byteCol * 9) ^ (scanline * 13) ^ (isPage2 ? 0xAA : 0x55)) & 0x7F);
+                hiResPattern |= (byte)(((byteCol ^ scanline) & 1) == 0 ? 0x80 : 0x00);
 
                 if ((byteCol & 3) == 0)
                 {
@@ -272,8 +276,8 @@ public static class ReferenceGoldenHelper
             {
                 int scanline = (address - 0x4000) >> 6;
                 int byteCol = (address - 0x4000) & 0x3F;
-                byte hiResPattern = (byte)((((byteCol * 11) ^ (scanline * 17) ^ (isPage2 ? 0x55 : 0xAA)) & 0x7F)
-                    | (((byteCol + scanline) & 1) == 0 ? 0x00 : 0x80));
+                byte hiResPattern = (byte)(((byteCol * 11) ^ (scanline * 17) ^ (isPage2 ? 0x55 : 0xAA)) & 0x7F);
+                hiResPattern |= (byte)(((byteCol + scanline) & 1) == 0 ? 0x00 : 0x80);
 
                 if ((byteCol & 5) == 1)
                 {

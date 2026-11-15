@@ -16,8 +16,7 @@ public sealed class ReferenceGoldenTests
     /// <summary>
     /// Writes all reference frames when the regeneration switch is set.
     /// </summary>
-    [OneTimeSetUp]
-    public void OneTimeSetUp()
+    public static void EnsureReferenceGoldensAreCurrent()
     {
         if (!string.Equals(Environment.GetEnvironmentVariable(ReferenceGoldenHelper.UpdateGoldenEnvironmentVariable), "1", StringComparison.Ordinal))
         {
@@ -34,6 +33,7 @@ public sealed class ReferenceGoldenTests
     /// <summary>
     /// Gets the full matrix of golden cells to validate.
     /// </summary>
+    /// <returns>The full matrix of matrix cells to validate.</returns>
     public static IEnumerable<TestCaseData> MatrixCells()
     {
         foreach (var cell in ReferenceGoldenHelper.EnumerateMatrixCells())
