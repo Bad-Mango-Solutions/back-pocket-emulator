@@ -149,6 +149,7 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     /// If the machine is already running, this method has no effect.
     /// </para>
     /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the machine has been disposed.</exception>
     void Run();
 
     /// <summary>
@@ -187,6 +188,7 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     /// events that become due are dispatched.
     /// </para>
     /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the machine has been disposed.</exception>
     CpuStepResult Step();
 
     /// <summary>
@@ -211,6 +213,7 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     /// itself (a scheduled callback or posted action) have no effect.
     /// </para>
     /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the machine has been disposed.</exception>
     Task RunAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -247,6 +250,7 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     /// thread itself.
     /// </para>
     /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the machine has been disposed.</exception>
     Task ResumeAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

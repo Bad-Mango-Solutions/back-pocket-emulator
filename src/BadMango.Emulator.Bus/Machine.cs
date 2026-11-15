@@ -284,6 +284,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public void Run()
     {
+        ThrowIfDisposed();
         if (!TryBeginRunLoop(requirePaused: false, out int generation))
         {
             return;
@@ -322,6 +323,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public CpuStepResult Step()
     {
+        ThrowIfDisposed();
         if (executingMachine == this && cpuStepDepth > 0)
         {
             // Called from inside a CPU step (a scheduled callback or a request serviced at an
@@ -395,6 +397,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         if (!TryBeginRunLoop(requirePaused: false, out int generation))
         {
             return;
@@ -417,6 +420,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public async Task ResumeAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         if (!TryBeginRunLoop(requirePaused: true, out int generation))
         {
             return;
@@ -451,6 +455,7 @@ public sealed class Machine : IMachine
         }
 
         Stop();
+        Signals.SignalChanged -= OnSignalChanged;
 
         foreach (var disposable in components.OfType<IDisposable>().Reverse())
         {
@@ -458,7 +463,11 @@ public sealed class Machine : IMachine
             {
                 disposable.Dispose();
             }
-            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            catch (Exception ex) when (ex is not (
+                OutOfMemoryException
+                or AccessViolationException
+                or InvalidProgramException
+                or BadImageFormatException))
             {
                 logger.Warning(
                     ex,
@@ -1215,6 +1224,18 @@ public sealed class Machine : IMachine
             }
 
             waitTask.Wait();
+        }
+    }
+
+    /// <summary>
+    /// Throws when this machine has already been disposed.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown when <see cref="Dispose"/> has already run.</exception>
+    private void ThrowIfDisposed()
+    {
+        if (Volatile.Read(ref disposeState) != 0)
+        {
+            throw new ObjectDisposedException(nameof(Machine));
         }
     }
 
