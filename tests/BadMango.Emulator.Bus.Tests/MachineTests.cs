@@ -620,6 +620,113 @@ public class MachineTests
     }
 
     /// <summary>
+    /// Verifies that a request posted while the run loop is active, which throws when that loop
+    /// drains it during wind-down, still faults the run loop, and that a caller already blocked
+    /// in <see cref="Machine.Step"/> or <see cref="Machine.Pause"/> returns within a bounded wait.
+    /// </summary>
+    /// <param name="useStep"><see langword="true"/> to block in Step; otherwise Pause.</param>
+    /// <remarks>
+    /// The request is posted only after the waiter has stayed blocked, so the waiter already holds
+    /// the lifecycle signal that <c>EndRunLoop</c> replaces while draining the queue.
+    /// </remarks>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void StepOrPause_WhenPostedRequestThrowsDuringWindDown_ReturnsAndRunLoopSurfacesTheException(bool useStep)
+    {
+        const string WindDownFault = "wind-down fault";
+
+        using var cpu = new GatedCpu();
+        var machine = CreateTestMachine(cpu.Mock);
+
+        Exception? runException = null;
+        var runThread = new Thread(() =>
+        {
+            try
+            {
+                machine.Run();
+            }
+            catch (Exception ex)
+            {
+                runException = ex;
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "run-loop",
+        };
+        runThread.Start();
+        cpu.BlockNextStep();
+
+        Exception? waiterException = null;
+        var waiter = new Thread(() =>
+        {
+            try
+            {
+                if (useStep)
+                {
+                    machine.Step();
+                }
+                else
+                {
+                    machine.Pause();
+                }
+            }
+            catch (Exception ex)
+            {
+                waiterException = ex;
+            }
+        })
+        {
+            IsBackground = true,
+            Name = useStep ? "step-waiter" : "pause-waiter",
+        };
+        waiter.Start();
+
+        long blockedSince = 0;
+        bool waiterBlocked = SpinWait.SpinUntil(
+            () =>
+            {
+                bool blocked = machine.State == MachineState.Paused
+                    && (waiter.ThreadState & ThreadState.WaitSleepJoin) != 0;
+                if (!blocked)
+                {
+                    blockedSince = 0;
+                    return false;
+                }
+
+                long now = Environment.TickCount64;
+                if (blockedSince == 0)
+                {
+                    blockedSince = now;
+                    return false;
+                }
+
+                return now - blockedSince >= 50;
+            },
+            TimeSpan.FromSeconds(5));
+        Assert.That(waiterBlocked, Is.True, "The waiter never blocked on the run loop");
+
+        machine.Post(() =>
+        {
+            throw new InvalidOperationException(WindDownFault);
+        });
+        cpu.ReleaseStep();
+
+        bool waiterReturned = waiter.Join(TimeSpan.FromSeconds(5));
+        bool runReturned = runThread.Join(TimeSpan.FromSeconds(5));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(runReturned, Is.True, "The run loop did not finish");
+            Assert.That(runException, Is.InstanceOf<InvalidOperationException>());
+            Assert.That(runException?.Message, Is.EqualTo(WindDownFault));
+            Assert.That(waiterReturned, Is.True, "The waiter was not released when the run loop wound down");
+            Assert.That(waiterException, Is.Null);
+            Assert.That(machine.State, Is.EqualTo(MachineState.Paused));
+        });
+    }
+
+    /// <summary>
     /// Verifies that Resume issued while the previous run loop is still winding down waits for
     /// it instead of starting a second loop on the same CPU.
     /// </summary>
