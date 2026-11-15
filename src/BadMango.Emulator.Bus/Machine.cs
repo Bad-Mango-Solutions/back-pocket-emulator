@@ -44,10 +44,12 @@ using Interfaces;
 /// </remarks>
 public sealed class Machine : IMachine
 {
+    private const int YieldIntervalCycles = 10000;
+    private int disposeState;
+
     /// <summary>
     /// Interval in cycles between yield points for async execution.
     /// </summary>
-    private const int YieldIntervalCycles = 10000;
 
     /// <summary>
     /// The signal-bus source id the machine uses for its own RESET source (<see cref="Reset"/>).
@@ -424,6 +426,29 @@ public sealed class Machine : IMachine
         // instruction boundary or when the loop exits).
         Post(() => Cpu.HaltReason = HaltState.Stp);
         StopRunLoop();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        Stop();
+
+        foreach (var disposable in components.OfType<IDisposable>().Reverse())
+        {
+            try
+            {
+                disposable.Dispose();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+            {
+                // Components may already be torn down or race-disposed by another owner.
+            }
+        }
     }
 
     /// <inheritdoc />

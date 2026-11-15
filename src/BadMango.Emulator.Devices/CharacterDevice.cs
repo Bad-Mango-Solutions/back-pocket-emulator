@@ -234,7 +234,9 @@ public sealed class CharacterDevice : ICharacterDevice, ISoftSwitchProvider, IGl
                 nameof(romData));
         }
 
-        characterRom = new PhysicalMemory(romData, "CharacterROM");
+        byte[] copy = new byte[CharacterRomSize];
+        romData.CopyTo(copy, 0);
+        characterRom = new PhysicalMemory(copy, "CharacterROM");
     }
 
     /// <inheritdoc />

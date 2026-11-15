@@ -31,7 +31,7 @@ using Core.Interfaces.Cpu;
 /// thread; other host-side mutation must be marshalled with <see cref="IMachineDispatcher.Post"/>.
 /// </para>
 /// </remarks>
-public interface IMachine : IEventContext, IMachineDispatcher
+public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
 {
     // ─── Events ─────────────────────────────────────────────────────────
 

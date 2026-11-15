@@ -30,75 +30,12 @@ public static class DefaultCharacterRom
 {
     private const string ResourceName = "BadMango.Emulator.Devices.Resources.pocket2-charset.rom";
     private const int ExpectedSize = 4096;
-
-    private static byte[]? cachedRom;
-
-    /// <summary>
-    /// Gets the default character ROM data.
-    /// </summary>
-    /// <returns>
-    /// A byte array containing the 4KB character ROM data.
-    /// </returns>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when the embedded resource cannot be found or is invalid.
-    /// </exception>
-    /// <remarks>
-    /// The ROM data is cached after the first load for performance.
-    /// </remarks>
-    public static byte[] GetRomData()
-    {
-        if (cachedRom != null)
-        {
-            return cachedRom;
-        }
-
-        var assembly = typeof(DefaultCharacterRom).Assembly;
-        using var stream = assembly.GetManifestResourceStream(ResourceName)
-            ?? throw new InvalidOperationException(
-                $"Default character ROM resource '{ResourceName}' not found in assembly.");
-
-        if (stream.Length != ExpectedSize)
-        {
-            throw new InvalidOperationException(
-                $"Default character ROM has invalid size {stream.Length}. Expected {ExpectedSize} bytes.");
-        }
-
-        cachedRom = new byte[ExpectedSize];
-        int bytesRead = stream.Read(cachedRom, 0, ExpectedSize);
-
-        if (bytesRead != ExpectedSize)
-        {
-            throw new InvalidOperationException(
-                $"Failed to read complete character ROM. Read {bytesRead} of {ExpectedSize} bytes.");
-        }
-
-        return cachedRom;
-    }
+    private static readonly byte[] CachedRom = LoadRom();
 
     /// <summary>
-    /// Tries to get the default character ROM data.
+    /// Gets the default character ROM data as an immutable span.
     /// </summary>
-    /// <param name="romData">
-    /// When this method returns, contains the ROM data if available,
-    /// or <see langword="null"/> if the resource could not be loaded.
-    /// </param>
-    /// <returns>
-    /// <see langword="true"/> if the ROM was successfully loaded;
-    /// otherwise, <see langword="false"/>.
-    /// </returns>
-    public static bool TryGetRomData(out byte[]? romData)
-    {
-        try
-        {
-            romData = GetRomData();
-            return true;
-        }
-        catch (InvalidOperationException)
-        {
-            romData = null;
-            return false;
-        }
-    }
+    public static ReadOnlySpan<byte> RomData => CachedRom;
 
     /// <summary>
     /// Loads the default character ROM into a character device.
@@ -113,6 +50,33 @@ public static class DefaultCharacterRom
     public static void LoadIntoCharacterDevice(Interfaces.ICharacterDevice characterDevice)
     {
         ArgumentNullException.ThrowIfNull(characterDevice);
-        characterDevice.LoadCharacterRom(GetRomData());
+
+        byte[] romCopy = new byte[ExpectedSize];
+        CachedRom.CopyTo(romCopy, 0);
+        characterDevice.LoadCharacterRom(romCopy);
+    }
+
+    private static byte[] LoadRom()
+    {
+        var assembly = typeof(DefaultCharacterRom).Assembly;
+        using var stream = assembly.GetManifestResourceStream(ResourceName)
+            ?? throw new InvalidOperationException(
+                $"Default character ROM resource '{ResourceName}' not found in assembly.");
+
+        if (stream.Length != ExpectedSize)
+        {
+            throw new InvalidOperationException(
+                $"Default character ROM has invalid size {stream.Length}. Expected {ExpectedSize} bytes.");
+        }
+
+        var rom = new byte[ExpectedSize];
+        int bytesRead = stream.Read(rom, 0, ExpectedSize);
+        if (bytesRead != ExpectedSize)
+        {
+            throw new InvalidOperationException(
+                $"Failed to read complete character ROM. Read {bytesRead} of {ExpectedSize} bytes.");
+        }
+
+        return rom;
     }
 }
