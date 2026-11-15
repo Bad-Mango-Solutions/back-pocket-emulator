@@ -1,0 +1,101 @@
+name: Bug report
+description: Something the emulator does wrong compared to real hardware, or a crash, hang or regression.
+title: "<Component>: <what goes wrong>"
+type: Bug
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bug fixes are test-first: the fix PR must start with a failing test that reproduces this bug.
+        **Never attach ROM images** (system, keyboard or card ROMs). Describe the ROM or disk by name and version instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What's wrong
+      description: One or two sentences on the bug and its impact.
+    validations:
+      required: true
+  - type: dropdown
+    id: machine
+    attributes:
+      label: Machine or profile
+      options:
+        - Apple IIe (enhanced)
+        - Apple IIe (unenhanced)
+        - Pocket2 / BASIC
+        - CPU only (test harness or debugger)
+        - Not machine-specific
+        - Other (explain below)
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - CPU (opcodes, flags, cycles)
+        - Memory and soft switches
+        - Video / display
+        - Keyboard and input
+        - Storage / disk
+        - I/O and peripherals
+        - Interrupts and timing
+        - Debugger / REPL / MCP
+        - UI (windows, menus)
+        - BASIC interpreter
+        - Build, tests or CI
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Program, disk (by name), debugger commands, or assembly. Include machine code bytes when the bug is CPU-level.
+      placeholder: |
+        1. Boot the enhanced IIe profile
+        2. In the debugger: `load $0300 A9 42 8D 00 02` then `step 2`
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What real hardware does. Registers, memory, flags, cycle counts or screen output, as relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What the emulator does instead.
+    validations:
+      required: true
+  - type: textarea
+    id: failing-test
+    attributes:
+      label: Failing test sketch
+      description: The test that should fail before the fix and pass after. A name and the assertion is enough.
+      placeholder: "StzAbsoluteX_SamePage_Takes5Cycles: run $9E at $1000,X=1, assert 5 cycles consumed"
+  - type: textarea
+    id: reference
+    attributes:
+      label: Hardware reference
+      description: Datasheet section, Apple tech note, Understanding the Apple IIe page, or real-hardware observation that shows the correct behavior.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, stack traces or screenshots
+      render: text
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or branch
+      placeholder: main @ dffc007
+  - type: input
+    id: environment
+    attributes:
+      label: OS
+      placeholder: Windows 11 / Ubuntu 24.04 / macOS 15

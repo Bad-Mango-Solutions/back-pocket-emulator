@@ -1,0 +1,64 @@
+name: Feature request
+description: New emulator capability, hardware support or tooling.
+title: "<Component>: <capability>"
+type: Feature
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Major changes (new subsystems, renderer or pipeline work, public contract changes) need a written spec/PRD before implementation.
+        Link the spec below, or say one is needed and this issue will cover writing it first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or goal
+      description: What's missing or painful, and who it's for.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What it should do, from the user's or caller's point of view.
+    validations:
+      required: true
+  - type: dropdown
+    id: spec
+    attributes:
+      label: Spec status
+      options:
+        - Small change, no spec needed
+        - Spec exists (link below)
+        - Needs a spec first
+    validations:
+      required: true
+  - type: input
+    id: spec-link
+    attributes:
+      label: Spec / PRD
+      description: Path and section, e.g. VIDEO-PIPELINE-PRD.md §7
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable outcomes, each one testable.
+      value: |
+        - [ ] 
+        - [ ] 
+        - [ ] `dotnet build -warnaserror` is clean and all tests pass
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+  - type: input
+    id: epic
+    attributes:
+      label: Parent epic
+      placeholder: "#405"
+  - type: textarea
+    id: references
+    attributes:
+      label: Hardware references

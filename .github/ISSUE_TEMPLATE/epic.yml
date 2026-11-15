@@ -1,0 +1,37 @@
+name: Epic
+description: A multi-issue effort tracked through sub-issues.
+title: "Epic: <effort>"
+type: Feature
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The end state when this epic is done.
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Spec / PRD
+      placeholder: KEYBOARD-SYSTEM-PRD.md
+  - type: textarea
+    id: plan
+    attributes:
+      label: Planned sub-issues
+      description: Steps in order, with dependencies. Add real issues as sub-issues once filed.
+      placeholder: |
+        1. Step one (no deps)
+        2. Step two (needs 1)
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope

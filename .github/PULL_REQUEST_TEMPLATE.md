@@ -1,63 +1,39 @@
-## Description
-Provide a clear and concise description of what this PR does.
+## Summary
+<!-- One or two sentences: what this PR does and why. -->
 
-## Type of Change
-Please check the relevant option(s):
+Fixes #
+<!-- Use "Relates to #" instead if this PR doesn't fully close the issue. -->
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-- [ ] Code refactoring
-- [ ] Performance improvement
-- [ ] Test coverage improvement
-
-## Related Issues
-Fixes #(issue number)
-Relates to #(issue number)
-
-## Changes Made
-List the key changes made in this PR:
+## Changes
+<!-- Key changes, grouped by area. -->
 
 - 
+
+## Acceptance criteria
+<!-- Copy each criterion from the issue and point to the code and test that cover it. -->
+
+- [ ] Criterion: covered by `TestName`
+
+## Tests
+<!-- Bug fixes are test-first: list each test that failed before the fix and passes after. -->
+
+**Failing before the fix:**
 - 
+
+**New or changed tests:**
 - 
 
-## Testing
-Describe the tests you ran to verify your changes:
+**Results:** `dotnet test BackPocketEmulator.slnx -c Release`: ___ passed, ___ failed, ___ skipped
 
-- [ ] All existing tests pass
-- [ ] Added new tests for new functionality
-- [ ] Manually tested the changes
-- [ ] Tested on multiple platforms (if applicable)
+## Deferred / follow-ups
+<!-- Anything in the issue's scope that this PR leaves out, with the reason. Accepted tech debt needs a follow-up issue in the same epic. Write "None" if nothing. -->
 
-### Test Commands
-```bash
-# Commands used to test
-dotnet build BackPocketEmulator.slnx
-dotnet test BackPocketEmulator.slnx
-```
-
-## BASIC Code Examples
-If applicable, provide BASIC code that demonstrates the changes:
-
-```basic
-10 REM EXAMPLE CODE
-20 PRINT "DEMONSTRATION"
-```
-
-## Screenshots
-If applicable, add screenshots showing the changes.
+- 
 
 ## Checklist
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] Any dependent changes have been merged and published
-
-## Additional Notes
-Add any additional notes or context here.
+- [ ] `dotnet build BackPocketEmulator.slnx -c Release -warnaserror` is clean
+- [ ] All tests pass
+- [ ] Changes stay within the issue's scope, or the extras are explained above
+- [ ] Locks use `System.Threading.Lock`; no static mutable state; no empty catch blocks
+- [ ] No ROM images added (`pocket2-charset.rom` is the only allowed exception)
+- [ ] Docs, PRDs or XML comments updated where behavior or contracts changed

@@ -1,0 +1,49 @@
+name: Task
+description: Refactor, cleanup, test work, docs, or a tech-debt follow-up. Scoped so an agent can pick it up.
+title: "<Area>: <change>"
+type: Task
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: Why this change is worth making.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Files, types and members involved, and what changes in each.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] 
+        - [ ] 
+        - [ ] `dotnet build -warnaserror` is clean and all tests pass
+    validations:
+      required: true
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: Test plan
+      description: New or changed tests, and how existing behavior is shown to be unchanged.
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+  - type: input
+    id: origin
+    attributes:
+      label: Follow-up from
+      description: For accepted tech debt, the PR or issue it came from.
+      placeholder: "PR #418"
+  - type: input
+    id: epic
+    attributes:
+      label: Parent epic
+      placeholder: "#276"
