@@ -64,6 +64,38 @@ public class CpuDebugSupportTests : CpuTestBase
     }
 
     /// <summary>
+    /// Verifies that DetachDebugger clears trace state left by an immediate-mode instruction,
+    /// so later immediate-mode handlers do not keep updating the trace with no listener attached.
+    /// </summary>
+    [Test]
+    public void DetachDebugger_ClearsStaleImmediateTrace()
+    {
+        WriteWord(0xFFFC, 0x1000);
+        Write(0x1000, 0xA9); // LDA #$42
+        Write(0x1001, 0x42);
+        Write(0x1002, 0xA9); // LDA #$7F
+        Write(0x1003, 0x7F);
+        Cpu.Reset();
+
+        var listener = new TestDebugListener();
+        Cpu.AttachDebugger(listener);
+        Cpu.Step();
+        Assert.That(Cpu.Trace.AddressingMode, Is.EqualTo(CpuAddressingModes.Immediate));
+
+        Cpu.DetachDebugger();
+
+        Assert.That(Cpu.Trace, Is.EqualTo(default(InstructionTrace)), "Trace should be cleared on detach.");
+
+        Cpu.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x7F));
+            Assert.That(Cpu.Trace, Is.EqualTo(default(InstructionTrace)), "Immediate-mode handlers must not update the trace with no debugger attached.");
+        });
+    }
+
+    /// <summary>
     /// Verifies that AttachDebugger throws when passed null.
     /// </summary>
     [Test]
