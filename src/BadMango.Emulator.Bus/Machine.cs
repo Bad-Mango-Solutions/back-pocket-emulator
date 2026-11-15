@@ -46,7 +46,6 @@ public sealed class Machine : IMachine
 {
     private const int YieldIntervalCycles = 10000;
     private const int MachineResetSourceId = int.MinValue + 1;
-    private int disposeState;
 
     /// <summary>
     /// Interval in cycles between yield points for async execution.
@@ -133,6 +132,8 @@ public sealed class Machine : IMachine
     /// The release action(s) for <see cref="pendingResetRelease"/> (machine thread only).
     /// </summary>
     private Action? pendingResetReleaseAction;
+
+    private int disposeState;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Machine"/> class.

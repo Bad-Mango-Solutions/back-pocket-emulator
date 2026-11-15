@@ -535,12 +535,12 @@ public class VideoDeviceTests
     }
 
     /// <summary>
-    /// Verifies that DefaultCharacterRom can load the embedded ROM data.
+    /// Verifies that DefaultCharacterRom exposes the embedded ROM data.
     /// </summary>
     [Test]
-    public void DefaultCharacterRom_GetRomData_Returns4KBData()
+    public void DefaultCharacterRom_RomData_Returns4KBData()
     {
-        var romData = DefaultCharacterRom.GetRomData();
+        ReadOnlySpan<byte> romData = DefaultCharacterRom.RomData;
 
         Assert.That(romData.Length, Is.EqualTo(4096));
     }
@@ -551,7 +551,7 @@ public class VideoDeviceTests
     [Test]
     public void DefaultCharacterRom_ContainsNonZeroData()
     {
-        var romData = DefaultCharacterRom.GetRomData();
+        ReadOnlySpan<byte> romData = DefaultCharacterRom.RomData;
 
         // Check that at least some character data is non-zero
         // Character 'A' (0x41) should have visible pixels

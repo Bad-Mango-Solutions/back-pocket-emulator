@@ -152,7 +152,7 @@ public static class ReferenceGoldenHelper
                 pixels,
                 mode,
                 address => mainMemory[address],
-                DefaultCharacterRom.GetRomData(),
+                DefaultCharacterRom.RomData.ToArray(),
                 useAltCharSet,
                 isPage2,
                 flashState,
