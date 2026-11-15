@@ -94,6 +94,27 @@ public abstract class IDebugSessionContractTests
     }
 
     /// <summary>
+    /// Verifies that a cycle-count condition is distinct from exhausting the run budget.
+    /// </summary>
+    [Test]
+    public void RunUntil_CycleCountCondition_ReportsCycleCount()
+    {
+        using var harness = CreateHarness();
+        harness.LoadProgram(0x1000, 0xEA, 0xEA, 0xEA, 0xDB);
+
+        RunResult result = harness.Session.RunUntil(
+            new(RunConditionKind.CycleCount, CycleLimit: 4),
+            new(MaxCycles: 20));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.StopReason, Is.EqualTo(StopReason.CycleCount));
+            Assert.That(result.StopReason, Is.Not.EqualTo(StopReason.Budget));
+            Assert.That(result.CycleCount, Is.GreaterThanOrEqualTo(4));
+        });
+    }
+
+    /// <summary>
     /// Verifies background run start/poll/stop behavior.
     /// </summary>
     [Test]

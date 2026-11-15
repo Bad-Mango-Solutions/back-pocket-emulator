@@ -97,6 +97,194 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
     }
 
     /// <summary>
+    /// Verifies a reattached machine is the one the session reads and writes.
+    /// </summary>
+    [Test]
+    public void Session_AfterMachineReattached_DrivesTheNewMachine()
+    {
+        (IMachine first, IMemoryBus firstBus) = CreateRamMachine();
+        (IMachine second, IMemoryBus secondBus) = CreateRamMachine();
+        IMachine? current = first;
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(x => x.Machine).Returns(() => current);
+        var session = new MachineDebugSession(context.Object);
+
+        session.WriteMemory(0x0200, [0x11]);
+        current = second;
+        session.WriteMemory(0x0200, [0x22]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ReadBusByte(firstBus, 0x0200), Is.EqualTo(0x11));
+            Assert.That(ReadBusByte(secondBus, 0x0200), Is.EqualTo(0x22));
+        });
+    }
+
+    /// <summary>
+    /// Verifies a detached machine is not used after the context clears it.
+    /// </summary>
+    [Test]
+    public void Session_WhenMachineDetached_Throws()
+    {
+        (IMachine first, IMemoryBus _) = CreateRamMachine();
+        IMachine? current = first;
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(x => x.Machine).Returns(() => current);
+        var session = new MachineDebugSession(context.Object);
+
+        current = null;
+        InvalidOperationException? error = Assert.Throws<InvalidOperationException>(() => session.ReadMemory(0x0200, 1));
+        Assert.That(error!.Message, Does.Contain("No machine"));
+    }
+
+    /// <summary>
+    /// Verifies replacing the machine ends a background run instead of stepping the old one.
+    /// </summary>
+    [Test]
+    public void RunUntil_WhenAttachedMachineIsReplaced_StopsWithoutFurtherSteps()
+    {
+        int steps = 0;
+        var releaseStep = new ManualResetEventSlim(false);
+        var stepEntered = new ManualResetEventSlim(false);
+        MachineDebugSession? session = null;
+        Guid runId = Guid.Empty;
+        try
+        {
+            var cpu = new Mock<ICpu>(MockBehavior.Strict);
+            cpu.SetupGet(x => x.Halted).Returns(false);
+            cpu.Setup(x => x.GetPC()).Returns(0x1000u);
+
+            var machine = new Mock<IMachine>(MockBehavior.Strict);
+            machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
+            machine.Setup(x => x.Pause());
+            machine.Setup(x => x.Step()).Returns(() =>
+            {
+                int n = Interlocked.Increment(ref steps);
+                if (n == 1)
+                {
+                    stepEntered.Set();
+                    Assert.That(releaseStep.Wait(TimeSpan.FromSeconds(3)), Is.True);
+                }
+
+                return new CpuStepResult(CpuRunState.Running, new Cycle(2));
+            });
+
+            (IMachine replacement, IMemoryBus _) = CreateRamMachine();
+            IMachine current = machine.Object;
+            var context = new Mock<IDebugContext>(MockBehavior.Strict);
+            context.SetupGet(x => x.Machine).Returns(() => current);
+            context.SetupGet(x => x.Breakpoints).Returns(new BreakpointManager());
+            context.SetupGet(x => x.Watchpoints).Returns(new WatchpointManager());
+            session = new MachineDebugSession(context.Object);
+
+            runId = session.StartRun(
+                new RunCondition(RunConditionKind.ProgramCounter, Address: 0x2000),
+                new RunBudget(MaxCycles: ulong.MaxValue));
+            Assert.That(stepEntered.Wait(TimeSpan.FromSeconds(2)), Is.True);
+            current = replacement;
+            releaseStep.Set();
+
+            RunResult? result = WaitForBackgroundResult(session, runId);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result, Is.Not.Null);
+                if (result is not null)
+                {
+                    Assert.That(result.StopReason, Is.EqualTo(StopReason.Cancelled));
+                }
+
+                Assert.That(steps, Is.EqualTo(1));
+            });
+        }
+        finally
+        {
+            releaseStep.Set();
+            if (session is not null && runId != Guid.Empty)
+            {
+                try
+                {
+                    session.StopRun(runId);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Cleanup only. The assertions above record the product failure.
+                }
+            }
+
+            releaseStep.Dispose();
+            stepEntered.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verifies stepping is rejected while a background run owns execution.
+    /// </summary>
+    [Test]
+    public void Step_DuringBackgroundRun_IsRejected()
+    {
+        using var run = BlockedBackgroundRun.Start();
+        var step = Task.Run(() => run.Session.Step());
+        (bool completed, Exception? error) = WaitForTask(step, TimeSpan.FromMilliseconds(500));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(completed, Is.True, "Step blocked while a background run owned execution.");
+            Assert.That(error, Is.InstanceOf<InvalidOperationException>());
+            if (error is not null)
+            {
+                Assert.That(error.Message, Does.Contain("background run").IgnoreCase);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Verifies run-until is rejected while a background run owns execution.
+    /// </summary>
+    [Test]
+    public void RunUntil_DuringBackgroundRun_IsRejected()
+    {
+        using var run = BlockedBackgroundRun.Start();
+        var runUntil = Task.Run(() => run.Session.RunUntil(
+            new RunCondition(RunConditionKind.ProgramCounter, Address: 0x1000),
+            new RunBudget(MaxCycles: 10)));
+        (bool completed, Exception? error) = WaitForTask(runUntil, TimeSpan.FromMilliseconds(500));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(completed, Is.True, "RunUntil blocked while a background run owned execution.");
+            Assert.That(error, Is.InstanceOf<InvalidOperationException>());
+            if (error is not null)
+            {
+                Assert.That(error.Message, Does.Contain("background run").IgnoreCase);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Verifies memory can be written as soon as stopping a background run returns.
+    /// </summary>
+    [Test]
+    public void StopRun_WhenItReturns_AllowsImmediateWrite()
+    {
+        using var run = BlockedBackgroundRun.Start();
+        var stop = Task.Run(() => run.Session.StopRun(run.RunId));
+        bool returnedWhileStepBlocked = stop.Wait(TimeSpan.FromMilliseconds(200));
+        run.ReleaseStep();
+        (bool completed, Exception? error) = WaitForTask(stop, TimeSpan.FromSeconds(2));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(returnedWhileStepBlocked, Is.False, "StopRun returned while the run was still inside Step.");
+            Assert.That(completed, Is.True);
+            Assert.That(error, Is.Null);
+        });
+
+        Assert.DoesNotThrow(() => run.Session.WriteMemory(0x0300, [0x5A]));
+        Assert.That(run.BusWrites, Is.EqualTo(1));
+    }
+
+    /// <summary>
     /// Verifies an invalid background-run condition fails before the run is scheduled.
     /// </summary>
     [Test]
@@ -397,6 +585,42 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
 
     /// <inheritdoc />
     protected override ISessionHarness CreateHarness() => new MachineSessionHarness();
+
+    private static (IMachine Machine, IMemoryBus Bus) CreateRamMachine()
+    {
+        var memory = new PhysicalMemory(0x10000, "session-ram");
+        var target = new RamTarget(memory.Slice(0, 0x10000));
+        var bus = new MainBus();
+        for (int page = 0; page < 16; page++)
+        {
+            bus.MapPage(
+                page,
+                new PageEntry(1, RegionTag.Ram, PagePerms.All, TargetCaps.None, target, (uint)(page << 12)));
+        }
+
+        var cpu = new Mock<ICpu>(MockBehavior.Loose);
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.Bus).Returns(bus);
+        machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
+        return (machine.Object, bus);
+    }
+
+    private static byte ReadBusByte(IMemoryBus bus, uint address)
+    {
+        var access = new BusAccess(
+            Address: address,
+            Value: 0,
+            WidthBits: 8,
+            Mode: BusAccessMode.Decomposed,
+            EmulationFlag: true,
+            Intent: AccessIntent.DebugRead,
+            SourceId: 0,
+            Cycle: 0,
+            Flags: AccessFlags.NoSideEffects);
+        BusResult<byte> read = bus.TryRead8(access);
+        Assert.That(read.Ok, Is.True, $"Bus read at ${address:X4} failed.");
+        return read.Value;
+    }
 
     private static RunResult? WaitForBackgroundResult(IDebugSession session, Guid runId)
     {
