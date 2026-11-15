@@ -5,7 +5,7 @@
 namespace BadMango.Emulator.Devices;
 
 /// <summary>
-/// Translates a physical host key and the active modifiers into an emulated machine's key code.
+/// Translates a shared <see cref="KeyboardKey"/> and active modifiers into an emulated machine key code.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -23,10 +23,10 @@ namespace BadMango.Emulator.Devices;
 public interface IKeyTranslator
 {
     /// <summary>
-    /// Maps a physical host key and the active modifiers to the machine's key code.
+    /// Maps a shared <see cref="KeyboardKey"/> and the active modifiers to the machine's key code.
     /// </summary>
-    /// <param name="key">The physical host key that went down.</param>
+    /// <param name="key">The shared keyboard key that went down.</param>
     /// <param name="modifiers">The active modifiers, including the Caps Lock state.</param>
     /// <returns>The machine key code, or <see langword="null"/> if the key produces no code.</returns>
-    byte? Translate(HostKey key, KeyboardModifiers modifiers);
+    byte? Translate(KeyboardKey key, KeyboardModifiers modifiers);
 }
