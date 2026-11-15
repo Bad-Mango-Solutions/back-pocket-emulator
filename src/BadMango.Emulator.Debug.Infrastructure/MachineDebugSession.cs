@@ -251,10 +251,12 @@ public sealed class MachineDebugSession : IDebugSession
     }
 
     /// <inheritdoc />
+    /// <exception cref="ArgumentException">The run condition is missing a required field.</exception>
     public Guid StartRun(RunCondition condition, RunBudget budget, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(condition);
         ArgumentNullException.ThrowIfNull(budget);
+        ValidateCondition(condition);
 
         lock (backgroundRunLock)
         {
@@ -434,7 +436,7 @@ public sealed class MachineDebugSession : IDebugSession
             Intent: AccessIntent.DebugWrite,
             SourceId: 0,
             Cycle: 0,
-            Flags: AccessFlags.None);
+            Flags: AccessFlags.NoSideEffects);
 
     private static InfrastructureWatchAccess ToInfrastructureWatchAccess(SessionWatchAccess access)
     {
