@@ -493,14 +493,7 @@ public sealed class Cpu65C02 : CpuBase
     private byte FetchByte()
     {
         var pc = Registers.PC.GetAddr();
-        if (pc == 0xFFFF)
-        {
-            Registers.PC.SetAddr(0x0000);
-        }
-        else
-        {
-            Registers.PC.Advance();
-        }
+        Registers.PC.Advance();
 
         byte value = InstructionFetch8(pc);
 
