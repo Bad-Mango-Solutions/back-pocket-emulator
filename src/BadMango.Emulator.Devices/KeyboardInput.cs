@@ -38,7 +38,7 @@ using Interfaces;
 /// Live host keys are not released.
 /// </para>
 /// </remarks>
-public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
+public sealed class KeyboardInput : IKeyboardInput, IResetReceiver, IPowerOnReset
 {
     private const string InputDrainTag = "keyboard-input";
     private const string TypingTag = "keyboard-type";
@@ -156,16 +156,35 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
     /// <inheritdoc />
     public void OnResetAsserted(Cycle cycle)
     {
+        bool wasTyping;
+        lock (gate)
+        {
+            wasTyping = chainRunning || heldTypedKey is not null || typingQueue.Count > 0 || unappliedTyping > 0;
+            typingGeneration++;
+            typingQueue.Clear();
+            chainRunning = false;
+            unappliedTyping = 0;
+        }
+
+        // RESET has already flushed device timers. Release the typed key here, on the machine
+        // thread, so it is up before the reset handler returns. Live keys stay down.
+        // A reset that interrupts nothing does not record CancelTyping.
+        ReleaseCancelledTyping(wasTyping);
+    }
+
+    /// <inheritdoc />
+    public void PowerOnReset()
+    {
         lock (gate)
         {
             typingGeneration++;
             typingQueue.Clear();
             chainRunning = false;
+            unappliedTyping = 0;
+            heldTypedKey = null;
+            liveHeldKeys.Clear();
+            liveModifiers = KeyboardModifiers.None;
         }
-
-        // RESET has already flushed device timers. Release the typed key here, on the machine
-        // thread, so it is up before the reset handler returns. Live keys stay down.
-        ReleaseCancelledTyping();
     }
 
     /// <inheritdoc />
@@ -232,7 +251,7 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
                     ApplyKeyUp(item.Key, item.Modifiers);
                     break;
                 case WorkKind.Cancel:
-                    ReleaseCancelledTyping();
+                    ReleaseCancelledTyping(journalCancel: true);
                     break;
                 case WorkKind.Type:
                     ApplyType(item);
@@ -406,8 +425,13 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
         scheduler.ScheduleAfter(delay, ScheduledEventKind.DeviceTimer, 0, _ => ProcessNext(currentGeneration), TypingTag);
     }
 
-    private void ReleaseCancelledTyping()
+    private void ReleaseCancelledTyping(bool journalCancel)
     {
+        if (!journalCancel)
+        {
+            return;
+        }
+
         KeyboardKey? held;
         KeyboardModifiers snapshot;
         lock (gate)
@@ -418,12 +442,11 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
         }
 
         // Only a key TypeText is holding is released. Live keys and modifiers, including ones
-        // set through the legacy device API, stay as they are. Pushing the input layer's
-        // snapshot when it is not typing would clear them.
+        // set through the legacy device API, stay as they are.
         if (held is KeyboardKey key)
         {
             sink.OnHostKeyUp(key, snapshot);
-            sink.OnHostKeyUp(KeyboardKey.None, snapshot);
+            RestoreLiveModifiers();
         }
 
         sink.ReleaseAllTypedKeys();
@@ -438,8 +461,12 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
             snapshot = liveModifiers;
         }
 
-        // Push the last live snapshot back. KeyboardKey.None is not a held key, so this does not
-        // change AKD; it only restores modifier soft switches after a typed key's own snapshot.
+        // §7.4's sink has no method that sets modifiers without a key. The snapshot on
+        // OnHostKeyDown / OnHostKeyUp is the only way to publish modifier state, and adding
+        // SetModifiers would extend that closed contract. KeyboardKey.None is the documented
+        // "no key" value: it is not in the held set, the IIe translator returns null for it,
+        // and OnHostKeyUp therefore writes the snapshot onto the soft switches without latching
+        // a code or changing AKD.
         sink.OnHostKeyUp(KeyboardKey.None, snapshot);
     }
 

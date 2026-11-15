@@ -268,6 +268,32 @@ public sealed class KeyboardMachineTests
     }
 
     /// <summary>
+    /// Verifies that a power reset forgets keys the input layer still considers held, so the same
+    /// key can go down again. A soft reset leaves that memory in place.
+    /// </summary>
+    [Test]
+    public void HardReset_ClearsLiveHeldKeys_SoftResetDoesNot()
+    {
+        var machine = CreateMachine();
+        IKeyboardInput input = RequireInput(machine);
+
+        input.KeyDown(KeyboardKey.A, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        int downs = CountKeyDowns(input);
+
+        machine.Reset();
+        input.KeyDown(KeyboardKey.A, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        Assert.That(CountKeyDowns(input), Is.EqualTo(downs), "A soft reset keeps the live key down, so the repeat is ignored");
+
+        machine.Reset(hardReset: true);
+        input.KeyDown(KeyboardKey.A, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+
+        Assert.That(CountKeyDowns(input), Is.EqualTo(downs + 1), "A power reset clears the held-key memory");
+    }
+
+    /// <summary>
     /// Verifies that an unthrottled machine (<see cref="IMachine.ClockSpeedHz"/> is 0) still types
     /// on the profile CPU clock. With no profile, that default is 1 MHz, so a 50 ms hold is 50,000 cycles.
     /// </summary>
@@ -341,6 +367,9 @@ public sealed class KeyboardMachineTests
 
         Assert.That(BufferCount(machine), Is.EqualTo(countBefore + 1), $"The polling loop must receive exactly one character for {key}");
     }
+
+    private static int CountKeyDowns(IKeyboardInput input) =>
+        input.Journal.Count(entry => entry.Event.Kind == InputEventKind.KeyDown && entry.Event.Key == KeyboardKey.A);
 
     private static IKeyboardInput RequireInput(IMachine machine)
     {

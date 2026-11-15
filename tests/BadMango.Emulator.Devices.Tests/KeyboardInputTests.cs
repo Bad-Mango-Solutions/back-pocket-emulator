@@ -164,6 +164,26 @@ public sealed class KeyboardInputTests
     }
 
     /// <summary>
+    /// Verifies that RESET does not record <see cref="InputEventKind.CancelTyping"/> when nothing is being typed.
+    /// </summary>
+    [Test]
+    public void Reset_WhenNotTyping_DoesNotJournalCancelTyping()
+    {
+        var harness = Create();
+        harness.Input.KeyDown(KeyboardKey.A, KeyboardModifiers.None);
+        harness.Scheduler.DispatchDue();
+        int countBeforeReset = harness.Input.Journal.Count;
+
+        harness.Input.OnResetAsserted(harness.Scheduler.Now);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(harness.Input.Journal.Count, Is.EqualTo(countBeforeReset));
+            Assert.That(harness.Input.Journal.Any(entry => entry.Event.Kind == InputEventKind.CancelTyping), Is.False);
+        });
+    }
+
+    /// <summary>
     /// Verifies that RESET drops queued text, releases the typed key, and stale timers do not fire.
     /// </summary>
     [Test]
