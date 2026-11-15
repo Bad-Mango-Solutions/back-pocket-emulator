@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Tests;
 
+using System.Reflection;
+
 using Bus.Interfaces;
 
 using Core;
@@ -114,6 +116,25 @@ public class DisassemblerTests : CpuTestBase
 
         // Assert
         Assert.That(array.Length, Is.EqualTo(256));
+    }
+
+    /// <summary>
+    /// Verifies that explicit opcode metadata matches the previously derived handler metadata for all opcodes.
+    /// </summary>
+    [Test]
+    public void BuildOpcodeInfoArray_AllOpcodesMatchLegacyHandlerAnalysis()
+    {
+        // Arrange
+        var expected = BuildLegacyOpcodeInfoArray(opcodeTable);
+
+        // Act
+        var actual = OpcodeTableAnalyzer.BuildOpcodeInfoArray(opcodeTable);
+
+        // Assert
+        for (int opcode = 0; opcode < 256; opcode++)
+        {
+            Assert.That(actual[opcode], Is.EqualTo(expected[opcode]), $"Opcode ${opcode:X2} metadata mismatch.");
+        }
     }
 
     /// <summary>
@@ -660,4 +681,133 @@ public class DisassemblerTests : CpuTestBase
     }
 
     #endregion
+
+    private static OpcodeInfo[] BuildLegacyOpcodeInfoArray(OpcodeTable table)
+    {
+        var addressingModeOperandLengths = new Dictionary<string, byte>(StringComparer.Ordinal)
+        {
+            [nameof(AddressingModes.Implied)] = 0,
+            [nameof(AddressingModes.Accumulator)] = 0,
+            [nameof(AddressingModes.Immediate)] = 1,
+            [nameof(AddressingModes.ZeroPage)] = 1,
+            [nameof(AddressingModes.ZeroPageX)] = 1,
+            [nameof(AddressingModes.ZeroPageY)] = 1,
+            [nameof(AddressingModes.Relative)] = 1,
+            [nameof(AddressingModes.IndirectX)] = 1,
+            [nameof(AddressingModes.IndirectY)] = 1,
+            [nameof(AddressingModes.IndirectYWrite)] = 1,
+            [nameof(AddressingModes.ZeroPageIndirect)] = 1,
+            [nameof(AddressingModes.Absolute)] = 2,
+            [nameof(AddressingModes.AbsoluteX)] = 2,
+            [nameof(AddressingModes.AbsoluteY)] = 2,
+            [nameof(AddressingModes.AbsoluteXWrite)] = 2,
+            [nameof(AddressingModes.AbsoluteYWrite)] = 2,
+            [nameof(AddressingModes.Indirect)] = 2,
+            [nameof(AddressingModes.AbsoluteIndirectX)] = 2,
+            [nameof(AddressingModes.ZeroPageRelative)] = 2,
+        };
+
+        var addressingModeEnumMap = new Dictionary<string, CpuAddressingModes>(StringComparer.Ordinal)
+        {
+            [nameof(AddressingModes.Implied)] = CpuAddressingModes.Implied,
+            [nameof(AddressingModes.Accumulator)] = CpuAddressingModes.Accumulator,
+            [nameof(AddressingModes.Immediate)] = CpuAddressingModes.Immediate,
+            [nameof(AddressingModes.ZeroPage)] = CpuAddressingModes.ZeroPage,
+            [nameof(AddressingModes.ZeroPageX)] = CpuAddressingModes.ZeroPageX,
+            [nameof(AddressingModes.ZeroPageY)] = CpuAddressingModes.ZeroPageY,
+            [nameof(AddressingModes.Relative)] = CpuAddressingModes.Relative,
+            [nameof(AddressingModes.IndirectX)] = CpuAddressingModes.IndirectX,
+            [nameof(AddressingModes.IndirectY)] = CpuAddressingModes.IndirectY,
+            [nameof(AddressingModes.IndirectYWrite)] = CpuAddressingModes.IndirectY,
+            [nameof(AddressingModes.ZeroPageIndirect)] = CpuAddressingModes.ZeroPageIndirect,
+            [nameof(AddressingModes.Absolute)] = CpuAddressingModes.Absolute,
+            [nameof(AddressingModes.AbsoluteX)] = CpuAddressingModes.AbsoluteX,
+            [nameof(AddressingModes.AbsoluteY)] = CpuAddressingModes.AbsoluteY,
+            [nameof(AddressingModes.AbsoluteXWrite)] = CpuAddressingModes.AbsoluteX,
+            [nameof(AddressingModes.AbsoluteYWrite)] = CpuAddressingModes.AbsoluteY,
+            [nameof(AddressingModes.Indirect)] = CpuAddressingModes.Indirect,
+            [nameof(AddressingModes.AbsoluteIndirectX)] = CpuAddressingModes.AbsoluteIndirectX,
+            [nameof(AddressingModes.ZeroPageRelative)] = CpuAddressingModes.ZeroPageRelative,
+        };
+
+        var instructionEnumMap = CreateLegacyInstructionMap();
+        var output = new OpcodeInfo[256];
+
+        for (int i = 0; i < 256; i++)
+        {
+            var handler = table.GetHandler((byte)i);
+            output[i] = GetLegacyOpcodeInfo(handler, instructionEnumMap, addressingModeEnumMap, addressingModeOperandLengths);
+        }
+
+        return output;
+    }
+
+    private static Dictionary<string, CpuInstructions> CreateLegacyInstructionMap()
+    {
+        var map = new Dictionary<string, CpuInstructions>(StringComparer.Ordinal);
+
+        foreach (CpuInstructions instruction in Enum.GetValues<CpuInstructions>().Where(i => i != CpuInstructions.None))
+        {
+            map[instruction.ToString()] = instruction;
+        }
+
+        map["ASLa"] = CpuInstructions.ASL;
+        map["LSRa"] = CpuInstructions.LSR;
+        map["ROLa"] = CpuInstructions.ROL;
+        map["RORa"] = CpuInstructions.ROR;
+        map["BITImmediate"] = CpuInstructions.BIT;
+
+        return map;
+    }
+
+    private static OpcodeInfo GetLegacyOpcodeInfo(
+        OpcodeHandler handler,
+        IReadOnlyDictionary<string, CpuInstructions> instructionMap,
+        IReadOnlyDictionary<string, CpuAddressingModes> addressingModeMap,
+        IReadOnlyDictionary<string, byte> operandLengthMap)
+    {
+        object? target = handler.Target;
+        if (target is null)
+        {
+            return default;
+        }
+
+        CpuInstructions instruction = CpuInstructions.None;
+        string methodName = handler.Method.Name;
+
+        if (methodName.Length > 2 && methodName[0] == '<')
+        {
+            int endIndex = methodName.IndexOf('>', 1);
+            if (endIndex > 1)
+            {
+                var instructionName = methodName.Substring(1, endIndex - 1);
+                if (instructionMap.TryGetValue(instructionName, out var mappedInstruction))
+                {
+                    instruction = mappedInstruction;
+                }
+            }
+        }
+
+        var addressingModeDelegate = target
+            .GetType()
+            .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(field => field.FieldType == typeof(AddressingModeHandler))
+            .Select(field => field.GetValue(target) as AddressingModeHandler)
+            .FirstOrDefault(@delegate => @delegate is not null);
+
+        if (addressingModeDelegate is null)
+        {
+            return new(instruction, CpuAddressingModes.None, 0);
+        }
+
+        string addressingModeMethod = addressingModeDelegate.Method.Name;
+        var addressingMode = addressingModeMap.TryGetValue(addressingModeMethod, out var mappedAddressingMode)
+            ? mappedAddressingMode
+            : CpuAddressingModes.None;
+        byte operandLength = operandLengthMap.TryGetValue(addressingModeMethod, out var mappedOperandLength)
+            ? mappedOperandLength
+            : (byte)0;
+
+        return new(instruction, addressingMode, operandLength);
+    }
 }
