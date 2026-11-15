@@ -56,6 +56,29 @@ public interface IDebugSession
     RunResult RunUntil(RunCondition condition, RunBudget budget, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Starts a background run and returns its identifier.
+    /// </summary>
+    /// <param name="condition">The completion condition.</param>
+    /// <param name="budget">The execution budget.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The background run identifier.</returns>
+    Guid StartRun(RunCondition condition, RunBudget budget, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the status of a background run.
+    /// </summary>
+    /// <param name="runId">The run identifier.</param>
+    /// <returns>The completed run result, or <see langword="null"/> while still running or when unknown.</returns>
+    RunResult? GetRunStatus(Guid runId);
+
+    /// <summary>
+    /// Requests cancellation for a background run.
+    /// </summary>
+    /// <param name="runId">The run identifier.</param>
+    /// <returns><see langword="true"/> if the run was found; otherwise, <see langword="false"/>.</returns>
+    bool StopRun(Guid runId);
+
+    /// <summary>
     /// Pauses the running machine.
     /// </summary>
     void Pause();

@@ -33,9 +33,9 @@ public enum StopReason
     MemoryCondition,
 
     /// <summary>
-    /// The cycle budget was exhausted.
+    /// The execution budget was exhausted.
     /// </summary>
-    CycleLimit,
+    Budget,
 
     /// <summary>
     /// The wall-clock budget was exhausted.
@@ -61,4 +61,9 @@ public enum StopReason
     /// Execution terminated on an error.
     /// </summary>
     Error,
+
+    /// <summary>
+    /// Execution terminated on a fault.
+    /// </summary>
+    Fault,
 }
