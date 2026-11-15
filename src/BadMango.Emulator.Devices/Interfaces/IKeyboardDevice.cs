@@ -47,10 +47,12 @@ public interface IKeyboardDevice : IMotherboardDevice, IResetSource
     /// </summary>
     /// <value>The key translator owned by this keyboard.</value>
     /// <remarks>
-    /// Input sources such as the video window use this to translate a <see cref="KeyboardKey"/> and the
-    /// active modifiers before calling <see cref="KeyDown"/>, so they never construct or choose a
-    /// translator themselves. The keyboard keeps the translator private to the device while the shared
-    /// key model remains the common input contract.
+    /// The translator is exposed on the device. Input sources such as the video window map host input
+    /// to the shared <see cref="KeyboardKey"/> model, then use this translator to turn that key and the
+    /// active modifiers into a key code before calling <see cref="KeyDown"/>, so they never construct
+    /// or choose a translator themselves. This is interim: the planned per-machine keyboard input
+    /// layer will take over host key translation, accept host keys directly, and keep the translator
+    /// private to the keyboard.
     /// </remarks>
     IKeyTranslator Translator { get; }
 
