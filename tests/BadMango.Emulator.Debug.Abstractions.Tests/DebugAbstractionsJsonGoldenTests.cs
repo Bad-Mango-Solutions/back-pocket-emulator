@@ -36,7 +36,8 @@ public class DebugAbstractionsJsonGoldenTests
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.RegisterSnapshot);
 
-        Assert.That(json, Is.EqualTo("{
+        Assert.That(json, Is.EqualTo("""
+{
   "cpuType": "65C02",
   "programCounter": 4660,
   "accumulator": 165,
@@ -47,7 +48,8 @@ public class DebugAbstractionsJsonGoldenTests
   "directPage": 0,
   "dataBank": 0,
   "extraBank": 0
-}"));
+}
+"""));
     }
 
     /// <summary>
@@ -60,7 +62,8 @@ public class DebugAbstractionsJsonGoldenTests
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.MemoryBlock);
 
-        Assert.That(json, Is.EqualTo("{
+        Assert.That(json, Is.EqualTo("""
+{
   "address": 49152,
   "length": 3,
   "data": [
@@ -69,7 +72,8 @@ public class DebugAbstractionsJsonGoldenTests
     3
   ],
   "label": "boot page"
-}"));
+}
+"""));
     }
 
     /// <summary>
@@ -82,14 +86,16 @@ public class DebugAbstractionsJsonGoldenTests
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.DisassemblyLine);
 
-        Assert.That(json, Is.EqualTo("{
+        Assert.That(json, Is.EqualTo("""
+{
   "address": 61440,
   "mnemonic": "LDA",
   "operand": "#$42",
   "size": 2,
   "bytes": "A9 42",
   "comment": "load immediate"
-}"));
+}
+"""));
     }
 
     /// <summary>
@@ -105,11 +111,13 @@ public class DebugAbstractionsJsonGoldenTests
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.RunCondition);
 
-        Assert.That(json, Is.EqualTo("{
+        Assert.That(json, Is.EqualTo("""
+{
   "kind": "ProgramCounter",
   "address": 4096,
   "label": "entry"
-}"));
+}
+"""));
     }
 
     /// <summary>
@@ -122,10 +130,12 @@ public class DebugAbstractionsJsonGoldenTests
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.RunBudget);
 
-        Assert.That(json, Is.EqualTo("{
+        Assert.That(json, Is.EqualTo("""
+{
   "maxCycles": 5000,
   "wallClock": "00:00:02"
-}"));
+}
+"""));
     }
 
     /// <summary>
@@ -144,14 +154,16 @@ public class DebugAbstractionsJsonGoldenTests
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.RunResult);
 
-        Assert.That(json, Is.EqualTo("{
+        Assert.That(json, Is.EqualTo("""
+{
   "stopReason": "Breakpoint",
   "instructionCount": 42,
   "cycleCount": 128,
   "elapsed": "00:00:00.0750000",
   "programCounter": 1024,
   "message": "hit breakpoint"
-}"));
+}
+"""));
     }
 
     /// <summary>
@@ -173,8 +185,8 @@ public class DebugAbstractionsJsonGoldenTests
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.DebugEnvelopeRunResult);
 
-        Assert.That(json, Does.Contain(""schema": "emudbg/v1""));
-        Assert.That(json, Does.Contain(""correlationId": "session-42""));
-        Assert.That(json, Does.Contain(""payload":"));
+        Assert.That(json, Does.Contain("\"schema\": \"emudbg/v1\""));
+        Assert.That(json, Does.Contain("\"correlationId\": \"session-42\""));
+        Assert.That(json, Does.Contain("\"payload\":"));
     }
 }
