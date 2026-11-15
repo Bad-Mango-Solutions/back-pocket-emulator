@@ -180,13 +180,51 @@ public class DebugAbstractionsJsonGoldenTests
                 Elapsed: TimeSpan.FromMilliseconds(12),
                 ProgramCounter: 0x200,
                 Message: "done"),
-            timestamp: new DateTimeOffset(2025, 1, 2, 3, 4, 5, TimeSpan.Zero),
-            correlationId: "session-42");
+            Timestamp: new DateTimeOffset(2025, 1, 2, 3, 4, 5, TimeSpan.Zero),
+            CorrelationId: "session-42");
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.DebugEnvelopeRunResult);
 
         Assert.That(json, Does.Contain("\"schema\": \"emudbg/v1\""));
         Assert.That(json, Does.Contain("\"correlationId\": \"session-42\""));
         Assert.That(json, Does.Contain("\"payload\":"));
+    }
+
+    /// <summary>
+    /// Confirms the schema is fixed, written first, and not settable through deserialization.
+    /// </summary>
+    [Test]
+    public void DebugEnvelope_SchemaIsFixedAndWrittenFirst()
+    {
+        var value = new DebugEnvelope<RunBudget>(new RunBudget(MaxCycles: 1000), new DateTimeOffset(2025, 1, 2, 3, 4, 5, TimeSpan.Zero));
+
+        var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.DebugEnvelopeRunBudget);
+        using var document = JsonDocument.Parse(json);
+        var first = document.RootElement.EnumerateObject().First();
+
+        Assert.That(first.Name, Is.EqualTo("schema"));
+        Assert.That(first.Value.GetString(), Is.EqualTo(DebugEnvelope<RunBudget>.SchemaValue));
+
+        var tampered = json.Replace("emudbg/v1", "emudbg/v999", StringComparison.Ordinal);
+        var roundTripped = JsonSerializer.Deserialize(tampered, DebugSessionJsonContext.Default.DebugEnvelopeRunBudget);
+
+        Assert.That(roundTripped, Is.Not.Null);
+        Assert.That(roundTripped!.Schema, Is.EqualTo("emudbg/v1"));
+    }
+
+    /// <summary>
+    /// Confirms run-condition memory values are emitted as numeric arrays rather than base64.
+    /// </summary>
+    [Test]
+    public void RunCondition_MemoryValue_SerializesAsNumberArray()
+    {
+        var value = new RunCondition(RunConditionKind.MemoryEquals, MemoryAddress: 0x300, MemoryValue: [0x01, 0xA9, 0xFF]);
+
+        var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.RunCondition);
+        using var document = JsonDocument.Parse(json);
+        var memoryValue = document.RootElement.GetProperty("memoryValue");
+
+        Assert.That(memoryValue.ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(memoryValue.EnumerateArray().Select(e => e.GetByte()), Is.EqualTo(new byte[] { 0x01, 0xA9, 0xFF }));
     }
 }

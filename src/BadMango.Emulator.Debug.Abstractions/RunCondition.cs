@@ -12,7 +12,7 @@ namespace BadMango.Emulator.Debug.Abstractions;
 /// <param name="BreakpointAddress">The breakpoint address used when the condition is a breakpoint trigger.</param>
 /// <param name="WatchAddress">The watchpoint address used when the condition is a watch trigger.</param>
 /// <param name="MemoryAddress">The address to test when the condition compares memory.</param>
-/// <param name="MemoryValue">The expected value to compare against memory.</param>
+/// <param name="MemoryValue">The expected bytes to compare against memory; serialized as a JSON number array.</param>
 /// <param name="CycleLimit">The cycle threshold when the condition is a cycle-bound stop.</param>
 /// <param name="Label">An optional label.</param>
 public sealed record RunCondition(
@@ -21,6 +21,6 @@ public sealed record RunCondition(
     uint? BreakpointAddress = null,
     uint? WatchAddress = null,
     uint? MemoryAddress = null,
-    byte[]? MemoryValue = null,
+    IReadOnlyList<byte>? MemoryValue = null,
     ulong? CycleLimit = null,
     string? Label = null);
