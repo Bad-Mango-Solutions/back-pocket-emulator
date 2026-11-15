@@ -53,6 +53,63 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
     }
 
     /// <summary>
+    /// Verifies debugger reads and writes of a soft switch do not toggle it.
+    /// </summary>
+    [Test]
+    public void WriteMemory_ToSoftSwitch_DoesNotToggleTheSwitch()
+    {
+        var dispatcher = new IOPageDispatcher();
+        var ioPage = new CompositeIOTarget("I/O Page", dispatcher, new SlotManager(dispatcher));
+        var controller = new AuxiliaryMemoryController();
+        controller.RegisterHandlers(dispatcher);
+
+        var bus = new MainBus();
+        bus.MapPage(0xC000 >> 12, new(1, RegionTag.Io, PagePerms.ReadWrite, TargetCaps.None, ioPage, 0));
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.Bus).Returns(bus);
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(x => x.Machine).Returns(machine.Object);
+        var session = new MachineDebugSession(context.Object);
+
+        var cpuWrite = new BusAccess(
+            Address: 0xC055,
+            Value: 0,
+            WidthBits: 8,
+            Mode: BusAccessMode.Decomposed,
+            EmulationFlag: true,
+            Intent: AccessIntent.DataWrite,
+            SourceId: 0,
+            Cycle: 0,
+            Flags: AccessFlags.None);
+        var cpuClear = cpuWrite with { Address = 0xC054 };
+
+        Assert.That(bus.TryWrite8(cpuWrite, 0).Ok, Is.True, "PAGE2 write did not reach the soft-switch handler.");
+        Assert.That(controller.IsPage2Selected, Is.True, "A CPU write to $C055 should select PAGE2.");
+        Assert.That(bus.TryWrite8(cpuClear, 0).Ok, Is.True);
+        Assert.That(controller.IsPage2Selected, Is.False);
+
+        session.ReadMemory(0xC055, 1);
+        Assert.That(controller.IsPage2Selected, Is.False, "Session ReadMemory toggled PAGE2.");
+
+        session.WriteMemory(0xC055, [0x00]);
+        Assert.That(controller.IsPage2Selected, Is.False, "Session WriteMemory toggled PAGE2.");
+    }
+
+    /// <summary>
+    /// Verifies an invalid background-run condition fails before the run is scheduled.
+    /// </summary>
+    [Test]
+    public void StartRun_InvalidCondition_ThrowsArgumentExceptionImmediately()
+    {
+        using var harness = CreateHarness();
+        harness.LoadProgram(0x1000, 0xEA, 0xDB);
+
+        var condition = new RunCondition(RunConditionKind.ProgramCounter);
+        Assert.Throws<ArgumentException>(() => harness.Session.StartRun(condition, new RunBudget(MaxCycles: 20)));
+    }
+
+    /// <summary>
     /// Verifies that stopping a run after it has finished does not touch a disposed cancellation source.
     /// </summary>
     [Test]
