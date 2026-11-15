@@ -1275,6 +1275,7 @@ public class MachineTests
     private sealed class ConcurrencyDetector
     {
         private readonly Dictionary<int, int> depthByThread = [];
+        private readonly Lock depthLock = new();
         private int overlaps;
 
         /// <summary>
@@ -1284,7 +1285,7 @@ public class MachineTests
         {
             get
             {
-                lock (depthByThread)
+                lock (depthLock)
                 {
                     return overlaps;
                 }
@@ -1298,7 +1299,7 @@ public class MachineTests
         public Scope Enter()
         {
             int thread = Environment.CurrentManagedThreadId;
-            lock (depthByThread)
+            lock (depthLock)
             {
                 depthByThread.TryGetValue(thread, out int depth);
                 if (depth == 0 && depthByThread.Count > 0)
@@ -1314,7 +1315,7 @@ public class MachineTests
 
         private void Leave(int thread)
         {
-            lock (depthByThread)
+            lock (depthLock)
             {
                 int depth = depthByThread[thread] - 1;
                 if (depth == 0)
