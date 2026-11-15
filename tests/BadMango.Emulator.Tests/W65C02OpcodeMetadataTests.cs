@@ -360,6 +360,27 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
     }
 
     /// <summary>
+    /// Verifies that the table keeps its own copy of the metadata array.
+    /// </summary>
+    [Test]
+    public void OpcodeTable_CopiesMetadataArray()
+    {
+        var handlers = new OpcodeHandler[256];
+        var metadata = new OpcodeInfo[256];
+        metadata[0xEA] = new(CpuInstructions.NOP, CpuAddressingModes.Implied, 0, 2);
+
+        var table = new OpcodeTable(handlers, metadata);
+        metadata[0xEA] = default;
+
+        var info = table.GetMetadata(0xEA);
+        Assert.Multiple(() =>
+        {
+            Assert.That(info.Instruction, Is.EqualTo(CpuInstructions.NOP));
+            Assert.That(info.BaseCycles, Is.EqualTo((byte)2));
+        });
+    }
+
+    /// <summary>
     /// Runs one opcode at <c>$0200</c> with X = Y = 0, D clear, and operands that
     /// do not cross a page. Conditional branches and BBR/BBS are not taken.
     /// BRA uses a zero offset, so it is taken inside the same page.

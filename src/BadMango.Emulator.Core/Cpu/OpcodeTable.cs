@@ -25,23 +25,11 @@ public class OpcodeTable
     /// Initializes a new instance of the <see cref="OpcodeTable"/> class.
     /// </summary>
     /// <param name="handlers">The array of opcode handlers. Must be exactly 256 elements.</param>
-    /// <remarks>
-    /// This constructor produces empty metadata for every opcode (default
-    /// <see cref="OpcodeInfo"/> values, including a base cycle count of zero).
-    /// It is kept for compatibility with callers that only supply handlers.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException">Thrown when handlers is null.</exception>
-    /// <exception cref="ArgumentException">Thrown when handlers array is not exactly 256 elements.</exception>
-    public OpcodeTable(OpcodeHandler[] handlers)
-        : this(handlers, new OpcodeInfo[256])
-    {
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="OpcodeTable"/> class.
-    /// </summary>
-    /// <param name="handlers">The array of opcode handlers. Must be exactly 256 elements.</param>
     /// <param name="metadata">The per-opcode metadata array. Must be exactly 256 elements.</param>
+    /// <remarks>
+    /// The metadata array is copied. Later changes to the caller's array do not
+    /// affect the table. The table is built once, so the copy is not on the dispatch path.
+    /// </remarks>
     /// <exception cref="ArgumentNullException">Thrown when handlers or metadata is null.</exception>
     /// <exception cref="ArgumentException">
     /// Thrown when handlers or metadata arrays are not exactly 256 elements.
@@ -62,7 +50,7 @@ public class OpcodeTable
         }
 
         this.handlers = handlers;
-        this.metadata = metadata;
+        this.metadata = metadata.ToArray();
     }
 
     /// <summary>
