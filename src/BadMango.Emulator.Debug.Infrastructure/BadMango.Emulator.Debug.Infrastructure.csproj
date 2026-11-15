@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\BadMango.Emulator.Bus\BadMango.Emulator.Bus.csproj" />
     <ProjectReference Include="..\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
+    <ProjectReference Include="..\BadMango.Emulator.Debug.Abstractions\BadMango.Emulator.Debug.Abstractions.csproj" />
     <ProjectReference Include="..\BadMango.Emulator.Devices\BadMango.Emulator.Devices.csproj" />
     <ProjectReference Include="..\BadMango.Emulator.Emulation\BadMango.Emulator.Emulation.csproj" />
     <ProjectReference Include="..\BadMango.Emulator.Rendering\BadMango.Emulator.Rendering.csproj" />

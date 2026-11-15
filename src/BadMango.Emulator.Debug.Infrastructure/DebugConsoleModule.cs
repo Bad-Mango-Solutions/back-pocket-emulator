@@ -9,6 +9,7 @@ using Autofac;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Configuration;
 using BadMango.Emulator.Core.Interfaces;
+using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using Commands.DeviceCommands;
@@ -260,7 +261,7 @@ public class DebugConsoleModule : Module
             var pathResolver = new ProfilePathResolver(libraryRoot);
 
             // Create new machine with all debug components from profile
-            (IMachine machine, IDisassembler disassembler, MachineInfo info) =
+            (IMachine machine, IDisassembler disassembler, BadMango.Emulator.Core.Configuration.MachineInfo info) =
                 MachineFactory.CreateDebugSystem(profile, pathResolver);
 
             // Attach the full machine with all debug components. The context
@@ -274,6 +275,10 @@ public class DebugConsoleModule : Module
         .As<IDebugContext>()
         .As<ICommandContext>()
         .SingleInstance();
+
+        builder.RegisterType<MachineDebugSession>()
+            .As<IDebugSession>()
+            .SingleInstance();
 
         // Register the REPL
         builder.Register(ctx =>

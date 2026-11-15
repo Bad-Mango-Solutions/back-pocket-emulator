@@ -143,7 +143,7 @@ public static class DeviceFactoryExtensions
         /// </remarks>
         public MachineBuilder RegisterKeyboardInputFactory()
         {
-            return builder.AddComponentFactory(machine =>
+            return builder.AddComponentFactory<IKeyboardInput>(machine =>
             {
                 if (machine.GetComponent<IKeyboardInput>() is not null)
                 {

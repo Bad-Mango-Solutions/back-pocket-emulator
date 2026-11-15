@@ -257,22 +257,24 @@ public sealed partial class MachineBuilder
     }
 
     /// <summary>
-    /// Registers a factory that creates a component once the machine exists.
+    /// Adds a component factory whose result is created at the end of <see cref="Build"/>.
     /// </summary>
+    /// <typeparam name="T">The component type.</typeparam>
     /// <param name="factory">
     /// Receives the built machine and returns the component to add, or <see langword="null"/> to add nothing.
     /// </param>
     /// <returns>This builder instance for method chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// Factories run at the end of <see cref="Build"/>, after devices are initialized and slot cards
-    /// are installed, so the factory can see components such as a keyboard sink, the scheduler, and
-    /// the machine dispatcher. Each non-null result is registered with <c>AddComponent</c>.
+    /// Factories run after devices are initialized, slot cards are installed, and post-build
+    /// callbacks have run, so they can see a keyboard sink, the scheduler, and the machine
+    /// dispatcher. A <see langword="null"/> result is not registered.
     /// </remarks>
-    public MachineBuilder AddComponentFactory(Func<IMachine, object?> factory)
+    public MachineBuilder AddComponentFactory<T>(Func<IMachine, T?> factory)
+        where T : class
     {
         ArgumentNullException.ThrowIfNull(factory);
-        componentFactories.Add(factory);
+        componentFactories.Add(machine => factory(machine));
         return this;
     }
 
@@ -957,7 +959,7 @@ public sealed partial class MachineBuilder
             : CreateDefaultCpu(cpuFamily, tempContext);
 
         // Create machine
-        var machine = new Machine(cpu, bus, scheduler, signals, devices);
+        var machine = new Machine(cpu, bus, scheduler, signals, devices, logger);
 
         // Configure clock speed for CPU throttling
         machine.ClockSpeedHz = clockSpeedHz;

@@ -15,6 +15,8 @@ using BadMango.Emulator.Core.Signaling;
 
 using Interfaces;
 
+using Serilog;
+
 /// <summary>
 /// Standard implementation of <see cref="IMachine"/> — a running emulator instance with lifecycle management.
 /// </summary>
@@ -95,6 +97,11 @@ public sealed class Machine : IMachine
     /// </summary>
     private readonly SignalBus? concreteSignals;
 
+    /// <summary>
+    /// Logger for lifecycle diagnostics, including component failures during <see cref="Dispose"/>.
+    /// </summary>
+    private readonly ILogger logger;
+
     private volatile MachineState state = MachineState.Stopped;
 
     /// <summary>
@@ -136,6 +143,8 @@ public sealed class Machine : IMachine
     /// </summary>
     private Action? pendingResetReleaseAction;
 
+    private int disposeState;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="Machine"/> class.
     /// </summary>
@@ -144,13 +153,19 @@ public sealed class Machine : IMachine
     /// <param name="scheduler">The event scheduler.</param>
     /// <param name="signals">The signal bus.</param>
     /// <param name="devices">The device registry.</param>
-    /// <exception cref="ArgumentNullException">Thrown when any parameter is <see langword="null"/>.</exception>
+    /// <param name="logger">
+    /// Serilog logger for lifecycle diagnostics. When <see langword="null"/>, a sink-less logger is used
+    /// so disposal still has somewhere to report component failures without touching the static
+    /// <c>Log.Logger</c> facade.
+    /// </param>
+    /// <exception cref="ArgumentNullException">Thrown when any required parameter is <see langword="null"/>.</exception>
     internal Machine(
         ICpu cpu,
         IMemoryBus bus,
         IScheduler scheduler,
         ISignalBus signals,
-        IDeviceRegistry devices)
+        IDeviceRegistry devices,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(cpu, nameof(cpu));
         ArgumentNullException.ThrowIfNull(bus, nameof(bus));
@@ -163,6 +178,7 @@ public sealed class Machine : IMachine
         Scheduler = scheduler;
         Signals = signals;
         Devices = devices;
+        this.logger = logger?.ForContext<Machine>() ?? Serilog.Core.Logger.None;
         Signals.SignalChanged += OnSignalChanged;
 
         concreteSignals = signals as SignalBus;
@@ -268,6 +284,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public void Run()
     {
+        ThrowIfDisposed();
         if (!TryBeginRunLoop(requirePaused: false, out int generation))
         {
             return;
@@ -306,6 +323,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public CpuStepResult Step()
     {
+        ThrowIfDisposed();
         if (executingMachine == this && cpuStepDepth > 0)
         {
             // Called from inside a CPU step (a scheduled callback or a request serviced at an
@@ -379,6 +397,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         if (!TryBeginRunLoop(requirePaused: false, out int generation))
         {
             return;
@@ -401,6 +420,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public async Task ResumeAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         if (!TryBeginRunLoop(requirePaused: true, out int generation))
         {
             return;
@@ -424,6 +444,38 @@ public sealed class Machine : IMachine
         // instruction boundary or when the loop exits).
         Post(() => Cpu.HaltReason = HaltState.Stp);
         StopRunLoop();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        Stop();
+        Signals.SignalChanged -= OnSignalChanged;
+
+        foreach (var disposable in components.OfType<IDisposable>().Reverse())
+        {
+            try
+            {
+                disposable.Dispose();
+            }
+            catch (Exception ex) when (ex is not (
+                OutOfMemoryException
+                or AccessViolationException
+                or InvalidProgramException
+                or BadImageFormatException))
+            {
+                logger.Warning(
+                    ex,
+                    "Disposable component {ComponentType} threw {ExceptionType} during machine disposal.",
+                    disposable.GetType().FullName,
+                    ex.GetType().Name);
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -1181,6 +1233,18 @@ public sealed class Machine : IMachine
             }
 
             waitTask.Wait();
+        }
+    }
+
+    /// <summary>
+    /// Throws when this machine has already been disposed.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown when <see cref="Dispose"/> has already run.</exception>
+    private void ThrowIfDisposed()
+    {
+        if (Volatile.Read(ref disposeState) != 0)
+        {
+            throw new ObjectDisposedException(nameof(Machine));
         }
     }
 

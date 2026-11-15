@@ -33,9 +33,18 @@ public enum StopReason
     MemoryCondition,
 
     /// <summary>
-    /// The cycle budget was exhausted.
+    /// A cycle-count condition was reached.
     /// </summary>
-    CycleLimit,
+    /// <remarks>
+    /// Distinct from <see cref="Budget"/>, which means the run's cycle budget was exhausted
+    /// before any caller-supplied condition matched.
+    /// </remarks>
+    CycleCount,
+
+    /// <summary>
+    /// The execution budget was exhausted.
+    /// </summary>
+    Budget,
 
     /// <summary>
     /// The wall-clock budget was exhausted.
@@ -61,4 +70,9 @@ public enum StopReason
     /// Execution terminated on an error.
     /// </summary>
     Error,
+
+    /// <summary>
+    /// Execution terminated on a fault.
+    /// </summary>
+    Fault,
 }

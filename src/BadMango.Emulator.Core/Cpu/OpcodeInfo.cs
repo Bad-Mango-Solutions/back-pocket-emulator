@@ -5,7 +5,7 @@
 namespace BadMango.Emulator.Core.Cpu;
 
 /// <summary>
-/// Encapsulates decoded opcode information including instruction, addressing mode, and operand length.
+/// Encapsulates decoded opcode information including instruction, addressing mode, operand length, and base cycle cost.
 /// </summary>
 /// <remarks>
 /// This structure provides a complete description of an opcode that can be used for disassembly,
@@ -19,11 +19,13 @@ public readonly record struct OpcodeInfo
     /// <param name="instruction">The CPU instruction mnemonic.</param>
     /// <param name="addressingMode">The addressing mode used by this opcode.</param>
     /// <param name="operandLength">The length of operands in bytes (0, 1, or 2).</param>
-    public OpcodeInfo(CpuInstructions instruction, CpuAddressingModes addressingMode, byte operandLength)
+    /// <param name="baseCycles">The base cycle count for this opcode before conditional penalties.</param>
+    public OpcodeInfo(CpuInstructions instruction, CpuAddressingModes addressingMode, byte operandLength, byte baseCycles = 0)
     {
         Instruction = instruction;
         AddressingMode = addressingMode;
         OperandLength = operandLength;
+        BaseCycles = baseCycles;
     }
 
     /// <summary>
@@ -40,6 +42,11 @@ public readonly record struct OpcodeInfo
     /// Gets the operand length in bytes (0, 1, or 2).
     /// </summary>
     public byte OperandLength { get; }
+
+    /// <summary>
+    /// Gets the base cycle count for this opcode before conditional penalties.
+    /// </summary>
+    public byte BaseCycles { get; }
 
     /// <summary>
     /// Gets a value indicating whether this opcode represents a valid instruction.

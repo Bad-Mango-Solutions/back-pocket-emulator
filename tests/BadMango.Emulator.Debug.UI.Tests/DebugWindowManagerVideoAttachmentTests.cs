@@ -189,7 +189,7 @@ public class DebugWindowManagerVideoAttachmentTests
             pixels,
             mode,
             address => memory.Memory.Span[address],
-            DefaultCharacterRom.GetRomData(),
+            DefaultCharacterRom.RomData.ToArray(),
             false,
             false,
             false,

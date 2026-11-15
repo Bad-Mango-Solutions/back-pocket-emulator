@@ -111,16 +111,15 @@ public class MachineBuilderTests
     }
 
     /// <summary>
-    /// Verifies that a component factory runs after the machine exists and that a null result adds nothing.
+    /// Verifies that a generic component factory runs after the machine exists.
     /// </summary>
     [Test]
-    public void AddComponentFactory_AddsNonNullComponentAfterBuild()
+    public void AddComponentFactory_AddsComponentAfterBuild()
     {
         var mockCpu = CreateMockCpu();
         var machine = new MachineBuilder()
             .WithCpuFactory(_ => mockCpu.Object)
-            .AddComponentFactory(_ => new TestComponent { Name = "FromFactory" })
-            .AddComponentFactory(_ => null)
+            .AddComponentFactory<TestComponent>(_ => new TestComponent { Name = "FromFactory" })
             .Build();
 
         TestComponent? retrieved = machine.GetComponent<TestComponent>();
@@ -129,8 +128,22 @@ public class MachineBuilderTests
         {
             Assert.That(retrieved, Is.Not.Null);
             Assert.That(retrieved!.Name, Is.EqualTo("FromFactory"));
-            Assert.That(machine.GetComponents<TestComponent>().Count(), Is.EqualTo(1));
         });
+    }
+
+    /// <summary>
+    /// Verifies that a factory result of <see langword="null"/> is not registered.
+    /// </summary>
+    [Test]
+    public void AddComponentFactory_NullResult_IsNotRegistered()
+    {
+        var mockCpu = CreateMockCpu();
+        var machine = new MachineBuilder()
+            .WithCpuFactory(_ => mockCpu.Object)
+            .AddComponentFactory<TestComponent>(_ => null)
+            .Build();
+
+        Assert.That(machine.GetComponent<TestComponent>(), Is.Null);
     }
 
     /// <summary>

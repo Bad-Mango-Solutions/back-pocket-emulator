@@ -56,6 +56,37 @@ public interface IDebugSession
     RunResult RunUntil(RunCondition condition, RunBudget budget, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Starts a background run and returns its identifier.
+    /// </summary>
+    /// <param name="condition">The completion condition.</param>
+    /// <param name="budget">The execution budget.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The background run identifier.</returns>
+    Guid StartRun(RunCondition condition, RunBudget budget, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the status of a background run.
+    /// </summary>
+    /// <param name="runId">The run identifier.</param>
+    /// <returns>The completed run result, or <see langword="null"/> while still running or when unknown.</returns>
+    RunResult? GetRunStatus(Guid runId);
+
+    /// <summary>
+    /// Requests cancellation for a background run and waits until that run has finished.
+    /// </summary>
+    /// <param name="runId">The run identifier.</param>
+    /// <param name="timeout">
+    /// How long to wait for the run to finish. <see langword="null"/> uses the implementation default.
+    /// </param>
+    /// <returns><see langword="true"/> if the run was found; otherwise, <see langword="false"/>.</returns>
+    /// <remarks>
+    /// A finished run is a no-op. An active run is cancelled, and the method does not return
+    /// until the run has left the in-flight table or the wait times out. Callers can write
+    /// memory immediately after a successful return.
+    /// </remarks>
+    bool StopRun(Guid runId, TimeSpan? timeout = null);
+
+    /// <summary>
     /// Pauses the running machine.
     /// </summary>
     void Pause();
