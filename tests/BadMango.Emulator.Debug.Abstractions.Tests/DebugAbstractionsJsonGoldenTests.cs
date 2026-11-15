@@ -53,7 +53,7 @@ public class DebugAbstractionsJsonGoldenTests
     }
 
     /// <summary>
-    /// Confirms memory blocks are emitted as arrays rather than base64 payloads.
+    /// Confirms memory blocks emit their data as a hex string rather than base64 or a number array.
     /// </summary>
     [Test]
     public void MemoryBlock_SerializesWithExpectedJson()
@@ -66,11 +66,7 @@ public class DebugAbstractionsJsonGoldenTests
 {
   "address": 49152,
   "length": 3,
-  "data": [
-    1,
-    2,
-    3
-  ],
+  "data": "010203",
   "label": "boot page"
 }
 """));
@@ -213,18 +209,43 @@ public class DebugAbstractionsJsonGoldenTests
     }
 
     /// <summary>
-    /// Confirms run-condition memory values are emitted as numeric arrays rather than base64.
+    /// Confirms run-condition memory values are emitted as hex strings rather than base64.
     /// </summary>
     [Test]
-    public void RunCondition_MemoryValue_SerializesAsNumberArray()
+    public void RunCondition_MemoryValue_SerializesAsHexString()
     {
         var value = new RunCondition(RunConditionKind.MemoryEquals, MemoryAddress: 0x300, MemoryValue: [0x01, 0xA9, 0xFF]);
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.RunCondition);
         using var document = JsonDocument.Parse(json);
-        var memoryValue = document.RootElement.GetProperty("memoryValue");
 
-        Assert.That(memoryValue.ValueKind, Is.EqualTo(JsonValueKind.Array));
-        Assert.That(memoryValue.EnumerateArray().Select(e => e.GetByte()), Is.EqualTo(new byte[] { 0x01, 0xA9, 0xFF }));
+        Assert.That(document.RootElement.GetProperty("memoryValue").GetString(), Is.EqualTo("01A9FF"));
+    }
+
+    /// <summary>
+    /// Confirms hex payloads round-trip, accept lowercase, and stay null when absent.
+    /// </summary>
+    [Test]
+    public void HexPayloads_RoundTrip()
+    {
+        var block = JsonSerializer.Deserialize("""{"address":768,"length":3,"data":"01a9ff"}""", DebugSessionJsonContext.Default.MemoryBlock);
+        var condition = JsonSerializer.Deserialize("""{"kind":0,"memoryValue":null}""", DebugSessionJsonContext.Default.RunCondition);
+
+        Assert.That(block!.Data, Is.EqualTo(new byte[] { 0x01, 0xA9, 0xFF }));
+        Assert.That(condition!.MemoryValue, Is.Null);
+    }
+
+    /// <summary>
+    /// Confirms malformed hex payloads are rejected.
+    /// </summary>
+    /// <param name="data">The malformed JSON value for the data property.</param>
+    [TestCase("\"ABC\"")]
+    [TestCase("\"ZZ\"")]
+    [TestCase("[1,2,3]")]
+    public void HexPayloads_Malformed_Throw(string data)
+    {
+        string json = $$"""{"address":768,"length":3,"data":{{data}}}""";
+
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize(json, DebugSessionJsonContext.Default.MemoryBlock));
     }
 }
