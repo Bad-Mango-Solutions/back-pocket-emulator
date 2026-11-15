@@ -16,10 +16,12 @@ using Interfaces.Cpu;
 /// The table maps 8-bit opcodes (0x00-0xFF) to instruction handlers.
 /// Handlers receive the CPU instance for accessing state and memory through the bus.
 /// </remarks>
-public class OpcodeTable
+public unsafe class OpcodeTable
 {
-    private readonly OpcodeHandler[] handlers;
-    private readonly OpcodeInfo[] metadata;
+    [ThreadStatic]
+    private static OpcodeHandler? currentLegacyHandler;
+
+    private readonly OpcodeEntry[] entries;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OpcodeTable"/> class.
@@ -49,8 +51,11 @@ public class OpcodeTable
             throw new ArgumentException("Opcode metadata table must have exactly 256 entries.", nameof(metadata));
         }
 
-        this.handlers = handlers;
-        this.metadata = metadata.ToArray();
+        entries = new OpcodeEntry[256];
+        for (int i = 0; i < handlers.Length; i++)
+        {
+            entries[i] = new(&LegacyTrampoline, handlers[i], metadata[i]);
+        }
     }
 
     /// <summary>
@@ -61,7 +66,9 @@ public class OpcodeTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Execute(byte opcode, ICpu cpu)
     {
-        handlers[opcode](cpu);
+        ref readonly OpcodeEntry entry = ref entries[opcode];
+        currentLegacyHandler = entry.Legacy;
+        entry.Fn(cpu);
     }
 
     /// <summary>
@@ -72,7 +79,7 @@ public class OpcodeTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public OpcodeHandler GetHandler(byte opcode)
     {
-        return handlers[opcode];
+        return entries[opcode].Legacy!;
     }
 
     /// <summary>
@@ -83,6 +90,11 @@ public class OpcodeTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public OpcodeInfo GetMetadata(byte opcode)
     {
-        return metadata[opcode];
+        return entries[opcode].Metadata;
+    }
+
+    private static void LegacyTrampoline(ICpu cpu)
+    {
+        currentLegacyHandler!(cpu);
     }
 }
