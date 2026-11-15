@@ -18,13 +18,37 @@ using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
 /// <summary>
 /// Implements <see cref="IDebugSession"/> over a live <see cref="IMachine"/> instance.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <see cref="Step"/>, <see cref="RunUntil"/>, <see cref="WriteMemory"/>, and <see cref="Reset"/>
+/// share one <see cref="System.Threading.Lock"/> so those calls cannot interleave.
+/// <see cref="WriteMemory"/> and <see cref="Reset"/> throw <see cref="InvalidOperationException"/>
+/// when a background run is active instead of waiting for it. That run holds the execution lock
+/// until it stops, so waiting would stall the caller and can deadlock completion bookkeeping.
+/// Stop the background run first. A foreground <see cref="Step"/> or <see cref="RunUntil"/> is waited on.
+/// </para>
+/// <para>
+/// <see cref="GetRegisters"/>, <see cref="ReadMemory"/>, <see cref="Disassemble"/>,
+/// <see cref="GetRunStatus"/>, <see cref="GetBreakpoints"/>, <see cref="GetWatchpoints"/>,
+/// and <see cref="GetMachineInfo"/> do not take the execution lock. They are peeks and may
+/// observe a torn snapshot while a run is active.
+/// </para>
+/// <para>
+/// The in-flight run table drops a background run when its task ends, including after
+/// <see cref="StopRun"/>. <see cref="GetRunStatus"/> keeps that result until the next
+/// <see cref="StartRun"/>. <see cref="StopRun"/> on a finished run does not cancel a disposed token.
+/// </para>
+/// </remarks>
 public sealed class MachineDebugSession : IDebugSession
 {
+    private const int ExecutionLockPollMilliseconds = 15;
+
     private readonly Lock executionLock = new();
     private readonly Lock backgroundRunLock = new();
     private readonly IDebugContext debugContext;
     private readonly IMachine machine;
     private readonly Dictionary<Guid, BackgroundRunState> backgroundRuns = [];
+    private readonly Dictionary<Guid, RunResult> completedRuns = [];
     private Guid? activeRunId;
 
     /// <summary>
@@ -80,16 +104,29 @@ public sealed class MachineDebugSession : IDebugSession
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Serialized with execution. Throws <see cref="InvalidOperationException"/> when a background run is active.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">A background run is active.</exception>
     public void WriteMemory(uint address, ReadOnlySpan<byte> data)
     {
-        for (int offset = 0; offset < data.Length; offset++)
+        EnterExecutionUnlessBackgroundRunActive();
+        try
         {
-            var access = CreateDebugWriteAccess(address + (uint)offset, data[offset]);
-            var write = machine.Bus.TryWrite8(access, data[offset]);
-            if (write.Failed)
+            ThrowIfBackgroundRunActive();
+            for (int offset = 0; offset < data.Length; offset++)
             {
-                throw new InvalidOperationException($"Failed to write memory at ${access.Address:X8}: {write.Fault.Kind}.");
+                var access = CreateDebugWriteAccess(address + (uint)offset, data[offset]);
+                var write = machine.Bus.TryWrite8(access, data[offset]);
+                if (write.Failed)
+                {
+                    throw new InvalidOperationException($"Failed to write memory at ${access.Address:X8}: {write.Fault.Kind}.");
+                }
             }
+        }
+        finally
+        {
+            executionLock.Exit();
         }
     }
 
@@ -221,10 +258,13 @@ public sealed class MachineDebugSession : IDebugSession
 
         lock (backgroundRunLock)
         {
-            if (activeRunId is Guid activeId && backgroundRuns.TryGetValue(activeId, out var activeState) && !activeState.Completed)
+            if (activeRunId is Guid activeId && backgroundRuns.ContainsKey(activeId))
             {
                 throw new InvalidOperationException($"Background run '{activeId}' is already active.");
             }
+
+            // Only the latest completed result is retained, so finished runs cannot accumulate.
+            completedRuns.Clear();
 
             Guid runId = Guid.NewGuid();
             var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -232,49 +272,49 @@ public sealed class MachineDebugSession : IDebugSession
             backgroundRuns[runId] = state;
             activeRunId = runId;
 
-            state.Task = Task.Run(
-                () =>
-                {
-                    RunResult result = RunUntil(condition, budget, linkedTokenSource.Token);
-                    lock (backgroundRunLock)
-                    {
-                        state.Result = result;
-                        state.CancellationTokenSource.Dispose();
-                        if (activeRunId == runId)
-                        {
-                            activeRunId = null;
-                        }
-                    }
-                },
-                CancellationToken.None);
-
+            state.Task = Task.Run(() => CompleteBackgroundRun(runId, state, condition, budget), CancellationToken.None);
             return runId;
         }
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A completed result stays available until the next <see cref="StartRun"/>.
+    /// </remarks>
     public RunResult? GetRunStatus(Guid runId)
     {
         lock (backgroundRunLock)
         {
-            return backgroundRuns.TryGetValue(runId, out var state)
-                ? state.Result
-                : null;
+            if (backgroundRuns.ContainsKey(runId))
+            {
+                return null;
+            }
+
+            return completedRuns.TryGetValue(runId, out RunResult? result) ? result : null;
         }
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Stopping a run that has already finished is a no-op and does not throw.
+    /// </remarks>
     public bool StopRun(Guid runId)
     {
-        BackgroundRunState? state;
         lock (backgroundRunLock)
         {
-            if (!backgroundRuns.TryGetValue(runId, out state))
+            if (backgroundRuns.TryGetValue(runId, out BackgroundRunState? state))
+            {
+                // Cancel under the same lock that disposes the source when the task ends.
+                state.TryCancel();
+            }
+            else if (completedRuns.ContainsKey(runId))
+            {
+                return true;
+            }
+            else
             {
                 return false;
             }
-
-            state.CancellationTokenSource.Cancel();
         }
 
         machine.Pause();
@@ -285,9 +325,22 @@ public sealed class MachineDebugSession : IDebugSession
     public void Pause() => machine.Pause();
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Serialized with execution. Throws <see cref="InvalidOperationException"/> when a background run is active.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">A background run is active.</exception>
     public void Reset(ResetKind resetKind)
     {
-        machine.Reset(resetKind is ResetKind.Hard or ResetKind.PowerOn);
+        EnterExecutionUnlessBackgroundRunActive();
+        try
+        {
+            ThrowIfBackgroundRunActive();
+            machine.Reset(resetKind is ResetKind.Hard or ResetKind.PowerOn);
+        }
+        finally
+        {
+            executionLock.Exit();
+        }
     }
 
     /// <inheritdoc />
@@ -420,6 +473,74 @@ public sealed class MachineDebugSession : IDebugSession
         }
     }
 
+    // backgroundRunLock is never held while waiting for executionLock. The background task
+    // takes backgroundRunLock only after RunUntil releases execution. An active background
+    // run is rejected instead of waited on, so this cannot stall until that run finishes.
+    private void EnterExecutionUnlessBackgroundRunActive()
+    {
+        while (true)
+        {
+            ThrowIfBackgroundRunActive();
+            if (executionLock.TryEnter(TimeSpan.FromMilliseconds(ExecutionLockPollMilliseconds)))
+            {
+                return;
+            }
+        }
+    }
+
+    private void ThrowIfBackgroundRunActive()
+    {
+        lock (backgroundRunLock)
+        {
+            if (activeRunId is Guid activeId && backgroundRuns.ContainsKey(activeId))
+            {
+                throw new InvalidOperationException(
+                    "A background run is active. Stop the run before writing memory or resetting the machine.");
+            }
+        }
+    }
+
+    private void CompleteBackgroundRun(Guid runId, BackgroundRunState state, RunCondition condition, RunBudget budget)
+    {
+        RunResult result;
+        try
+        {
+            result = RunUntil(condition, budget, state.CancellationTokenSource.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            result = new RunResult(StopReason.Cancelled, 0, 0, TimeSpan.Zero, TryGetProgramCounter(), "Run cancelled.");
+        }
+        catch (Exception ex)
+        {
+            result = new RunResult(StopReason.Fault, 0, 0, TimeSpan.Zero, TryGetProgramCounter(), ex.Message);
+        }
+
+        lock (backgroundRunLock)
+        {
+            completedRuns[runId] = result;
+            backgroundRuns.Remove(runId);
+            if (activeRunId == runId)
+            {
+                activeRunId = null;
+            }
+
+            state.DisposeCancellationSource();
+        }
+    }
+
+    private uint TryGetProgramCounter()
+    {
+        try
+        {
+            return machine.Cpu.GetPC();
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
+
     private bool TryResolveStop(RunCondition condition, ulong cycleCount, out StopReason stopReason, out string message)
     {
         stopReason = StopReason.Paused;
@@ -515,12 +636,32 @@ public sealed class MachineDebugSession : IDebugSession
 
     private sealed class BackgroundRunState(CancellationTokenSource cancellationTokenSource)
     {
+        private bool cancellationSourceDisposed;
+
         public CancellationTokenSource CancellationTokenSource { get; } = cancellationTokenSource;
 
         public Task? Task { get; set; }
 
-        public RunResult? Result { get; set; }
+        public bool TryCancel()
+        {
+            if (cancellationSourceDisposed)
+            {
+                return false;
+            }
 
-        public bool Completed => Result is not null;
+            CancellationTokenSource.Cancel();
+            return true;
+        }
+
+        public void DisposeCancellationSource()
+        {
+            if (cancellationSourceDisposed)
+            {
+                return;
+            }
+
+            cancellationSourceDisposed = true;
+            CancellationTokenSource.Dispose();
+        }
     }
 }

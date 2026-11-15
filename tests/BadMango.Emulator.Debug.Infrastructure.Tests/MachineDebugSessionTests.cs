@@ -135,6 +135,39 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
     }
 
     /// <summary>
+    /// Verifies a memory read does not wait for a background run that owns execution.
+    /// </summary>
+    [Test]
+    public void ReadMemory_DuringBackgroundRun_DoesNotWaitForExecution()
+    {
+        using var run = BlockedBackgroundRun.Start();
+        var read = Task.Run(() => run.Session.ReadMemory(0x1000, 1));
+        (bool completed, Exception? error) = WaitForTask(read, TimeSpan.FromMilliseconds(500));
+
+        Assert.That(completed, Is.True, "ReadMemory blocked while a background run owned execution.");
+        Assert.That(error, Is.Null);
+        Assert.That(read.Result.Data[0], Is.EqualTo(0xEA));
+    }
+
+    /// <summary>
+    /// Verifies a write is accepted once the background run has finished.
+    /// </summary>
+    [Test]
+    public void WriteMemory_AfterBackgroundRunStops_WritesTheBus()
+    {
+        using var run = BlockedBackgroundRun.Start();
+        Assert.That(run.Session.StopRun(run.RunId), Is.True);
+        run.ReleaseStep();
+
+        RunResult? result = WaitForBackgroundResult(run.Session, run.RunId);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.StopReason, Is.EqualTo(StopReason.Cancelled));
+
+        run.Session.WriteMemory(0x0300, [0x5A]);
+        Assert.That(run.BusWrites, Is.EqualTo(1));
+    }
+
+    /// <summary>
     /// Verifies a write waits for a foreground step instead of entering the bus beside it.
     /// </summary>
     [Test]
@@ -400,6 +433,8 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
                     Interlocked.Increment(ref busWrites);
                     return BusResult.Success();
                 });
+            bus.Setup(x => x.TryRead8(It.Ref<BusAccess>.IsAny))
+                .Returns(BusResult<byte>.Success(0xEA));
 
             var machine = new Mock<IMachine>(MockBehavior.Strict);
             machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
@@ -435,7 +470,10 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         /// </summary>
         public int Resets => Volatile.Read(ref resets);
 
-        private Guid RunId { get; set; }
+        /// <summary>
+        /// Gets the identifier of the parked background run.
+        /// </summary>
+        public Guid RunId { get; private set; }
 
         public static BlockedBackgroundRun Start()
         {
@@ -458,6 +496,11 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
                 throw;
             }
         }
+
+        /// <summary>
+        /// Releases the parked step so the background run can observe cancellation.
+        /// </summary>
+        public void ReleaseStep() => releaseStep.Set();
 
         public void Dispose()
         {
