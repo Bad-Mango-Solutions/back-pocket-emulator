@@ -221,7 +221,7 @@ public sealed class Cpu65C02 : CpuBase
                         Addr rtsHighAddr = PopByte(Cpu65C02Constants.StackBase);
                         byte rtsHighByte = Read8(rtsHighAddr);
                         ushort rtsReturnAddress = (ushort)((rtsHighByte << 8) | rtsLowByte);
-                        Registers.PC.SetAddr((uint)(rtsReturnAddress + 1));
+                        Registers.PC.SetAddr((Addr)((rtsReturnAddress + 1u) & 0xFFFF));
 
                         // Add RTS cycles (6 cycles for RTS)
                         Registers.TCU += 6;
@@ -239,7 +239,7 @@ public sealed class Cpu65C02 : CpuBase
                         Addr rtiHighAddr = PopByte(Cpu65C02Constants.StackBase);
                         byte rtiHighByte = Read8(rtiHighAddr);
                         ushort rtiReturnAddress = (ushort)((rtiHighByte << 8) | rtiLowByte);
-                        Registers.PC.SetAddr(rtiReturnAddress);
+                        Registers.PC.SetAddr((Addr)rtiReturnAddress);
 
                         // Add RTI cycles (6 cycles for RTI)
                         Registers.TCU += 6;
@@ -483,7 +483,7 @@ public sealed class Cpu65C02 : CpuBase
         Registers.P.SetInterruptDisable(true);
         Registers.P.SetDecimalMode(false);
 
-        Registers.PC.SetAddr(Read16(Cpu65C02Constants.ResetVector));
+        Registers.PC.SetAddr((Addr)(Read16(Cpu65C02Constants.ResetVector) & 0xFFFF));
         Registers.TCU += 2;
 
         interruptDisableSample = Registers.P.IsInterruptDisabled();
@@ -499,6 +499,7 @@ public sealed class Cpu65C02 : CpuBase
     {
         var pc = Registers.PC.GetAddr();
         Registers.PC.Advance();
+
         byte value = InstructionFetch8(pc);
 
         // Advance TCU for the opcode fetch cycle

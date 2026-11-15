@@ -953,7 +953,12 @@ public sealed partial class MachineBuilder
         {
             var slotManager = machine.GetComponent<ISlotManager>();
             var languageCard = machine.GetComponent<ILanguageCardState>();
-            var trapRegistry = new TrapRegistry(slotManager, languageCard, memoryContextResolver: null);
+            var internalRomHandler = machine.GetComponent<IInternalRomHandler>();
+            var trapRegistry = new TrapRegistry(
+                slotManager,
+                languageCard,
+                memoryContextResolver: null,
+                internalRomHandler: internalRomHandler);
             machine.AddComponent<ITrapRegistry>(trapRegistry);
         }
 

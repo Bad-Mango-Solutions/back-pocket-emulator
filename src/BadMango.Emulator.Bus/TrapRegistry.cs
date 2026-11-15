@@ -62,6 +62,11 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     private readonly Func<Addr, MemoryContext>? memoryContextResolver;
 
     /// <summary>
+    /// Internal ROM overlay state for slot ROM trap gating.
+    /// </summary>
+    private readonly IInternalRomHandler? internalRomHandler;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="TrapRegistry"/> class.
     /// </summary>
     public TrapRegistry()
@@ -100,14 +105,19 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     /// A delegate that determines the active memory context for a given address.
     /// If null, the default behavior uses Language Card state for $D000-$FFFF addresses.
     /// </param>
+    /// <param name="internalRomHandler">
+    /// The internal ROM handler used to suppress slot ROM traps while INTCXROM/INTC3ROM overlays are active.
+    /// </param>
     public TrapRegistry(
         ISlotManager? slotManager,
         ILanguageCardState? languageCard,
-        Func<Addr, MemoryContext>? memoryContextResolver)
+        Func<Addr, MemoryContext>? memoryContextResolver,
+        IInternalRomHandler? internalRomHandler = null)
     {
         this.slotManager = slotManager;
         this.languageCard = languageCard;
         this.memoryContextResolver = memoryContextResolver;
+        this.internalRomHandler = internalRomHandler;
     }
 
     /// <inheritdoc cref="ITrapRegistryObserver.TrapRegistered" />
@@ -632,6 +642,11 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
                 return false;
             }
 
+            if (IsSuppressedByInternalRomOverlay(entry.Address))
+            {
+                return false;
+            }
+
             // Check expansion ROM selection for $C800-$CFFF traps
             if (entry.RequiresExpansionRom && slotManager.ActiveExpansionSlot != slot)
             {
@@ -640,6 +655,26 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Determines whether slot ROM trap execution is suppressed by active internal ROM overlays.
+    /// </summary>
+    /// <param name="address">The trap address.</param>
+    /// <returns><see langword="true"/> when the internal ROM overlay suppresses the trap.</returns>
+    private bool IsSuppressedByInternalRomOverlay(Addr address)
+    {
+        if (internalRomHandler is null || address < 0xC100 || address > 0xCFFF)
+        {
+            return false;
+        }
+
+        if (internalRomHandler.IsIntCxRomEnabled)
+        {
+            return true;
+        }
+
+        return internalRomHandler.IsIntC3RomEnabled && address >= 0xC300 && address <= 0xC3FF;
     }
 
     /// <summary>
