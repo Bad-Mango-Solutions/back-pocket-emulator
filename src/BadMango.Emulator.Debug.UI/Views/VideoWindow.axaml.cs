@@ -247,7 +247,7 @@ public partial class VideoWindow : Window
         else
         {
             // Fall back to default ROM
-            characterRom = DefaultCharacterRom.GetRomData();
+            characterRom = DefaultCharacterRom.RomData.ToArray();
         }
 
         // Subscribe to CharacterRomChanged event if available

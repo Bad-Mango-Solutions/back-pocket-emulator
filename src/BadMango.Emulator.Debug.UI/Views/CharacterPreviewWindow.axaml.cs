@@ -104,17 +104,20 @@ public partial class CharacterPreviewWindow : Window
             }
         }
 
-        // Fall back to default character ROM if no provider or provider has no ROM
-        if (DefaultCharacterRom.TryGetRomData(out var romData) && romData != null)
+        // Fall back to the default character ROM. A missing resource throws
+        // InvalidOperationException; show the empty state instead of letting it escape.
+        try
         {
-            characterRomData = romData;
-            UpdateCharsetInfoText(fromProvider: false);
-            RenderCharacters();
+            characterRomData = DefaultCharacterRom.RomData.ToArray();
         }
-        else
+        catch (InvalidOperationException)
         {
             CharsetInfoText.Text = "No character ROM available";
+            return;
         }
+
+        UpdateCharsetInfoText(fromProvider: false);
+        RenderCharacters();
     }
 
     private void OnCharacterSetChanged(object? sender, RoutedEventArgs e)

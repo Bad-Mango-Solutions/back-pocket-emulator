@@ -995,7 +995,7 @@ public class VideoWindowTests
             pixels,
             mode,
             readMain,
-            DefaultCharacterRom.GetRomData(),
+            DefaultCharacterRom.RomData.ToArray(),
             false,
             isPage2,
             false,

@@ -235,6 +235,21 @@ public sealed partial class MachineBuilder
     }
 
     /// <summary>
+    /// Adds a component factory whose result is created after device initialization.
+    /// </summary>
+    /// <typeparam name="T">The component type.</typeparam>
+    /// <param name="factory">The factory used to create the component from the built machine.</param>
+    /// <returns>This builder instance for method chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is <see langword="null"/>.</exception>
+    public MachineBuilder AddComponentFactory<T>(Func<IMachine, T> factory)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(factory, nameof(factory));
+        afterDeviceInitCallbacks.Add(machine => ((Machine)machine).AddComponent(factory(machine)));
+        return this;
+    }
+
+    /// <summary>
     /// Adds a scheduled device to the machine.
     /// </summary>
     /// <param name="device">The device to add.</param>
@@ -915,7 +930,7 @@ public sealed partial class MachineBuilder
             : CreateDefaultCpu(cpuFamily, tempContext);
 
         // Create machine
-        var machine = new Machine(cpu, bus, scheduler, signals, devices);
+        var machine = new Machine(cpu, bus, scheduler, signals, devices, logger);
 
         // Configure clock speed for CPU throttling
         machine.ClockSpeedHz = clockSpeedHz;
