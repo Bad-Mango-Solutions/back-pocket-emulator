@@ -318,6 +318,7 @@ public abstract class ExecutionCommandBase : CommandHandlerBase, ICommandHelp
         ArgumentNullException.ThrowIfNull(shouldTerminate);
 
         var cpu = debugContext.Cpu!;
+        var machine = debugContext.Machine;
         var tracingListener = debugContext.TracingListener;
         bool tracingWasEnabled = tracingListener?.IsEnabled ?? false;
 
@@ -346,7 +347,13 @@ public abstract class ExecutionCommandBase : CommandHandlerBase, ICommandHelp
                     break;
                 }
 
-                if (cpu.Halted)
+                // WAI sets HaltReason, so Halted is true, but it is not terminal while a
+                // machine is attached. The next Step services any interrupt the scheduler
+                // just dispatched and clears WAI inside TryServiceBoundary/CheckInterrupts.
+                // STP and every other halt still stop the loop. With no machine, WAI is
+                // reported after Step returns WaitingForInterrupt.
+                bool waitingForMachineInterrupt = machine is not null && cpu.IsWaitingForInterrupt;
+                if (cpu.Halted && !waitingForMachineInterrupt)
                 {
                     stopReason = $"CPU halted ({cpu.HaltReason})";
                     normalCompletion = true;
@@ -363,9 +370,28 @@ public abstract class ExecutionCommandBase : CommandHandlerBase, ICommandHelp
                 // Get the opcode before stepping (for derived class termination check)
                 byte opcode = cpu.Peek8(cpu.GetPC());
 
-                var result = cpu.Step();
+                var result = machine?.Step() ?? cpu.Step();
                 instructionCount++;
                 cycleCount += (long)result.CyclesConsumed.Value;
+
+                if (result.State == Core.Cpu.CpuRunState.WaitingForInterrupt)
+                {
+                    if (machine?.Scheduler.JumpToNextEventAndDispatch() == true)
+                    {
+                        continue;
+                    }
+
+                    stopReason = "CPU waiting for interrupt";
+                    normalCompletion = true;
+                    break;
+                }
+
+                if (result.State is Core.Cpu.CpuRunState.Stopped or Core.Cpu.CpuRunState.Halted)
+                {
+                    stopReason = $"CPU halted ({cpu.HaltReason})";
+                    normalCompletion = true;
+                    break;
+                }
 
                 // Check custom termination condition
                 if (shouldTerminate(debugContext, opcode))
