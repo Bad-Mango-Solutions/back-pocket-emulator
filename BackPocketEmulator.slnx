@@ -121,8 +121,12 @@
     <Project Path="src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj" />
     <Project Path="src/BadMango.Emulator.UI/BadMango.Emulator.UI.csproj" />
   </Folder>
+  <Folder Name="/spikes/">
+    <Project Path="spikes/BadMango.Emulator.CpuCycleSpike.Bench/BadMango.Emulator.CpuCycleSpike.Bench.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BadMango.Emulator.Bus.Tests/BadMango.Emulator.Bus.Tests.csproj" />
+    <Project Path="tests/BadMango.Emulator.CpuCycleSpike.Tests/BadMango.Emulator.CpuCycleSpike.Tests.csproj" />
     <Project Path="tests/BadMango.Emulator.Configuration.Tests/BadMango.Emulator.Configuration.Tests.csproj" />
     <Project Path="tests/BadMango.Emulator.Debug.Abstractions.Tests/BadMango.Emulator.Debug.Abstractions.Tests.csproj" />
     <Project Path="tests/BadMango.Emulator.Debug.Infrastructure.Tests/BadMango.Emulator.Debug.Infrastructure.Tests.csproj" />
