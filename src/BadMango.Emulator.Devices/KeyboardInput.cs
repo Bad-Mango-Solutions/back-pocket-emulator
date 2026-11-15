@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Devices;
 
+using System.Collections;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
@@ -11,109 +13,159 @@ using BadMango.Emulator.Core;
 using Interfaces;
 
 /// <summary>
-/// Machine-scoped keyboard input multiplexer that accepts host input and typed text and applies
-/// both on the machine thread through the scheduler.
+/// Per-machine keyboard input. Host calls from any thread are queued and applied on the machine
+/// thread; typed text is scheduled in emulated time.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <see cref="KeyDown"/>, <see cref="KeyUp"/>, <see cref="TypeText"/> and <see cref="CancelTyping"/>
+/// append to a lock-protected FIFO and <see cref="IMachineDispatcher.Post"/> one drain. The drain
+/// schedules a single <see cref="ScheduledEventKind.DeferredWork"/> event, and that event applies
+/// the batch. Input is never applied directly from the calling thread. When
+/// the dispatcher is <see langword="null"/>, the drain runs inline and still applies
+/// the batch through <see cref="ScheduledEventKind.DeferredWork"/>.
+/// </para>
+/// <para>
+/// <see cref="TypeText"/> steps (key down, hold, key up, gap, and strobe-wait re-check) are
+/// <see cref="ScheduledEventKind.DeviceTimer"/> events. The next key starts only from its own
+/// event, after <see cref="IHostKeyboardSink.IsReadyForTypedKey"/> when waiting is enabled.
+/// Milliseconds become cycles as <c>(long)(ms * cpuClockHz / 1000)</c>, rounded down.
+/// </para>
+/// <para>
+/// <see cref="CancelTyping"/> and RESET bump a generation counter, drop queued text, and release
+/// the typed key. Device-timer callbacks from an older generation are no-ops. RESET itself flushes
+/// device timers; this object implements <see cref="IResetReceiver"/> so the release still happens.
+/// Live host keys are not released.
+/// </para>
+/// </remarks>
 public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
 {
     private const string InputDrainTag = "keyboard-input";
     private const string TypingTag = "keyboard-type";
 
-    private readonly object sync = new();
-    private readonly Queue<InputEvent> pendingHostEvents = new();
+    private readonly Lock gate = new();
+    private readonly Queue<WorkItem> pending = new();
+    private readonly Queue<TypedKey> typingQueue = new();
     private readonly List<JournalEntry> entries = [];
+    private readonly HashSet<KeyboardKey> liveHeldKeys = [];
     private readonly IHostKeyboardSink sink;
     private readonly IScheduler scheduler;
     private readonly IMachineDispatcher? dispatcher;
     private readonly double cpuClockHz;
-    private readonly Dictionary<KeyboardKey, bool> liveHeldKeys = new();
-    private readonly Queue<TypedKeyWorkItem> typingQueue = new();
     private KeyboardModifiers liveModifiers = KeyboardModifiers.None;
-    private bool drainScheduled;
-    private bool typingActive;
+    private KeyboardKey? heldTypedKey;
+    private bool drainPosted;
+    private bool chainRunning;
     private int typingGeneration;
+    private int unappliedTyping;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KeyboardInput"/> class.
     /// </summary>
-    /// <param name="sink">The keyboard sink that receives applied host and typed key state.</param>
-    /// <param name="scheduler">The machine scheduler used to apply queued work in emulated time.</param>
-    /// <param name="dispatcher">Optional dispatcher used to marshal work onto the machine thread.</param>
-    /// <param name="cpuClockHz">The emulated CPU clock speed in hertz.</param>
+    /// <param name="sink">The keyboard that receives applied host and typed keys. Called only on the machine thread.</param>
+    /// <param name="scheduler">The machine scheduler. Events are scheduled only on the machine thread.</param>
+    /// <param name="dispatcher">Marshals the drain onto the machine thread. <see langword="null"/> runs the drain inline.</param>
+    /// <param name="cpuClockHz">The profile CPU clock in hertz, used to convert typing delays into cycles.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="sink"/> or <paramref name="scheduler"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="cpuClockHz"/> is negative or not a finite number.</exception>
     public KeyboardInput(IHostKeyboardSink sink, IScheduler scheduler, IMachineDispatcher? dispatcher, double cpuClockHz)
     {
-        this.sink = sink ?? throw new ArgumentNullException(nameof(sink));
-        this.scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
+        ArgumentNullException.ThrowIfNull(sink);
+        ArgumentNullException.ThrowIfNull(scheduler);
+        if (double.IsNaN(cpuClockHz) || double.IsInfinity(cpuClockHz) || cpuClockHz < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cpuClockHz), cpuClockHz, "CPU clock must be a non-negative finite number of hertz.");
+        }
+
+        this.sink = sink;
+        this.scheduler = scheduler;
         this.dispatcher = dispatcher;
         this.cpuClockHz = cpuClockHz;
     }
 
-    /// <inheritdoc />
-    public bool IsTyping => typingActive;
-
-    /// <inheritdoc />
-    public IKeyboardInputJournal Journal => new KeyboardInputJournal(entries);
-
-    /// <inheritdoc />
-    public void KeyDown(KeyboardKey key, KeyboardModifiers modifiers)
+    private enum WorkKind
     {
-        QueueHostEvent(InputEvent.KeyDownEvent(key, modifiers));
+        KeyDown,
+        KeyUp,
+        Cancel,
+        Type,
     }
 
     /// <inheritdoc />
-    public void KeyUp(KeyboardKey key, KeyboardModifiers modifiers)
+    public bool IsTyping
     {
-        QueueHostEvent(InputEvent.KeyUpEvent(key, modifiers));
+        get
+        {
+            lock (gate)
+            {
+                return chainRunning || heldTypedKey is not null || typingQueue.Count > 0 || unappliedTyping > 0;
+            }
+        }
     }
+
+    /// <inheritdoc />
+    public IKeyboardInputJournal Journal
+    {
+        get
+        {
+            lock (gate)
+            {
+                return new JournalView(entries.ToArray());
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void KeyDown(KeyboardKey key, KeyboardModifiers modifiers) =>
+        Enqueue(WorkItem.KeyDown(key, modifiers));
+
+    /// <inheritdoc />
+    public void KeyUp(KeyboardKey key, KeyboardModifiers modifiers) =>
+        Enqueue(WorkItem.KeyUp(key, modifiers));
 
     /// <inheritdoc />
     public TypeTextReceipt TypeText(string text, TypeTextOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(text);
-        var typedOptions = options ?? new TypeTextOptions();
+        TypeTextOptions effective = options ?? new TypeTextOptions();
+        Validate(effective);
 
-        var skipped = new List<char>();
-        var rejected = false;
-        var sequence = BuildTypedSequence(text, typedOptions, skipped, ref rejected, out int acceptedCount);
-
-        if (sequence.Count == 0)
+        TypingPlan plan = Plan(text, effective);
+        if (plan.Rejected || plan.Keys.Length == 0)
         {
-            return new TypeTextReceipt(acceptedCount, skipped, rejected);
+            return plan.Receipt;
         }
 
-        int generation = ++typingGeneration;
-        lock (sync)
-        {
-            typingQueue.Clear();
-            foreach (var item in sequence)
-            {
-                typingQueue.Enqueue(item);
-            }
-
-            typingActive = true;
-        }
-
-        scheduler.ScheduleAfter(0, ScheduledEventKind.DeviceTimer, 0, _ => ProcessNextTypedKey(generation), TypingTag);
-        return new TypeTextReceipt(acceptedCount, skipped, rejected);
+        Enqueue(WorkItem.Type(plan.Keys));
+        return plan.Receipt;
     }
 
     /// <inheritdoc />
     public void CancelTyping()
     {
-        lock (sync)
+        lock (gate)
         {
             typingGeneration++;
             typingQueue.Clear();
-            typingActive = false;
-            sink.ReleaseAllTypedKeys();
-            entries.Add(new JournalEntry(scheduler.Now, InputEvent.CancelTypingEvent()));
+            chainRunning = false;
         }
+
+        Enqueue(WorkItem.Cancel());
     }
 
     /// <inheritdoc />
     public void OnResetAsserted(Cycle cycle)
     {
-        CancelTyping();
+        lock (gate)
+        {
+            typingGeneration++;
+            typingQueue.Clear();
+            chainRunning = false;
+        }
+
+        // RESET has already flushed device timers. Release the typed key here, on the machine
+        // thread, so it is up before the reset handler returns. Live keys stay down.
+        ReleaseCancelledTyping();
     }
 
     /// <inheritdoc />
@@ -121,382 +173,462 @@ public sealed class KeyboardInput : IKeyboardInput, IResetReceiver
     {
     }
 
-    private void QueueHostEvent(InputEvent inputEvent)
+    private void Enqueue(WorkItem item)
     {
-        lock (sync)
+        bool post;
+        lock (gate)
         {
-            pendingHostEvents.Enqueue(inputEvent);
-            if (drainScheduled)
+            if (item.Kind == WorkKind.Type)
             {
-                return;
+                item = item.WithGeneration(typingGeneration);
+                unappliedTyping++;
             }
 
-            drainScheduled = true;
+            pending.Enqueue(item);
+            post = !drainPosted;
+            drainPosted = true;
         }
 
-        void DrainPending()
+        if (post)
         {
-            ApplyPendingHostEvents();
+            PostDrain();
         }
+    }
 
+    private void PostDrain()
+    {
         if (dispatcher is null)
         {
-            DrainPending();
+            Drain();
             return;
         }
 
-        dispatcher.Post(DrainPending);
+        dispatcher.Post(Drain);
     }
 
-    private void ApplyPendingHostEvents()
+    private void Drain()
     {
-        List<InputEvent> batch;
-        lock (sync)
+        WorkItem[] batch;
+        lock (gate)
         {
-            if (pendingHostEvents.Count == 0)
+            batch = pending.ToArray();
+            pending.Clear();
+            drainPosted = false;
+        }
+
+        scheduler.ScheduleAfter(0, ScheduledEventKind.DeferredWork, 0, _ => ApplyBatch(batch), InputDrainTag);
+    }
+
+    private void ApplyBatch(WorkItem[] batch)
+    {
+        foreach (WorkItem item in batch)
+        {
+            switch (item.Kind)
             {
-                drainScheduled = false;
+                case WorkKind.KeyDown:
+                    ApplyKeyDown(item.Key, item.Modifiers);
+                    break;
+                case WorkKind.KeyUp:
+                    ApplyKeyUp(item.Key, item.Modifiers);
+                    break;
+                case WorkKind.Cancel:
+                    ReleaseCancelledTyping();
+                    break;
+                case WorkKind.Type:
+                    ApplyType(item);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        ArmTypingChain();
+    }
+
+    private void ApplyKeyDown(KeyboardKey key, KeyboardModifiers modifiers)
+    {
+        lock (gate)
+        {
+            if (!liveHeldKeys.Add(key))
+            {
+                // Host auto-repeat. The machine keyboard generates its own repeat.
                 return;
             }
 
-            batch = new List<InputEvent>(pendingHostEvents.Count);
-            while (pendingHostEvents.Count > 0)
+            liveModifiers = modifiers;
+        }
+
+        sink.OnHostKeyDown(key, modifiers);
+        AppendJournal(InputEvent.KeyDownEvent(key, modifiers));
+    }
+
+    private void ApplyKeyUp(KeyboardKey key, KeyboardModifiers modifiers)
+    {
+        lock (gate)
+        {
+            liveHeldKeys.Remove(key);
+            liveModifiers = modifiers;
+        }
+
+        sink.OnHostKeyUp(key, modifiers);
+        AppendJournal(InputEvent.KeyUpEvent(key, modifiers));
+    }
+
+    private void ApplyType(WorkItem item)
+    {
+        lock (gate)
+        {
+            if (unappliedTyping > 0)
             {
-                batch.Add(pendingHostEvents.Dequeue());
+                unappliedTyping--;
             }
 
-            drainScheduled = false;
-        }
+            if (item.Generation != typingGeneration || item.Keys is null)
+            {
+                return;
+            }
 
-        scheduler.ScheduleAfter(0, ScheduledEventKind.DeferredWork, 0, _ => ApplyHostBatch(batch), InputDrainTag);
-    }
-
-    private void ApplyHostBatch(List<InputEvent> batch)
-    {
-        foreach (var input in batch)
-        {
-            ApplyHostEvent(input);
+            foreach (TypedKey key in item.Keys)
+            {
+                typingQueue.Enqueue(key);
+            }
         }
     }
 
-    private void ApplyHostEvent(InputEvent input)
+    private void ArmTypingChain()
     {
-        switch (input.Kind)
+        int generation;
+        lock (gate)
         {
-            case InputEventKind.KeyDown:
-                if (!liveHeldKeys.ContainsKey(input.Key))
+            if (chainRunning || typingQueue.Count == 0)
+            {
+                return;
+            }
+
+            chainRunning = true;
+            generation = typingGeneration;
+        }
+
+        scheduler.ScheduleAfter(0, ScheduledEventKind.DeviceTimer, 0, _ => ProcessNext(generation), TypingTag);
+    }
+
+    private void ProcessNext(int generation)
+    {
+        TypedKey item;
+        lock (gate)
+        {
+            if (generation != typingGeneration)
+            {
+                return;
+            }
+
+            if (typingQueue.Count == 0)
+            {
+                chainRunning = false;
+                return;
+            }
+
+            item = typingQueue.Peek();
+        }
+
+        if (item.WaitForConsumption && !sink.IsReadyForTypedKey)
+        {
+            lock (gate)
+            {
+                if (generation != typingGeneration)
                 {
-                    sink.OnHostKeyDown(input.Key, input.Modifiers);
-                    liveHeldKeys[input.Key] = true;
+                    return;
                 }
+            }
 
-                liveModifiers = input.Modifiers;
-                break;
-            case InputEventKind.KeyUp:
-                sink.OnHostKeyUp(input.Key, input.Modifiers);
-                liveHeldKeys.Remove(input.Key);
-                liveModifiers = input.Modifiers;
-                break;
-            default:
-                break;
-        }
-
-        AppendJournalEntry(input);
-    }
-
-    private void AppendJournalEntry(InputEvent inputEvent)
-    {
-        lock (sync)
-        {
-            entries.Add(new JournalEntry(scheduler.Now, inputEvent));
-        }
-    }
-
-    private void ProcessNextTypedKey(int generation)
-    {
-        if (generation != typingGeneration)
-        {
+            scheduler.ScheduleAfter(item.PollCycles, ScheduledEventKind.DeviceTimer, 0, _ => ProcessNext(generation), TypingTag);
             return;
         }
 
-        TypedKeyWorkItem current;
-        lock (sync)
+        lock (gate)
         {
-            if (typingQueue.Count == 0)
+            if (generation != typingGeneration || typingQueue.Count == 0)
             {
-                typingActive = false;
-                RestoreModifierSnapshot();
                 return;
             }
 
-            current = typingQueue.Peek();
+            item = typingQueue.Dequeue();
+            heldTypedKey = item.Key;
         }
 
-        if (current.WaitForConsumption && !sink.IsReadyForTypedKey)
-        {
-            scheduler.ScheduleAfter(MillisecondsToCycles(current.StrobeWaitPollMs), ScheduledEventKind.DeviceTimer, 0, _ => ProcessNextTypedKey(generation), TypingTag);
-            return;
-        }
+        sink.OnHostKeyDown(item.Key, item.Modifiers);
+        AppendJournal(InputEvent.TypedKeyDownEvent(item.Key, item.Modifiers));
+        scheduler.ScheduleAfter(item.HoldCycles, ScheduledEventKind.DeviceTimer, 0, _ => ReleaseTyped(generation, item), TypingTag);
+    }
 
-        lock (sync)
+    private void ReleaseTyped(int generation, TypedKey item)
+    {
+        lock (gate)
         {
-            if (typingQueue.Count == 0)
+            if (generation != typingGeneration)
             {
-                typingActive = false;
-                RestoreModifierSnapshot();
                 return;
             }
 
-            current = typingQueue.Dequeue();
+            if (heldTypedKey == item.Key)
+            {
+                heldTypedKey = null;
+            }
         }
 
-        var typedDownEvent = InputEvent.TypedKeyDownEvent(current.Key, current.Modifiers);
-        sink.OnHostKeyDown(current.Key, current.Modifiers);
-        AppendJournalEntry(typedDownEvent);
-
-        scheduler.ScheduleAfter(current.HoldCycles, ScheduledEventKind.DeviceTimer, 0, _ => ReleaseTypedKey(generation, current), TypingTag);
-    }
-
-    private void ReleaseTypedKey(int generation, TypedKeyWorkItem item)
-    {
-        if (generation != typingGeneration)
-        {
-            return;
-        }
-
-        var typedUpEvent = InputEvent.TypedKeyUpEvent(item.Key, item.Modifiers);
         sink.OnHostKeyUp(item.Key, item.Modifiers);
-        AppendJournalEntry(typedUpEvent);
+        AppendJournal(InputEvent.TypedKeyUpEvent(item.Key, item.Modifiers));
+        RestoreLiveModifiers();
 
-        if (typingQueue.Count == 0)
+        bool more;
+        int currentGeneration;
+        lock (gate)
         {
-            typingActive = false;
-            RestoreModifierSnapshot();
+            if (generation != typingGeneration)
+            {
+                return;
+            }
+
+            more = typingQueue.Count > 0;
+            currentGeneration = typingGeneration;
+            if (!more)
+            {
+                chainRunning = false;
+            }
+        }
+
+        if (!more)
+        {
             return;
         }
 
-        var gap = item.GapCycles;
-        scheduler.ScheduleAfter(gap, ScheduledEventKind.DeviceTimer, 0, _ => ProcessNextTypedKey(generation), TypingTag);
+        ulong delay = item.GapCycles + item.ReturnExtraCycles;
+        scheduler.ScheduleAfter(delay, ScheduledEventKind.DeviceTimer, 0, _ => ProcessNext(currentGeneration), TypingTag);
     }
 
-    private void RestoreModifierSnapshot()
+    private void ReleaseCancelledTyping()
     {
-        if (liveModifiers == KeyboardModifiers.None)
+        KeyboardKey? held;
+        KeyboardModifiers snapshot;
+        lock (gate)
         {
-            return;
+            held = heldTypedKey;
+            heldTypedKey = null;
+            snapshot = liveModifiers;
         }
 
-        foreach (KeyboardKey key in Enum.GetValues<KeyboardKey>())
+        // Only a key TypeText is holding is released. Live keys and modifiers, including ones
+        // set through the legacy device API, stay as they are. Pushing the input layer's
+        // snapshot when it is not typing would clear them.
+        if (held is KeyboardKey key)
         {
-            if (key == KeyboardKey.None || key == KeyboardKey.Reset || key == KeyboardKey.Power)
-            {
-                continue;
-            }
+            sink.OnHostKeyUp(key, snapshot);
+            sink.OnHostKeyUp(KeyboardKey.None, snapshot);
+        }
 
-            var modifier = key switch
-            {
-                KeyboardKey.LeftShift or KeyboardKey.RightShift => KeyboardModifiers.Shift,
-                KeyboardKey.LeftControl or KeyboardKey.RightControl => KeyboardModifiers.Control,
-                KeyboardKey.CapsLock => KeyboardModifiers.CapsLock,
-                KeyboardKey.LeftOption or KeyboardKey.RightOption => KeyboardModifiers.OpenApple,
-                KeyboardKey.LeftCommand or KeyboardKey.RightCommand => KeyboardModifiers.ClosedApple,
-                _ => KeyboardModifiers.None,
-            };
+        sink.ReleaseAllTypedKeys();
+        AppendJournal(InputEvent.CancelTypingEvent());
+    }
 
-            if (modifier != KeyboardModifiers.None && liveModifiers.HasFlag(modifier))
-            {
-                sink.OnHostKeyDown(key, liveModifiers);
-            }
+    private void RestoreLiveModifiers()
+    {
+        KeyboardModifiers snapshot;
+        lock (gate)
+        {
+            snapshot = liveModifiers;
+        }
+
+        // Push the last live snapshot back. KeyboardKey.None is not a held key, so this does not
+        // change AKD; it only restores modifier soft switches after a typed key's own snapshot.
+        sink.OnHostKeyUp(KeyboardKey.None, snapshot);
+    }
+
+    private void AppendJournal(InputEvent inputEvent)
+    {
+        var entry = new JournalEntry(scheduler.Now, inputEvent);
+        lock (gate)
+        {
+            entries.Add(entry);
         }
     }
 
-    private static List<TypedKeyWorkItem> BuildTypedSequence(
-        string text,
-        TypeTextOptions options,
-        List<char> skipped,
-        ref bool rejected,
-        out int acceptedCount)
+    private TypingPlan Plan(string text, TypeTextOptions options)
     {
-        var sequence = new List<TypedKeyWorkItem>();
-        acceptedCount = 0;
+        var skipped = new List<char>();
+        var keys = new List<TypedKey>();
+        bool rejected = false;
+        int gapMs = options.GapMs ?? Math.Max(1, options.HoldMs / 5);
+        ulong holdCycles = MillisecondsToCycles(options.HoldMs);
+        ulong gapCycles = MillisecondsToCycles(gapMs);
+        ulong pollCycles = MillisecondsToCycles(options.StrobeWaitPollMs);
+        ulong returnExtra = MillisecondsToCycles(options.ReturnDelayMs);
 
-        for (var i = 0; i < text.Length; i++)
+        for (int i = 0; i < text.Length; i++)
         {
             char ch = text[i];
             if (ch == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
             {
                 i++;
-                ch = '\r';
-            }
-
-            if (ch == '
-' || ch == '
-')
-            {
-                var evaluated = CharacterToKey(char.ToUpperInvariant('r'), options, out bool mapped);
-                if (mapped)
-                {
-                    sequence.Add(evaluated);
-                    acceptedCount++;
-                }
-
+                keys.Add(MakeTyped(KeyboardKey.Return, KeyboardModifiers.None, holdCycles, gapCycles, pollCycles, returnExtra, options));
                 continue;
             }
 
-            if (ch == '	')
+            if (ch is '\n' or '\r')
             {
-                var evaluated = CharacterToKey('	', options, out bool mapped);
-                if (mapped)
-                {
-                    sequence.Add(evaluated);
-                    acceptedCount++;
-                }
-
+                keys.Add(MakeTyped(KeyboardKey.Return, KeyboardModifiers.None, holdCycles, gapCycles, pollCycles, returnExtra, options));
                 continue;
             }
 
-            if (ch == '')
+            if (ch == '\t')
             {
-                var evaluated = CharacterToKey('', options, out bool mapped);
-                if (mapped)
-                {
-                    sequence.Add(evaluated);
-                    acceptedCount++;
-                }
-
+                keys.Add(MakeTyped(KeyboardKey.Tab, KeyboardModifiers.None, holdCycles, gapCycles, pollCycles, returnExtra, options));
                 continue;
             }
 
-            var mappedChar = ch;
-            if (options.ForceUppercase && char.IsLetter(ch) && char.IsLower(ch))
+            if (ch == '\b')
             {
-                mappedChar = char.ToUpperInvariant(ch);
+                keys.Add(MakeTyped(KeyboardKey.Backspace, KeyboardModifiers.None, holdCycles, gapCycles, pollCycles, returnExtra, options));
+                continue;
             }
 
-            var item = CharacterToKey(mappedChar, options, out bool resolved);
-            if (resolved)
+            char mapped = options.ForceUppercase && char.IsLetter(ch) && char.IsLower(ch)
+                ? char.ToUpperInvariant(ch)
+                : ch;
+
+            if (sink.TryGetKeystroke(mapped, out HostKeystroke keystroke))
             {
-                sequence.Add(item);
-                acceptedCount++;
+                keys.Add(MakeTyped(keystroke.Key, keystroke.Modifiers, holdCycles, gapCycles, pollCycles, returnExtra, options));
+                continue;
             }
-            else if (options.Unmappable == UnmappableCharacterPolicy.Reject)
+
+            if (options.Unmappable == UnmappableCharacterPolicy.Reject)
             {
                 rejected = true;
-            }
-            else if (options.Unmappable == UnmappableCharacterPolicy.Replace)
-            {
-                var replacement = options.ReplacementChar;
-                var replacementItem = CharacterToKey(replacement, options, out bool replacementMapped);
-                if (replacementMapped)
-                {
-                    sequence.Add(replacementItem);
-                    acceptedCount++;
-                }
-                else
-                {
-                    rejected = true;
-                }
-            }
-            else
-            {
                 skipped.Add(ch);
-            }
-        }
-
-        return sequence;
-    }
-
-    private static TypedKeyWorkItem CharacterToKey(char value, TypeTextOptions options, out bool resolved)
-    {
-        resolved = false;
-        var holdCycles = MillisecondsToCycles(options.HoldMs);
-        var gap = options.GapMs ?? Math.Max(1, options.HoldMs / 5);
-        var gapCycles = MillisecondsToCycles(gap);
-
-        KeyboardKey mappedKey = value switch
-        {
-            '
-' => KeyboardKey.Return,
-            '
-' => KeyboardKey.Return,
-            '	' => KeyboardKey.Tab,
-            '' => KeyboardKey.Backspace,
-            _ => KeyboardKey.None,
-        };
-
-        if (mappedKey != KeyboardKey.None)
-        {
-            resolved = true;
-            return new TypedKeyWorkItem(mappedKey, KeyboardModifiers.None, holdCycles, gapCycles, options.StrobeWaitPollMs, true);
-        }
-
-        var performed = CharacterToHostKeystroke(value);
-        if (!performed.HasValue)
-        {
-            return default;
-        }
-
-        resolved = true;
-        return new TypedKeyWorkItem(performed.Value.Key, performed.Value.Modifiers, holdCycles, gapCycles, options.StrobeWaitPollMs, options.WaitForConsumption);
-    }
-
-    private static HostKeystroke? CharacterToHostKeystroke(char value)
-    {
-        if (value is '
-' or '
-' or '	' or '')
-        {
-            return null;
-        }
-
-        foreach (KeyboardKey key in Enum.GetValues<KeyboardKey>())
-        {
-            if (key is KeyboardKey.None or KeyboardKey.Reset or KeyboardKey.Power)
-            {
                 continue;
             }
 
-            foreach (var modifiers in new[] { KeyboardModifiers.None, KeyboardModifiers.Shift, KeyboardModifiers.Control, KeyboardModifiers.Control | KeyboardModifiers.Shift })
+            if (options.Unmappable == UnmappableCharacterPolicy.Replace)
             {
-                var translated = new AppleIIeKeyTranslator().Translate(key, modifiers);
-                if (translated is not null && (char)translated.Value == value)
+                char replacement = options.ForceUppercase && char.IsLetter(options.ReplacementChar) && char.IsLower(options.ReplacementChar)
+                    ? char.ToUpperInvariant(options.ReplacementChar)
+                    : options.ReplacementChar;
+                if (replacement != ch && sink.TryGetKeystroke(replacement, out HostKeystroke replaced))
                 {
-                    return new HostKeystroke(key, modifiers);
+                    keys.Add(MakeTyped(replaced.Key, replaced.Modifiers, holdCycles, gapCycles, pollCycles, returnExtra, options));
+                    continue;
                 }
+
+                skipped.Add(ch);
+                continue;
             }
+
+            skipped.Add(ch);
         }
 
-        return null;
+        if (rejected)
+        {
+            return new TypingPlan(new TypeTextReceipt(0, skipped, true), [], true);
+        }
+
+        return new TypingPlan(new TypeTextReceipt(keys.Count, skipped, false), keys.ToArray(), false);
     }
 
-    private static ulong MillisecondsToCycles(int milliseconds)
+    private TypedKey MakeTyped(
+        KeyboardKey key,
+        KeyboardModifiers modifiers,
+        ulong holdCycles,
+        ulong gapCycles,
+        ulong pollCycles,
+        ulong returnExtra,
+        TypeTextOptions options) =>
+        new(
+            key,
+            modifiers,
+            holdCycles,
+            gapCycles,
+            pollCycles,
+            key == KeyboardKey.Return ? returnExtra : 0,
+            options.WaitForConsumption);
+
+    private ulong MillisecondsToCycles(int milliseconds)
     {
-        return (ulong)Math.Max(0L, (long)Math.Floor(milliseconds * (1_020_484d / 1000.0)));
+        if (milliseconds <= 0 || cpuClockHz <= 0)
+        {
+            return 0;
+        }
+
+        return (ulong)(long)(milliseconds * cpuClockHz / 1000.0);
     }
 
-    private readonly record struct TypedKeyWorkItem(
+    private void Validate(TypeTextOptions options)
+    {
+        if (options.HoldMs < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.HoldMs, "HoldMs cannot be negative.");
+        }
+
+        if (options.GapMs is < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.GapMs, "GapMs cannot be negative.");
+        }
+
+        if (options.StrobeWaitPollMs < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.StrobeWaitPollMs, "StrobeWaitPollMs cannot be negative.");
+        }
+
+        if (options.ReturnDelayMs < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.ReturnDelayMs, "ReturnDelayMs cannot be negative.");
+        }
+    }
+
+    private readonly record struct WorkItem(
+        WorkKind Kind,
+        KeyboardKey Key,
+        KeyboardModifiers Modifiers,
+        int Generation,
+        TypedKey[]? Keys)
+    {
+        public static WorkItem KeyDown(KeyboardKey key, KeyboardModifiers modifiers) =>
+            new(WorkKind.KeyDown, key, modifiers, 0, null);
+
+        public static WorkItem KeyUp(KeyboardKey key, KeyboardModifiers modifiers) =>
+            new(WorkKind.KeyUp, key, modifiers, 0, null);
+
+        public static WorkItem Cancel() =>
+            new(WorkKind.Cancel, KeyboardKey.None, KeyboardModifiers.None, 0, null);
+
+        public static WorkItem Type(TypedKey[] keys) =>
+            new(WorkKind.Type, KeyboardKey.None, KeyboardModifiers.None, 0, keys);
+
+        public WorkItem WithGeneration(int generation) => this with { Generation = generation };
+    }
+
+    private readonly record struct TypedKey(
         KeyboardKey Key,
         KeyboardModifiers Modifiers,
         ulong HoldCycles,
         ulong GapCycles,
-        int StrobeWaitPollMs,
+        ulong PollCycles,
+        ulong ReturnExtraCycles,
         bool WaitForConsumption);
 
-    private sealed class KeyboardInputJournal : IKeyboardInputJournal
+    private readonly record struct TypingPlan(TypeTextReceipt Receipt, TypedKey[] Keys, bool Rejected);
+
+    private sealed class JournalView : IKeyboardInputJournal
     {
-        private readonly IReadOnlyList<JournalEntry> entries;
+        private readonly JournalEntry[] items;
 
-        public KeyboardInputJournal(IReadOnlyList<JournalEntry> entries)
-        {
-            this.entries = entries;
-        }
+        public JournalView(JournalEntry[] items) => this.items = items;
 
-        public int Count => entries.Count;
+        public int Count => items.Length;
 
-        public JournalEntry this[int index] => entries[index];
+        public JournalEntry this[int index] => items[index];
 
-        public IEnumerator<JournalEntry> GetEnumerator() => entries.GetEnumerator();
+        public IEnumerator<JournalEntry> GetEnumerator() => ((IEnumerable<JournalEntry>)items).GetEnumerator();
 
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => items.GetEnumerator();
     }
 }

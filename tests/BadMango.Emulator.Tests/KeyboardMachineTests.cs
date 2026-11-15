@@ -20,8 +20,8 @@ using BadMango.Emulator.Systems;
 /// <remarks>
 /// Input tests run a 6502 polling loop in RAM that waits for <c>$C000</c> bit 7, clears the strobe
 /// through <c>$C010</c>, and stores each character to a RAM buffer, the way firmware reads the
-/// keyboard. The tests drive input only through the keyboard device and its translator; they never
-/// read or poke <c>$C000</c> between steps.
+/// keyboard. The tests drive input only through <see cref="IKeyboardInput"/>. They never call
+/// <c>KeyDown(byte)</c> or poke <c>$C000</c>.
 /// </remarks>
 [TestFixture]
 public sealed class KeyboardMachineTests
@@ -58,17 +58,20 @@ public sealed class KeyboardMachineTests
     public void KeyboardSoftSwitches_KeyDownAndStrobeClear_BehaveOnMachineBus()
     {
         var machine = CreateMachine();
-        var keyboard = machine.GetComponent<AppleIIeKeyboard>()!;
+        IKeyboardInput input = RequireInput(machine);
 
-        keyboard.KeyDown((byte)'A');
+        input.KeyDown(KeyboardKey.A, KeyboardModifiers.Shift);
+        machine.Scheduler.DispatchDue();
         byte keyData = machine.Cpu.Read8(KeyboardDataAddress);
         byte keyDownBeforeRelease = machine.Cpu.Read8(KeyboardStrobeAddress);
         byte keyDataAfterReadClear = machine.Cpu.Read8(KeyboardDataAddress);
 
-        keyboard.KeyUp();
+        input.KeyUp(KeyboardKey.A, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
         byte keyDownAfterRelease = machine.Cpu.Read8(KeyboardStrobeAddress);
 
-        keyboard.KeyDown((byte)'B');
+        input.KeyDown(KeyboardKey.B, KeyboardModifiers.Shift);
+        machine.Scheduler.DispatchDue();
         machine.Cpu.Write8(KeyboardStrobeAddress, 0x00);
         byte keyDataAfterWriteClear = machine.Cpu.Read8(KeyboardDataAddress);
 
@@ -89,9 +92,10 @@ public sealed class KeyboardMachineTests
     public void KeyboardSoftSwitches_DebugReadC010_DoesNotClearStrobe()
     {
         var machine = CreateMachine();
-        var keyboard = machine.GetComponent<AppleIIeKeyboard>()!;
+        IKeyboardInput input = RequireInput(machine);
 
-        keyboard.KeyDown((byte)'A');
+        input.KeyDown(KeyboardKey.A, KeyboardModifiers.Shift);
+        machine.Scheduler.DispatchDue();
         byte keyDataBeforeDebugRead = machine.Cpu.Read8(KeyboardDataAddress);
         byte keyDownDebugRead = DebugPeek(machine.Bus, KeyboardStrobeAddress);
         byte keyDataAfterDebugRead = machine.Cpu.Read8(KeyboardDataAddress);
@@ -109,19 +113,19 @@ public sealed class KeyboardMachineTests
     }
 
     /// <summary>
-    /// Verifies that <see cref="IKeyboardDevice.TypeString"/> delivers <c>Hello, World!</c> to a
+    /// Verifies that <see cref="IKeyboardInput.TypeText"/> delivers <c>Hello, World!</c> to a
     /// polling loop in order, with nothing dropped or doubled, and that every key is released
     /// (<see cref="IKeyboardDevice.HasKeyDown"/> observably false) before the next one goes down.
     /// </summary>
     [Test]
-    public void TypeString_HelloWorld_PollingLoopReceivesEveryCharacterWithKeyUpBetween()
+    public void TypeText_HelloWorld_PollingLoopReceivesEveryCharacterWithKeyUpBetween()
     {
         const string Text = "Hello, World!";
         var machine = CreateMachine();
         var keyboard = machine.GetComponent<AppleIIeKeyboard>()!;
         InstallPollingLoop(machine);
 
-        keyboard.TypeString(Text);
+        RequireInput(machine).TypeText(Text);
 
         int keyPresses = 0;
         int releasesSeenBetweenPresses = 0;
@@ -160,14 +164,14 @@ public sealed class KeyboardMachineTests
     /// the queued keys arrive once a program starts reading the keyboard.
     /// </summary>
     [Test]
-    public void TypeString_ProgramNotReadingYet_KeepsTypeAheadUntilItReads()
+    public void TypeText_ProgramNotReadingYet_KeepsTypeAheadUntilItReads()
     {
         var machine = CreateMachine();
         var keyboard = machine.GetComponent<AppleIIeKeyboard>()!;
         InstallPollingLoop(machine);
         InstallIdleLoop(machine);
 
-        keyboard.TypeString("AB", delayMs: 2);
+        RequireInput(machine).TypeText("AB", new TypeTextOptions { HoldMs = 2 });
         StepFor(machine, 100_000);
         byte latchedWhileIdle = keyboard.KeyData;
 
@@ -190,12 +194,11 @@ public sealed class KeyboardMachineTests
     public void KeyboardKeys_ShiftH_I_Shift1_TypesHiBang()
     {
         var machine = CreateMachine();
-        var keyboard = machine.GetComponent<AppleIIeKeyboard>()!;
         InstallPollingLoop(machine);
 
-        PressKeyboardKey(machine, keyboard, KeyboardKey.H, KeyboardModifiers.Shift);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.I, KeyboardModifiers.None);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.D1, KeyboardModifiers.Shift);
+        PressKeyboardKey(machine, KeyboardKey.H, KeyboardModifiers.Shift);
+        PressKeyboardKey(machine, KeyboardKey.I, KeyboardModifiers.None);
+        PressKeyboardKey(machine, KeyboardKey.D1, KeyboardModifiers.Shift);
 
         Assert.That(ReadBuffer(machine), Is.EqualTo("Hi!"));
     }
@@ -208,14 +211,13 @@ public sealed class KeyboardMachineTests
     public void KeyboardKeys_CapsLock_UppercasesLettersOnly()
     {
         var machine = CreateMachine();
-        var keyboard = machine.GetComponent<AppleIIeKeyboard>()!;
         InstallPollingLoop(machine);
 
-        PressKeyboardKey(machine, keyboard, KeyboardKey.H, KeyboardModifiers.CapsLock);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.I, KeyboardModifiers.CapsLock);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.D1, KeyboardModifiers.CapsLock);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.D1, KeyboardModifiers.CapsLock | KeyboardModifiers.Shift);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.X, KeyboardModifiers.CapsLock | KeyboardModifiers.Shift);
+        PressKeyboardKey(machine, KeyboardKey.H, KeyboardModifiers.CapsLock);
+        PressKeyboardKey(machine, KeyboardKey.I, KeyboardModifiers.CapsLock);
+        PressKeyboardKey(machine, KeyboardKey.D1, KeyboardModifiers.CapsLock);
+        PressKeyboardKey(machine, KeyboardKey.D1, KeyboardModifiers.CapsLock | KeyboardModifiers.Shift);
+        PressKeyboardKey(machine, KeyboardKey.X, KeyboardModifiers.CapsLock | KeyboardModifiers.Shift);
 
         Assert.That(ReadBuffer(machine), Is.EqualTo("HI1!x"));
     }
@@ -227,13 +229,12 @@ public sealed class KeyboardMachineTests
     public void KeyboardKeys_Control_DeliversControlCodes()
     {
         var machine = CreateMachine();
-        var keyboard = machine.GetComponent<AppleIIeKeyboard>()!;
         InstallPollingLoop(machine);
 
-        PressKeyboardKey(machine, keyboard, KeyboardKey.G, KeyboardModifiers.Control);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.G, KeyboardModifiers.Control | KeyboardModifiers.Shift);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.D2, KeyboardModifiers.Control | KeyboardModifiers.Shift);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.OpenBracket, KeyboardModifiers.Control);
+        PressKeyboardKey(machine, KeyboardKey.G, KeyboardModifiers.Control);
+        PressKeyboardKey(machine, KeyboardKey.G, KeyboardModifiers.Control | KeyboardModifiers.Shift);
+        PressKeyboardKey(machine, KeyboardKey.D2, KeyboardModifiers.Control | KeyboardModifiers.Shift);
+        PressKeyboardKey(machine, KeyboardKey.OpenBracket, KeyboardModifiers.Control);
 
         Assert.That(ReadBufferBytes(machine), Is.EqualTo(new byte[] { 0x07, 0x07, 0x00, 0x1B }));
     }
@@ -246,14 +247,15 @@ public sealed class KeyboardMachineTests
     public void KeyboardKeys_AppleKeysHeld_DoNotChangeCodes()
     {
         var machine = CreateMachine();
-        var keyboard = machine.GetComponent<AppleIIeKeyboard>()!;
         InstallPollingLoop(machine);
         var apples = KeyboardModifiers.OpenApple | KeyboardModifiers.ClosedApple;
 
-        PressKeyboardKey(machine, keyboard, KeyboardKey.A, KeyboardModifiers.OpenApple);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.A, KeyboardModifiers.ClosedApple | KeyboardModifiers.Shift);
-        PressKeyboardKey(machine, keyboard, KeyboardKey.D1, apples | KeyboardModifiers.Shift);
-        keyboard.SetModifiers(apples);
+        PressKeyboardKey(machine, KeyboardKey.A, KeyboardModifiers.OpenApple);
+        PressKeyboardKey(machine, KeyboardKey.A, KeyboardModifiers.ClosedApple | KeyboardModifiers.Shift);
+        PressKeyboardKey(machine, KeyboardKey.D1, apples | KeyboardModifiers.Shift);
+        IKeyboardInput input = RequireInput(machine);
+        input.KeyDown(KeyboardKey.LeftOption, apples);
+        machine.Scheduler.DispatchDue();
         byte pb0 = machine.Cpu.Read8(0xC061);
         byte pb1 = machine.Cpu.Read8(0xC062);
 
@@ -265,20 +267,54 @@ public sealed class KeyboardMachineTests
         });
     }
 
-    private static void PressKeyboardKey(IMachine machine, IKeyboardDevice keyboard, KeyboardKey key, KeyboardModifiers modifiers)
+    /// <summary>
+    /// Verifies that two machines in one process keep separate keyboard input. Typing into one
+    /// leaves the other's <c>$C000</c> unchanged.
+    /// </summary>
+    [Test]
+    public void TwoMachines_TypeTextOnOne_LeavesTheOtherKeyboardUnchanged()
     {
-        byte? code = keyboard.Translator.Translate(key, modifiers);
-        Assert.That(code, Is.Not.Null, $"{key} with {modifiers} must produce a code");
+        var first = CreateMachine();
+        var second = CreateMachine();
+        IKeyboardInput firstInput = RequireInput(first);
+        IKeyboardInput secondInput = RequireInput(second);
+        var secondKeyboard = second.GetComponent<AppleIIeKeyboard>()!;
+        byte secondBefore = second.Cpu.Read8(KeyboardDataAddress);
+        int secondJournalCount = secondInput.Journal.Count;
 
+        firstInput.TypeText("Z");
+        StepFor(first, 200_000);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(secondInput, Is.Not.SameAs(firstInput));
+            Assert.That(first.Cpu.Read8(KeyboardDataAddress) & 0x7F, Is.EqualTo((byte)'Z'));
+            Assert.That(second.Cpu.Read8(KeyboardDataAddress), Is.EqualTo(secondBefore));
+            Assert.That(secondKeyboard.KeyData, Is.EqualTo(secondBefore));
+            Assert.That(secondInput.IsTyping, Is.False);
+            Assert.That(secondInput.Journal, Has.Count.EqualTo(secondJournalCount));
+        });
+    }
+
+    private static void PressKeyboardKey(IMachine machine, KeyboardKey key, KeyboardModifiers modifiers)
+    {
+        IKeyboardInput input = RequireInput(machine);
         int countBefore = BufferCount(machine);
-        keyboard.SetModifiers(modifiers);
-        keyboard.KeyDown(code!.Value);
+        input.KeyDown(key, modifiers);
+        machine.Scheduler.DispatchDue();
         StepFor(machine, HoldCycles);
-        keyboard.KeyUp();
-        keyboard.SetModifiers(KeyboardModifiers.None);
+        input.KeyUp(key, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
         StepFor(machine, GapCycles);
 
         Assert.That(BufferCount(machine), Is.EqualTo(countBefore + 1), $"The polling loop must receive exactly one character for {key}");
+    }
+
+    private static IKeyboardInput RequireInput(IMachine machine)
+    {
+        IKeyboardInput? input = machine.GetComponent<IKeyboardInput>();
+        Assert.That(input, Is.Not.Null, "Each machine with a keyboard sink registers its own IKeyboardInput");
+        return input!;
     }
 
     private static void InstallPollingLoop(IMachine machine)

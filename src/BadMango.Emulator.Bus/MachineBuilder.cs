@@ -56,6 +56,7 @@ public sealed partial class MachineBuilder
     private readonly List<Action<IMachine>> afterSlotCardInstallCallbacks = [];
     private readonly List<Action<IMachine>> beforeSoftSwitchHandlerRegistrationCallbacks = [];
     private readonly List<Action<IMachine>> afterSoftSwitchHandlerRegistrationCallbacks = [];
+    private readonly List<Func<IMachine, object?>> componentFactories = [];
     private readonly Dictionary<string, Func<MachineBuilder, IBusTarget>> compositeHandlerFactories = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Func<MachineBuilder, IMotherboardDevice>> motherboardDeviceFactories = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Func<MachineBuilder, JsonElement?, ISlotCard>> slotCardFactories = new(StringComparer.OrdinalIgnoreCase);
@@ -231,6 +232,26 @@ public sealed partial class MachineBuilder
     {
         ArgumentNullException.ThrowIfNull(component, nameof(component));
         components.Add(component);
+        return this;
+    }
+
+    /// <summary>
+    /// Registers a factory that creates a component once the machine exists.
+    /// </summary>
+    /// <param name="factory">
+    /// Receives the built machine and returns the component to add, or <see langword="null"/> to add nothing.
+    /// </param>
+    /// <returns>This builder instance for method chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// Factories run at the end of <see cref="Build"/>, after devices are initialized and slot cards
+    /// are installed, so the factory can see components such as a keyboard sink, the scheduler, and
+    /// the machine dispatcher. Each non-null result is registered with <c>AddComponent</c>.
+    /// </remarks>
+    public MachineBuilder AddComponentFactory(Func<IMachine, object?> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        componentFactories.Add(factory);
         return this;
     }
 
@@ -1011,6 +1032,17 @@ public sealed partial class MachineBuilder
         foreach (var callback in postBuildCallbacks)
         {
             callback(machine);
+        }
+
+        // Component factories run last so they can see the assembled machine, including any
+        // keyboard sink initialized above, and register one instance per machine.
+        foreach (Func<IMachine, object?> factory in componentFactories)
+        {
+            object? created = factory(machine);
+            if (created is not null)
+            {
+                machine.AddComponent(created);
+            }
         }
 
         return machine;

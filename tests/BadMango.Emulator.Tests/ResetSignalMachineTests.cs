@@ -382,7 +382,7 @@ public sealed class ResetSignalMachineTests
     }
 
     /// <summary>
-    /// Verifies that a soft reset in the middle of <see cref="IKeyboardDevice.TypeString"/>
+    /// Verifies that a soft reset in the middle of <see cref="IKeyboardInput.TypeText"/>
     /// releases the key being typed (its scheduled release was flushed), drops the
     /// type-ahead, and leaves the keyboard able to type again.
     /// </summary>
@@ -391,9 +391,10 @@ public sealed class ResetSignalMachineTests
     {
         var machine = CreateMachine();
         var keyboard = machine.GetComponent<IKeyboardDevice>()!;
+        IKeyboardInput input = machine.GetComponent<IKeyboardInput>()!;
         WriteLoop(machine);
 
-        keyboard.TypeString("AB", delayMs: 50);
+        input.TypeText("AB", new TypeTextOptions { HoldMs = 50 });
         StepFor(machine, 1_000);
         Assume.That(keyboard.HasKeyDown, Is.True);
 
@@ -405,7 +406,7 @@ public sealed class ResetSignalMachineTests
         StepFor(machine, 200_000);
         byte dataAfterTypeAhead = keyboard.KeyData;
 
-        keyboard.TypeString("C", delayMs: 5);
+        input.TypeText("C", new TypeTextOptions { HoldMs = 5 });
         StepFor(machine, 1_000);
         byte dataAfterNewTyping = keyboard.KeyData;
         StepFor(machine, 20_000);

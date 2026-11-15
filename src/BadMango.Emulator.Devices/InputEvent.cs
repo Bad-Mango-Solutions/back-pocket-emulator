@@ -52,34 +52,3 @@ public readonly record struct InputEvent(InputEventKind Kind, KeyboardKey Key, K
     /// <returns>The event.</returns>
     public static InputEvent CancelTypingEvent(KeyboardKey key = KeyboardKey.None, KeyboardModifiers modifiers = KeyboardModifiers.None) => new(InputEventKind.CancelTyping, key, modifiers);
 }
-
-/// <summary>
-/// Enumerates the kinds of events recorded in the keyboard input journal.
-/// </summary>
-public enum InputEventKind
-{
-    /// <summary>
-    /// A host key went down.
-    /// </summary>
-    KeyDown,
-
-    /// <summary>
-    /// A host key went up.
-    /// </summary>
-    KeyUp,
-
-    /// <summary>
-    /// A typed key went down.
-    /// </summary>
-    TypedKeyDown,
-
-    /// <summary>
-    /// A typed key went up.
-    /// </summary>
-    TypedKeyUp,
-
-    /// <summary>
-    /// Typing was cancelled.
-    /// </summary>
-    CancelTyping,
-}

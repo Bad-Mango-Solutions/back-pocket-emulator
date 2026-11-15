@@ -111,6 +111,29 @@ public class MachineBuilderTests
     }
 
     /// <summary>
+    /// Verifies that a component factory runs after the machine exists and that a null result adds nothing.
+    /// </summary>
+    [Test]
+    public void AddComponentFactory_AddsNonNullComponentAfterBuild()
+    {
+        var mockCpu = CreateMockCpu();
+        var machine = new MachineBuilder()
+            .WithCpuFactory(_ => mockCpu.Object)
+            .AddComponentFactory(_ => new TestComponent { Name = "FromFactory" })
+            .AddComponentFactory(_ => null)
+            .Build();
+
+        TestComponent? retrieved = machine.GetComponent<TestComponent>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(retrieved, Is.Not.Null);
+            Assert.That(retrieved!.Name, Is.EqualTo("FromFactory"));
+            Assert.That(machine.GetComponents<TestComponent>().Count(), Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
     /// Verifies that multiple components can be retrieved.
     /// </summary>
     [Test]
