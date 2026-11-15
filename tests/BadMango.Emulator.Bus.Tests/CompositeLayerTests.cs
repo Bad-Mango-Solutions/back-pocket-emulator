@@ -697,6 +697,7 @@ public class CompositeLayerTests
             .Returns(new CompositeLayerResolution(target, 0, PagePerms.ReadWrite, RegionTag.Ram, TargetCaps.None));
 
         var results = new List<CompositeLayerResolution?>();
+        var resultsLock = new Lock();
         var tasks = new List<Task>();
 
         // Simulate concurrent resolution requests
@@ -706,7 +707,7 @@ public class CompositeLayerTests
             tasks.Add(Task.Run(() =>
             {
                 var result = mockLayer.Object.ResolveMapping(addr, AccessIntent.DataRead);
-                lock (results)
+                lock (resultsLock)
                 {
                     results.Add(result);
                 }

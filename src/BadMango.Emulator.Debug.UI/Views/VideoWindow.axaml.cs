@@ -68,7 +68,7 @@ public partial class VideoWindow : Window
     // Rendering reads only from this snapshot, so the image never depends on the
     // CPU's MMU state (RAMRD/80STORE/PAGE2) or on half-updated memory.
     private readonly DisplayMemorySnapshot displaySnapshot = new();
-    private readonly object snapshotLock = new();
+    private readonly Lock snapshotLock = new();
 
     private IMachine? machine;
     private IVideoDevice? videoDevice;

@@ -10,7 +10,7 @@ namespace BadMango.Emulator.Devices.Speaker;
 internal sealed class AudioSampleRingBuffer
 {
     private readonly short[] buffer;
-    private readonly object syncRoot = new();
+    private readonly Lock syncRoot = new();
 
     private int readIndex;
     private int writeIndex;

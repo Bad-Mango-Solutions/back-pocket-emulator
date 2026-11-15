@@ -229,6 +229,10 @@ public abstract class CpuBase : ICpu
     public void DetachDebugger()
     {
         debugListener = null;
+
+        // Clear trace state so handlers that inspect it (e.g. immediate-mode operand capture)
+        // do not keep acting on a stale trace from the last debugged instruction.
+        trace = default;
     }
 
     /// <inheritdoc/>
@@ -451,11 +455,11 @@ public abstract class CpuBase : ICpu
             Address: address,
             Value: 0,
             WidthBits: widthBits,
-            Mode: BusAccessMode.Decomposed, // 65xx uses decomposed mode for accurate cycle counting
+            Mode: BusAccessMode.Decomposed,
             EmulationFlag: GetEmulationFlag(),
             Intent: AccessIntent.DataRead,
             SourceId: CpuSourceId,
-            Cycle: context.Now,
+            Cycle: context.Now + registers.TCU,
             Flags: AccessFlags.None);
     }
 
@@ -475,7 +479,7 @@ public abstract class CpuBase : ICpu
             EmulationFlag: GetEmulationFlag(),
             Intent: AccessIntent.DataWrite,
             SourceId: CpuSourceId,
-            Cycle: context.Now,
+            Cycle: context.Now + registers.TCU,
             Flags: AccessFlags.None);
     }
 
@@ -500,7 +504,7 @@ public abstract class CpuBase : ICpu
             EmulationFlag: GetEmulationFlag(),
             Intent: AccessIntent.InstructionFetch,
             SourceId: CpuSourceId,
-            Cycle: context.Now,
+            Cycle: context.Now + registers.TCU,
             Flags: AccessFlags.None);
     }
 
