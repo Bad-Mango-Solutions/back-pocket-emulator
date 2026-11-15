@@ -29,7 +29,7 @@ public sealed class SwapGroup
     /// <summary>
     /// Lock object for thread-safe operations.
     /// </summary>
-    private readonly object syncLock = new();
+    private readonly Lock syncLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SwapGroup"/> class.

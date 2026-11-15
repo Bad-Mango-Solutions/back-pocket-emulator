@@ -74,10 +74,9 @@ public sealed class Machine : IMachine
     private readonly List<IScheduledDevice> scheduledDevices = [];
 
     /// <summary>
-    /// Guards the run-loop lifecycle (<see cref="activeLoopGeneration"/>, state transitions)
-    /// and is the monitor that waiters block on until the run loop exits.
+    /// Guards the run-loop lifecycle (<see cref="activeLoopGeneration"/>, state transitions).
     /// </summary>
-    private readonly object lifecycleSync = new();
+    private readonly Lock lifecycleSync = new();
 
     /// <summary>
     /// Work posted from other threads while a run loop is active.
@@ -97,6 +96,12 @@ public sealed class Machine : IMachine
     private readonly SignalBus? concreteSignals;
 
     private volatile MachineState state = MachineState.Stopped;
+
+    /// <summary>
+    /// Signals lifecycle transitions that may release waiters blocked on run-loop ownership.
+    /// The result is unused; completion itself is the signal.
+    /// </summary>
+    private TaskCompletionSource lifecycleChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
     /// Generation of the run loop that currently owns the CPU, or 0 when no loop is active.
@@ -315,35 +320,52 @@ public sealed class Machine : IMachine
             return new(CpuRunState.Running, Cycle.Zero);
         }
 
-        CpuStepResult result;
+        CpuStepResult result = default;
         bool raisePaused = false;
-        lock (lifecycleSync)
+        bool stepped = false;
+        while (true)
         {
-            // If running, pause first and wait for the run loop to let go of the CPU. A Resume
-            // that slips in while this thread waits is paused again: the step wins.
-            while (activeLoopGeneration != 0 && executingMachine != this)
+            Task waitTask;
+            lock (lifecycleSync)
             {
-                if (state == MachineState.Running)
+                // If running, pause first and wait for the run loop to let go of the CPU. A Resume
+                // that slips in while this thread waits is paused again: the step wins.
+                if (activeLoopGeneration != 0 && executingMachine != this)
                 {
-                    state = MachineState.Paused;
-                    raisePaused = true;
+                    if (state == MachineState.Running)
+                    {
+                        state = MachineState.Paused;
+                        raisePaused = true;
+                    }
+
+                    Cpu.RequestStop();
+                    waitTask = lifecycleChanged.Task;
                 }
+                else
+                {
+                    // CPU.Step() advances the scheduler internally — each code path
+                    // in Cpu65C02.Step() calls Scheduler.Advance(cycles) before returning.
+                    // Do NOT advance the scheduler again here to avoid double-advancement.
+                    result = StepCpu();
 
-                Cpu.RequestStop();
-                Monitor.Wait(lifecycleSync);
+                    // Transition to paused after stepping
+                    if (state != MachineState.Paused)
+                    {
+                        state = MachineState.Paused;
+                        raisePaused = true;
+                    }
+
+                    stepped = true;
+                    waitTask = Task.CompletedTask;
+                }
             }
 
-            // CPU.Step() advances the scheduler internally — each code path
-            // in Cpu65C02.Step() calls Scheduler.Advance(cycles) before returning.
-            // Do NOT advance the scheduler again here to avoid double-advancement.
-            result = StepCpu();
-
-            // Transition to paused after stepping
-            if (state != MachineState.Paused)
+            if (stepped)
             {
-                state = MachineState.Paused;
-                raisePaused = true;
+                break;
             }
+
+            waitTask.Wait();
         }
 
         if (raisePaused)
@@ -1033,9 +1055,10 @@ public sealed class Machine : IMachine
         }
 
         bool raiseRunning = false;
-        lock (lifecycleSync)
+        while (true)
         {
-            while (true)
+            Task waitTask;
+            lock (lifecycleSync)
             {
                 bool allowed = requirePaused ? state == MachineState.Paused : state != MachineState.Running;
                 if (!allowed)
@@ -1045,21 +1068,23 @@ public sealed class Machine : IMachine
 
                 if (activeLoopGeneration == 0)
                 {
+                    generation = ++lastLoopGeneration;
+                    activeLoopGeneration = generation;
+                    Cpu.ClearStopRequest();
+                    if (state != MachineState.Running)
+                    {
+                        state = MachineState.Running;
+                        raiseRunning = true;
+                    }
+
                     break;
                 }
 
                 // A previous loop is winding down; wait for it to release the CPU.
-                Monitor.Wait(lifecycleSync);
+                waitTask = lifecycleChanged.Task;
             }
 
-            generation = ++lastLoopGeneration;
-            activeLoopGeneration = generation;
-            Cpu.ClearStopRequest();
-            if (state != MachineState.Running)
-            {
-                state = MachineState.Running;
-                raiseRunning = true;
-            }
+            waitTask.Wait();
         }
 
         if (raiseRunning)
@@ -1077,31 +1102,42 @@ public sealed class Machine : IMachine
     /// <remarks>
     /// Before releasing, completes a RESET pulse still in its hold window and runs requests that
     /// were posted while the loop was winding down, with no CPU step on the stack. A stale loop
-    /// (generation mismatch) never clears another loop's ownership.
+    /// (generation mismatch) never clears another loop's ownership. The previous lifecycle signal
+    /// is completed even when that wind-down work throws, so a waiter that already observed it
+    /// is not left blocked after the signal has been swapped out.
     /// </remarks>
     private void EndRunLoop(int generation)
     {
-        lock (lifecycleSync)
+        TaskCompletionSource? signal = null;
+        try
         {
-            if (activeLoopGeneration != generation)
+            lock (lifecycleSync)
             {
-                return;
-            }
-
-            try
-            {
-                RunAsMachine(() =>
+                if (activeLoopGeneration != generation)
                 {
-                    FinishPendingResetRelease();
-                    DrainRequests();
-                    DrainDeferredWork();
-                });
+                    return;
+                }
+
+                try
+                {
+                    RunAsMachine(() =>
+                    {
+                        FinishPendingResetRelease();
+                        DrainRequests();
+                        DrainDeferredWork();
+                    });
+                }
+                finally
+                {
+                    activeLoopGeneration = 0;
+                    signal = lifecycleChanged;
+                    lifecycleChanged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
             }
-            finally
-            {
-                activeLoopGeneration = 0;
-                Monitor.PulseAll(lifecycleSync);
-            }
+        }
+        finally
+        {
+            signal?.TrySetResult();
         }
     }
 
@@ -1122,12 +1158,20 @@ public sealed class Machine : IMachine
             return;
         }
 
-        lock (lifecycleSync)
+        while (true)
         {
-            while (activeLoopGeneration == generation)
+            Task waitTask;
+            lock (lifecycleSync)
             {
-                Monitor.Wait(lifecycleSync);
+                if (activeLoopGeneration != generation)
+                {
+                    return;
+                }
+
+                waitTask = lifecycleChanged.Task;
             }
+
+            waitTask.Wait();
         }
     }
 

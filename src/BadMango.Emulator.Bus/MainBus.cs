@@ -81,7 +81,7 @@ public sealed partial class MainBus : IMemoryBus
     /// <summary>
     /// Lock object for thread-safe swap group operations.
     /// </summary>
-    private readonly object swapGroupLock = new();
+    private readonly Lock swapGroupLock = new();
 
     /// <summary>
     /// Logger for diagnostic messages emitted by the bus, including warnings on

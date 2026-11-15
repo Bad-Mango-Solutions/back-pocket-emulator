@@ -1140,10 +1140,11 @@ public class VideoWindowTests
     private sealed class TestLogEventSink : ILogEventSink
     {
         private readonly List<LogEvent> events = [];
+        private readonly Lock eventsLock = new();
 
         public void Emit(LogEvent logEvent)
         {
-            lock (events)
+            lock (eventsLock)
             {
                 events.Add(logEvent);
             }
@@ -1151,7 +1152,7 @@ public class VideoWindowTests
 
         public int GetEventCount(LogEventLevel level)
         {
-            lock (events)
+            lock (eventsLock)
             {
                 return events.Count(e => e.Level == level);
             }
