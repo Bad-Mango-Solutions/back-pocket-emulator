@@ -353,6 +353,42 @@ public sealed class KeyboardMachineTests
     }
 
     /// <summary>
+    /// Verifies that Reset held with an Apple-key modifier sets that pushbutton, and that
+    /// <see cref="IKeyboardInput.KeyUp"/> clears it. Open Apple is bit 7 of <c>$C061</c>;
+    /// Closed Apple is bit 7 of <c>$C062</c>.
+    /// </summary>
+    [Test]
+    public void KeyboardKeys_ResetWithAppleModifiers_SetsPushbuttonWhileHeld()
+    {
+        var machine = CreateMachine();
+        IKeyboardInput input = RequireInput(machine);
+
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.Control | KeyboardModifiers.OpenApple);
+        machine.Scheduler.DispatchDue();
+        byte openAppleWhileHeld = machine.Cpu.Read8(0xC061);
+
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        byte openAppleAfterRelease = machine.Cpu.Read8(0xC061);
+
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.Control | KeyboardModifiers.ClosedApple);
+        machine.Scheduler.DispatchDue();
+        byte closedAppleWhileHeld = machine.Cpu.Read8(0xC062);
+
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        byte closedAppleAfterRelease = machine.Cpu.Read8(0xC062);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(openAppleWhileHeld, Is.EqualTo(0x80), "Open Apple is visible at $C061 while Reset is held");
+            Assert.That(openAppleAfterRelease, Is.EqualTo(0x00), "Open Apple clears after KeyUp");
+            Assert.That(closedAppleWhileHeld, Is.EqualTo(0x80), "Closed Apple is visible at $C062 while Reset is held");
+            Assert.That(closedAppleAfterRelease, Is.EqualTo(0x00), "Closed Apple clears after KeyUp");
+        });
+    }
+
+    /// <summary>
     /// Verifies that <see cref="KeyboardKey.Power"/> is ignored on the IIe keyboard path.
     /// </summary>
     [Test]

@@ -21,12 +21,17 @@ using BadMango.Emulator.Devices.Interfaces;
 /// </para>
 /// <para>
 /// When a machine is attached, a soft reset pulses the RESET line through the keyboard's
-/// Reset key (as Ctrl-Reset would) or, without a keyboard, through the machine's own RESET
-/// source. Devices respond to RESET, RAM is preserved, and the run state is unchanged: a
-/// running machine continues into the ROM reset handler, while a stopped or paused machine
-/// stops with PC at the reset vector. The pulse is marshalled onto the machine thread, so the
-/// command is safe to use while the machine is running. With the --hard flag, the machine
-/// also performs a power-on reset of the CPU and devices and clears memory.
+/// Reset key (as Ctrl-Reset would). A keyboard with <see cref="IKeyboardInput"/> receives
+/// that pulse as <see cref="IKeyboardInput.KeyDown"/> and <see cref="IKeyboardInput.KeyUp"/>
+/// of <see cref="KeyboardKey.Reset"/>. A keyboard without <see cref="IKeyboardInput"/> still
+/// uses <see cref="IResetSource.PressResetKey"/>, <see cref="IResetSource.ReleaseResetKey"/>
+/// and <see cref="IKeyboardDevice.SetModifiers"/>, so the Apple-key holds keep working. Without
+/// a keyboard, the pulse goes through the machine's own RESET source. Devices respond to RESET,
+/// RAM is preserved, and the run state is unchanged: a running machine continues into the ROM
+/// reset handler, while a stopped or paused machine stops with PC at the reset vector. The pulse
+/// is marshalled onto the machine thread, so the command is safe to use while the machine is
+/// running. With the --hard flag, the machine also performs a power-on reset of the CPU and
+/// devices and clears memory.
 /// </para>
 /// <para>
 /// If no machine is attached, reset falls back to CPU-only behavior and uses
@@ -122,10 +127,16 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
 
         if (debugContext.Machine is { } machine)
         {
-            if (machine.GetComponent<IKeyboardDevice>() is { } keyboard &&
-                machine.GetComponent<IKeyboardInput>() is { } keyboardInput)
+            if (machine.GetComponent<IKeyboardDevice>() is { } keyboard)
             {
-                TriggerKeyboardReset(machine, keyboard, keyboardInput, holdOpenApple, holdClosedApple, hardReset);
+                if (machine.GetComponent<IKeyboardInput>() is { } keyboardInput)
+                {
+                    TriggerKeyboardReset(machine, keyboard, keyboardInput, holdOpenApple, holdClosedApple, hardReset);
+                }
+                else
+                {
+                    TriggerDeviceKeyboardReset(machine, keyboard, holdOpenApple, holdClosedApple, hardReset);
+                }
             }
             else
             {
@@ -210,11 +221,17 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
                 }
 
                 input.KeyDown(KeyboardKey.Reset, resetModifiers);
+
+                // Must apply synchronously. ExecuteResetPulse reads Signals.IsAsserted
+                // immediately after assertLine returns.
                 machine.Scheduler.DispatchDue();
             },
             () =>
             {
                 input.KeyUp(KeyboardKey.Reset, originalModifiers | resetOnlyModifiers);
+
+                // Must apply synchronously. CompleteResetPulse reads Signals.IsAsserted
+                // immediately after releaseLine returns.
                 machine.Scheduler.DispatchDue();
 
                 if (resetOnlyModifiers == KeyboardModifiers.None)
@@ -231,8 +248,88 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
                     {
                         var pendingModifiers = keyboard.Modifiers;
                         pendingModifiers &= ~resetOnlyModifiers;
+
+                        // TODO(#388): §7.2 carries modifiers only as the snapshot on a key event,
+                        // and §7.4 has no call that sets them alone. KeyboardInput restores a
+                        // snapshot with OnHostKeyUp(KeyboardKey.None), but the spec does not define
+                        // KeyUp/KeyDown(KeyboardKey.None) as that convention, and this public KeyUp
+                        // journals a fake key-up. Clearing these temporary Apple keys needs an API
+                        // epic #388 has not added.
                         input.KeyUp(KeyboardKey.None, pendingModifiers);
-                        machine.Scheduler.DispatchDue();
+
+                        // No nested DispatchDue. This callback runs inside DispatchEventsUntil,
+                        // which drains the 0-delay event KeyUp just queued.
+                    },
+                    tag: "reset-apple-release");
+            },
+            hardReset);
+    }
+
+    /// <summary>
+    /// Pulses RESET through <see cref="IResetSource.PressResetKey"/> when the machine has a
+    /// keyboard but no <see cref="IKeyboardInput"/>.
+    /// </summary>
+    /// <param name="machine">The machine to reset.</param>
+    /// <param name="keyboard">The keyboard whose Reset key drives the line.</param>
+    /// <param name="holdOpenApple"><see langword="true"/> to hold Open Apple through the ROM reset sampling window.</param>
+    /// <param name="holdClosedApple"><see langword="true"/> to hold Closed Apple through the ROM reset sampling window.</param>
+    /// <param name="hardReset"><see langword="true"/> to treat the pulse as a power-on reset while the line is held.</param>
+    /// <remarks>
+    /// This is the pre-<see cref="IKeyboardInput"/> path. Sub-issue 6 of epic #388 removes
+    /// <see cref="IResetSource.PressResetKey"/>, <see cref="IResetSource.ReleaseResetKey"/>
+    /// and <see cref="IKeyboardDevice.SetModifiers"/> once no caller is left. Until then, a keyboard
+    /// without an input layer still has to honor <c>--open-apple</c> and <c>--closed-apple</c>.
+    /// </remarks>
+    private static void TriggerDeviceKeyboardReset(IMachine machine, IKeyboardDevice keyboard, bool holdOpenApple, bool holdClosedApple, bool hardReset)
+    {
+        KeyboardModifiers originalModifiers = KeyboardModifiers.None;
+        KeyboardModifiers resetOnlyModifiers = KeyboardModifiers.None;
+        machine.PulseReset(
+            () =>
+            {
+                originalModifiers = keyboard.Modifiers;
+                var resetModifiers = originalModifiers | KeyboardModifiers.Control;
+                if (holdOpenApple)
+                {
+                    resetModifiers |= KeyboardModifiers.OpenApple;
+                    if (!originalModifiers.HasFlag(KeyboardModifiers.OpenApple))
+                    {
+                        resetOnlyModifiers |= KeyboardModifiers.OpenApple;
+                    }
+                }
+
+                if (holdClosedApple)
+                {
+                    resetModifiers |= KeyboardModifiers.ClosedApple;
+                    if (!originalModifiers.HasFlag(KeyboardModifiers.ClosedApple))
+                    {
+                        resetOnlyModifiers |= KeyboardModifiers.ClosedApple;
+                    }
+                }
+
+                keyboard.SetModifiers(resetModifiers);
+                keyboard.PressResetKey();
+            },
+            () =>
+            {
+                keyboard.ReleaseResetKey();
+                keyboard.SetModifiers(originalModifiers | resetOnlyModifiers);
+
+                if (resetOnlyModifiers == KeyboardModifiers.None)
+                {
+                    return;
+                }
+
+                var releaseCycleDelay = GetResetAppleReleaseDelayCycles(machine);
+                machine.Scheduler.ScheduleAt(
+                    machine.Scheduler.Now + releaseCycleDelay,
+                    ScheduledEventKind.DeferredWork,
+                    priority: 0,
+                    _ =>
+                    {
+                        var pendingModifiers = keyboard.Modifiers;
+                        pendingModifiers &= ~resetOnlyModifiers;
+                        keyboard.SetModifiers(pendingModifiers);
                     },
                     tag: "reset-apple-release");
             },
