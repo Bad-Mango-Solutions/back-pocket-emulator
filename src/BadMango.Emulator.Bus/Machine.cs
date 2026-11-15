@@ -45,16 +45,12 @@ using Interfaces;
 public sealed class Machine : IMachine
 {
     private const int YieldIntervalCycles = 10000;
+    private const int MachineResetSourceId = int.MinValue + 1;
     private int disposeState;
 
     /// <summary>
     /// Interval in cycles between yield points for async execution.
     /// </summary>
-
-    /// <summary>
-    /// The signal-bus source id the machine uses for its own RESET source (<see cref="Reset"/>).
-    /// </summary>
-    private const int MachineResetSourceId = int.MinValue + 1;
 
     /// <summary>
     /// Number of CPU cycles a RESET pulse holds the line low before releasing it. The

@@ -245,7 +245,7 @@ public sealed partial class MachineBuilder
         where T : class
     {
         ArgumentNullException.ThrowIfNull(factory, nameof(factory));
-        afterDeviceInitCallbacks.Add(machine => machine.AddComponent(factory(machine)));
+        afterDeviceInitCallbacks.Add(machine => ((Machine)machine).AddComponent(factory(machine)));
         return this;
     }
 
