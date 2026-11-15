@@ -703,6 +703,86 @@ public class TrapRegistryTests
     }
 
     /// <summary>
+    /// Verifies that INTC3ROM overlay suppresses slot 3 trap execution at $C300 and allows it when disabled.
+    /// </summary>
+    [Test]
+    public void TryExecute_SlotTrapAtC300_IntC3RomOverlayEnabled_SuppressesTrapUntilDisabled()
+    {
+        var mockSlotManager = new Mock<ISlotManager>();
+        var mockCard = new Mock<ISlotCard>();
+        mockSlotManager.Setup(m => m.GetCard(3)).Returns(mockCard.Object);
+
+        bool intC3RomEnabled = true;
+        var mockInternalRomHandler = new Mock<IInternalRomHandler>();
+        mockInternalRomHandler.SetupGet(m => m.IsIntCxRomEnabled).Returns(false);
+        mockInternalRomHandler.SetupGet(m => m.IsIntC3RomEnabled).Returns(() => intC3RomEnabled);
+
+        var contextRegistry = new TrapRegistry(
+            mockSlotManager.Object,
+            languageCard: null,
+            memoryContextResolver: null,
+            internalRomHandler: mockInternalRomHandler.Object);
+
+        int handlerCallCount = 0;
+        TrapHandler handler = (cpu, bus, ctx) =>
+        {
+            handlerCallCount++;
+            return TrapResult.Success(new(10));
+        };
+
+        contextRegistry.RegisterSlotDependent(0xC300, 3, "SLOT3_ROM", TrapCategory.SlotFirmware, handler);
+
+        var suppressedResult = contextRegistry.TryExecute(0xC300, mockCpu.Object, mockBus.Object, mockContext.Object);
+        intC3RomEnabled = false;
+        var enabledResult = contextRegistry.TryExecute(0xC300, mockCpu.Object, mockBus.Object, mockContext.Object);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(suppressedResult.Handled, Is.False, "INTC3ROM overlay should suppress slot trap at $C300.");
+            Assert.That(enabledResult.Handled, Is.True, "Trap should execute when INTC3ROM overlay is disabled.");
+            Assert.That(handlerCallCount, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that INTCXROM overlay suppresses slot trap execution in the slot ROM region.
+    /// </summary>
+    [Test]
+    public void TryExecute_SlotTrapAtC600_IntCxRomOverlayEnabled_DoesNotExecute()
+    {
+        var mockSlotManager = new Mock<ISlotManager>();
+        var mockCard = new Mock<ISlotCard>();
+        mockSlotManager.Setup(m => m.GetCard(6)).Returns(mockCard.Object);
+
+        var mockInternalRomHandler = new Mock<IInternalRomHandler>();
+        mockInternalRomHandler.SetupGet(m => m.IsIntCxRomEnabled).Returns(true);
+        mockInternalRomHandler.SetupGet(m => m.IsIntC3RomEnabled).Returns(false);
+
+        var contextRegistry = new TrapRegistry(
+            mockSlotManager.Object,
+            languageCard: null,
+            memoryContextResolver: null,
+            internalRomHandler: mockInternalRomHandler.Object);
+
+        bool handlerCalled = false;
+        TrapHandler handler = (cpu, bus, ctx) =>
+        {
+            handlerCalled = true;
+            return TrapResult.Success(new(10));
+        };
+
+        contextRegistry.RegisterSlotDependent(0xC600, 6, "DISK_BOOT", TrapCategory.SlotFirmware, handler);
+
+        var result = contextRegistry.TryExecute(0xC600, mockCpu.Object, mockBus.Object, mockContext.Object);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Handled, Is.False);
+            Assert.That(handlerCalled, Is.False);
+        });
+    }
+
+    /// <summary>
     /// Verifies that slot-dependent trap does not fire when slot has no card.
     /// </summary>
     [Test]

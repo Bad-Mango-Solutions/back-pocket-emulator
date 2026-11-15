@@ -406,11 +406,43 @@ public struct RegisterProgramCounter
     public void SetAddr(Addr value) => addr = value;
 
     /// <summary>Advances the program counter by one byte.</summary>
+    /// <param name="addressWidthBits">
+    /// The width of the program counter in bits used for wrap behavior.
+    /// The default is 16 for 65C02 behavior.
+    /// </param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Advance() => addr++;
+    public void Advance(byte addressWidthBits = 16) => Advance(1, addressWidthBits);
 
     /// <summary>Advances the program counter by the specified number of bytes.</summary>
     /// <param name="count">The number of bytes to advance.</param>
+    /// <param name="addressWidthBits">
+    /// The width of the program counter in bits used for wrap behavior.
+    /// The default is 16 for 65C02 behavior.
+    /// </param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Advance(int count) => addr = (Addr)(addr + count);
+    public void Advance(int count, byte addressWidthBits = 16)
+    {
+        Addr widthMask = GetWidthMask(addressWidthBits);
+        if (widthMask == uint.MaxValue)
+        {
+            addr = unchecked((Addr)(addr + count));
+            return;
+        }
+
+        Addr incremented = unchecked((Addr)(addr + count));
+        addr = (addr & ~widthMask) | (incremented & widthMask);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Addr GetWidthMask(byte addressWidthBits)
+    {
+        if (addressWidthBits >= 32)
+        {
+            return uint.MaxValue;
+        }
+
+        return addressWidthBits == 0
+            ? 0
+            : (1u << addressWidthBits) - 1u;
+    }
 }
