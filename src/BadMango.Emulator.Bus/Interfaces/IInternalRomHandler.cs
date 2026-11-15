@@ -5,14 +5,14 @@
 namespace BadMango.Emulator.Bus.Interfaces;
 
 /// <summary>
-/// Interface for managing internal ROM overlays in the slot ROM region ($C100-$C7FF).
+/// Interface for managing internal ROM overlays in the slot ROM region ($C100-$CFFF).
 /// </summary>
 /// <remarks>
 /// <para>
 /// The Apple IIe provides soft switches to control internal ROM overlays:
 /// </para>
 /// <list type="bullet">
-/// <item><description>INTCXROM ($C006/$C007): When ON, internal ROM overlays slot ROMs ($C100-$C7FF only)</description></item>
+/// <item><description>INTCXROM ($C006/$C007): When ON, internal ROM overlays slot ROMs ($C100-$CFFF)</description></item>
 /// <item><description>INTC3ROM ($C00A/$C00B): When ON, internal 80-column firmware overlays slot 3 ($C300 region)</description></item>
 /// <item><description>INTC8ROM latch: Armed by internal $C3xx access, overlays $C800-$CFFF until $CFFF or RESET</description></item>
 /// </list>

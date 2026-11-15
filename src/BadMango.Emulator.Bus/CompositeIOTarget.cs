@@ -29,7 +29,7 @@ using Interfaces;
 /// The Apple IIe provides INTCXROM and INTC3ROM soft switches to control internal ROM overlay:
 /// </para>
 /// <list type="bullet">
-/// <item><description>INTCXROM: When ON, internal ROM overlays slot ROMs ($x100-$x7FF only)</description></item>
+/// <item><description>INTCXROM: When ON, internal ROM overlays slot ROMs ($x100-$xFFF)</description></item>
 /// <item><description>INTC3ROM: When ON, internal 80-column firmware overlays slot 3 ($x300 region)</description></item>
 /// </list>
 /// <para>
@@ -278,18 +278,25 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
         // Extract slot number from address: $xn00 ? slot n
         int slot = (offset >> 8) & 0x07;
 
+        // Check for INTC3ROM independent control of $x300 region before the INTCXROM early return.
+        // Per IIe behavior, any internal $C3xx access while internal C3 ROM is active arms INTC8ROM
+        // even if INTCXROM is currently enabled; the expansion ROM still stays suppressed until $CFFF.
+        if (slot == 3 && intC3RomEnabled && internalRom is not null)
+        {
+            intC8RomEnabled = true;
+        }
+
         // Check for INTCXROM override (internal ROM overlays all slot ROMs $C100-$C7FF)
         if (intCxRomEnabled && internalRom is not null)
         {
-            // INTCXROM is enabled - internal ROM provides data, no slot selection occurs
+            // INTCXROM is enabled - internal ROM provides data, no slot selection occurs.
+            // The INTC8ROM latch must still have been armed by the $C3xx access above.
             return internalRom.Read8(offset, in access);
         }
 
         // Check for INTC3ROM independent control of $x300 region
         if (slot == 3 && intC3RomEnabled && internalRom is not null)
         {
-            intC8RomEnabled = true;
-
             // INTC3ROM is enabled - internal ROM provides data at $C300-$C3FF
             // BUT we still need to trigger expansion ROM selection for slot 3!
             // This is because the internal 80-column firmware has expansion ROM
@@ -338,20 +345,27 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
     /// </remarks>
     private void WriteSlotRom(Word offset)
     {
+        // Extract slot number from address: $xn00 ? slot n
+        int slot = (offset >> 8) & 0x07;
+
+        // Per IIe behavior, any $C3xx access while the internal C3 ROM is active arms INTC8ROM
+        // before the INTCXROM override suppresses slot selection; this must happen even when
+        // INTCXROM is enabled because the latch is a stateful side effect.
+        if (slot == 3 && intC3RomEnabled)
+        {
+            intC8RomEnabled = true;
+        }
+
         // Check for INTCXROM override - when enabled, no slot selection occurs
         if (intCxRomEnabled)
         {
             return;
         }
 
-        // Extract slot number from address: $xn00 ? slot n
-        int slot = (offset >> 8) & 0x07;
-
         // For slot 3 with INTC3ROM enabled, still trigger expansion ROM selection
         // because the internal 80-column firmware has expansion ROM
         if (slot == 3 && intC3RomEnabled)
         {
-            intC8RomEnabled = true;
             slotManager.SelectExpansionSlot(slot);
             return;
         }

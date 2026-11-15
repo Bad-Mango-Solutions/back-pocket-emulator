@@ -781,6 +781,37 @@ public class CompositeIOTargetTests
     }
 
     /// <summary>
+    /// Verifies that a $C300 read while INTCXROM is on still arms INTC8ROM when internal C3 ROM is active.
+    /// </summary>
+    [Test]
+    public void Read8_IntCxRomEnabled_ArmsIntC8RomOnC300Access_ThenRemainsLatchedAfterDisablingIntCxRom()
+    {
+        var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        internalMemory.AsSpan()[0x300] = 0x77;
+        internalMemory.AsSpan()[0x800] = 0x81;
+        var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
+
+        ioPage.SetInternalRom(internalRom);
+        ioPage.SetIntC3Rom(true);
+        ioPage.SetIntCxRom(true);
+
+        var c300Access = CreateTestAccess(0xC300, AccessIntent.DataRead);
+        var c800Access = CreateTestAccess(0xC800, AccessIntent.DataRead);
+
+        byte c300Value = ioPage.Read8(0x300, in c300Access);
+
+        Assert.That(c300Value, Is.EqualTo(0x77), "INTCXROM should still read the internal C3 ROM image.");
+
+        ioPage.SetIntCxRom(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ioPage.IsIntC8RomEnabled, Is.True, "INTC8ROM should remain latched after the INTCXROM overlay is disabled.");
+            Assert.That(ioPage.Read8(0x800, in c800Access), Is.EqualTo(0x81), "The latched $C800-$CFFF overlay should remain on the internal ROM.");
+        });
+    }
+
+    /// <summary>
     /// Verifies that INTC3ROM defaults to enabled.
     /// </summary>
     [Test]
