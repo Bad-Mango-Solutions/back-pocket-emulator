@@ -25,6 +25,11 @@ public class OpcodeTable
     /// Initializes a new instance of the <see cref="OpcodeTable"/> class.
     /// </summary>
     /// <param name="handlers">The array of opcode handlers. Must be exactly 256 elements.</param>
+    /// <remarks>
+    /// This constructor produces empty metadata for every opcode (default
+    /// <see cref="OpcodeInfo"/> values, including a base cycle count of zero).
+    /// It is kept for compatibility with callers that only supply handlers.
+    /// </remarks>
     /// <exception cref="ArgumentNullException">Thrown when handlers is null.</exception>
     /// <exception cref="ArgumentException">Thrown when handlers array is not exactly 256 elements.</exception>
     public OpcodeTable(OpcodeHandler[] handlers)

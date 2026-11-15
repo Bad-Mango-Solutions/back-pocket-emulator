@@ -18,6 +18,39 @@ using Core.Interfaces.Cpu;
 /// </remarks>
 public static class Cpu65C02OpcodeTableBuilder
 {
+    // W65C02S base cycles, indexed by opcode. Penalties are excluded: page-cross (+1),
+    // conditional branch taken (+1, plus another +1 when that branch crosses a page),
+    // and decimal-mode ADC/SBC (+1). BRA is always taken, so its minimum is 3.
+    //
+    // Table 4-1 of the WDC W65C02S datasheet supplies the addressing-mode times.
+    // Note 1 adds the fixed extra cycle for indexed stores (STA abs,X / abs,Y,
+    // STA (zp),Y, and STZ abs,X). Note 3 adds 2 for read-modify-write; Table 7-1
+    // states that absolute indexed RMW in the same page is 6, not the NMOS 7.
+    // Table 7-1 also lists the unused-opcode NOPs (including $5C = 8 and the
+    // 1-byte, 1-cycle column 3 and column B NOPs). JMP absolute is 3 because it
+    // does not read a data operand. JMP indirect and JMP (abs,X) are 6.
+    // Stack times within Table 4-1's 3-7 range: pushes 3, pulls 4, JSR/RTS/RTI 6, BRK 7.
+    // WAI and STP are 3 (they are not the ordinary 2-cycle implied operations).
+    private static readonly byte[] BaseCycles =
+    {
+        7, 6, 2, 1, 5, 3, 5, 5, 3, 2, 2, 1, 6, 4, 6, 5, // $00
+        2, 5, 5, 1, 5, 4, 6, 5, 2, 4, 2, 1, 6, 4, 6, 5, // $10
+        6, 6, 2, 1, 3, 3, 5, 5, 4, 2, 2, 1, 4, 4, 6, 5, // $20
+        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 2, 1, 4, 4, 6, 5, // $30
+        6, 6, 2, 1, 3, 3, 5, 5, 3, 2, 2, 1, 3, 4, 6, 5, // $40
+        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 3, 1, 8, 4, 6, 5, // $50
+        6, 6, 2, 1, 3, 3, 5, 5, 4, 2, 2, 1, 6, 4, 6, 5, // $60
+        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 4, 1, 6, 4, 6, 5, // $70
+        3, 6, 2, 1, 3, 3, 3, 5, 2, 2, 2, 1, 4, 4, 4, 5, // $80
+        2, 6, 5, 1, 4, 4, 4, 5, 2, 5, 2, 1, 4, 5, 5, 5, // $90 ($9E is 5; handler charges 4)
+        2, 6, 2, 1, 3, 3, 3, 5, 2, 2, 2, 1, 4, 4, 4, 5, // $A0
+        2, 5, 5, 1, 4, 4, 4, 5, 2, 4, 2, 1, 4, 4, 4, 5, // $B0
+        2, 6, 2, 1, 3, 3, 5, 5, 2, 2, 2, 3, 4, 4, 6, 5, // $C0
+        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 3, 3, 4, 4, 6, 5, // $D0
+        2, 6, 2, 1, 3, 3, 5, 5, 2, 2, 2, 1, 4, 4, 6, 5, // $E0
+        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 4, 1, 4, 4, 6, 5, // $F0
+    };
+
     /// <summary>
     /// Builds the opcode table for the 65C02 CPU.
     /// </summary>
@@ -33,10 +66,10 @@ public static class Cpu65C02OpcodeTableBuilder
             handlers[i] = IllegalOpcode;
         }
 
-        void SetOpcode(byte opcode, OpcodeHandler handler, CpuInstructions instruction, CpuAddressingModes addressingMode, byte baseCycles = 0)
+        void SetOpcode(byte opcode, OpcodeHandler handler, CpuInstructions instruction, CpuAddressingModes addressingMode)
         {
             handlers[opcode] = handler;
-            metadata[opcode] = new(instruction, addressingMode, GetOperandLength(addressingMode), baseCycles);
+            metadata[opcode] = new(instruction, addressingMode, GetOperandLength(addressingMode), BaseCycles[opcode]);
         }
 
         static byte GetOperandLength(CpuAddressingModes addressingMode) => addressingMode switch
