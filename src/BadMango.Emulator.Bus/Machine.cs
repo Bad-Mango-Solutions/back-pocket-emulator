@@ -99,8 +99,9 @@ public sealed class Machine : IMachine
 
     /// <summary>
     /// Signals lifecycle transitions that may release waiters blocked on run-loop ownership.
+    /// The result is unused; completion itself is the signal.
     /// </summary>
-    private TaskCompletionSource<bool> lifecycleChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource lifecycleChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
     /// Generation of the run loop that currently owns the CPU, or 0 when no loop is active.
@@ -1101,36 +1102,43 @@ public sealed class Machine : IMachine
     /// <remarks>
     /// Before releasing, completes a RESET pulse still in its hold window and runs requests that
     /// were posted while the loop was winding down, with no CPU step on the stack. A stale loop
-    /// (generation mismatch) never clears another loop's ownership.
+    /// (generation mismatch) never clears another loop's ownership. The previous lifecycle signal
+    /// is completed even when that wind-down work throws, so a waiter that already observed it
+    /// is not left blocked after the signal has been swapped out.
     /// </remarks>
     private void EndRunLoop(int generation)
     {
-        TaskCompletionSource<bool>? signal = null;
-        lock (lifecycleSync)
+        TaskCompletionSource? signal = null;
+        try
         {
-            if (activeLoopGeneration != generation)
+            lock (lifecycleSync)
             {
-                return;
-            }
-
-            try
-            {
-                RunAsMachine(() =>
+                if (activeLoopGeneration != generation)
                 {
-                    FinishPendingResetRelease();
-                    DrainRequests();
-                    DrainDeferredWork();
-                });
-            }
-            finally
-            {
-                activeLoopGeneration = 0;
-                signal = lifecycleChanged;
-                lifecycleChanged = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    return;
+                }
+
+                try
+                {
+                    RunAsMachine(() =>
+                    {
+                        FinishPendingResetRelease();
+                        DrainRequests();
+                        DrainDeferredWork();
+                    });
+                }
+                finally
+                {
+                    activeLoopGeneration = 0;
+                    signal = lifecycleChanged;
+                    lifecycleChanged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
             }
         }
-
-        signal?.TrySetResult(true);
+        finally
+        {
+            signal?.TrySetResult();
+        }
     }
 
     /// <summary>
