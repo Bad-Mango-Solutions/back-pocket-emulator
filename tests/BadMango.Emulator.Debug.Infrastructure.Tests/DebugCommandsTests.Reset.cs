@@ -105,6 +105,7 @@ public partial class DebugCommandsTests
     {
         var mockKeyboard = new Mock<IKeyboardDevice>();
         mockKeyboard.SetupGet(k => k.Modifiers).Returns(KeyboardModifiers.None);
+        var mockKeyboardInput = new Mock<IKeyboardInput>();
 
         var mockScheduler = new Mock<IScheduler>();
         mockScheduler.SetupGet(s => s.Now).Returns(Cycle.Zero);
@@ -115,6 +116,59 @@ public partial class DebugCommandsTests
         mockMachine.SetupGet(m => m.Scheduler).Returns(mockScheduler.Object);
         mockMachine.SetupGet(m => m.ClockSpeedHz).Returns(1_023_000);
         mockMachine.Setup(m => m.GetComponent<IKeyboardDevice>()).Returns(mockKeyboard.Object);
+        mockMachine.Setup(m => m.GetComponent<IKeyboardInput>()).Returns(mockKeyboardInput.Object);
+        mockMachine.Setup(m => m.PulseReset(It.IsAny<Action>(), It.IsAny<Action>(), It.IsAny<bool>()))
+            .Callback<Action, Action, bool>((assertLine, releaseLine, hard) =>
+            {
+                assertLine();
+                releaseLine();
+            });
+
+        debugContext.AttachMachine(mockMachine.Object);
+
+        var command = new ResetCommand();
+        var result = command.Execute(debugContext, ["--open-apple", "--diag"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True);
+            mockKeyboardInput.Verify(
+                k => k.KeyDown(KeyboardKey.Reset, KeyboardModifiers.Control | KeyboardModifiers.OpenApple | KeyboardModifiers.ClosedApple),
+                Times.Once);
+            mockKeyboardInput.Verify(
+                k => k.KeyUp(KeyboardKey.Reset, KeyboardModifiers.OpenApple | KeyboardModifiers.ClosedApple),
+                Times.Once);
+            mockScheduler.Verify(
+                s => s.ScheduleAt(
+                    It.IsAny<Cycle>(),
+                    ScheduledEventKind.DeferredWork,
+                    It.IsAny<int>(),
+                    It.IsAny<Action<IEventContext>>(),
+                    It.IsAny<object?>()),
+                Times.Once);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a keyboard without <see cref="IKeyboardInput"/> still pulses Reset through
+    /// <see cref="IResetSource.PressResetKey"/> and holds the requested Apple keys.
+    /// </summary>
+    [Test]
+    public void ResetCommand_UsesDeviceResetKeys_WhenKeyboardHasNoInput()
+    {
+        var mockKeyboard = new Mock<IKeyboardDevice>();
+        mockKeyboard.SetupGet(k => k.Modifiers).Returns(KeyboardModifiers.None);
+
+        var mockScheduler = new Mock<IScheduler>();
+        mockScheduler.SetupGet(s => s.Now).Returns(Cycle.Zero);
+
+        var mockMachine = new Mock<IMachine>();
+        mockMachine.SetupGet(m => m.Cpu).Returns(cpu);
+        mockMachine.SetupGet(m => m.Bus).Returns(bus);
+        mockMachine.SetupGet(m => m.Scheduler).Returns(mockScheduler.Object);
+        mockMachine.SetupGet(m => m.ClockSpeedHz).Returns(1_023_000);
+        mockMachine.Setup(m => m.GetComponent<IKeyboardDevice>()).Returns(mockKeyboard.Object);
+        mockMachine.Setup(m => m.GetComponent<IKeyboardInput>()).Returns((IKeyboardInput?)null);
         mockMachine.Setup(m => m.PulseReset(It.IsAny<Action>(), It.IsAny<Action>(), It.IsAny<bool>()))
             .Callback<Action, Action, bool>((assertLine, releaseLine, hard) =>
             {
@@ -138,6 +192,7 @@ public partial class DebugCommandsTests
                 Times.Once);
             mockKeyboard.Verify(k => k.PressResetKey(), Times.Once);
             mockKeyboard.Verify(k => k.ReleaseResetKey(), Times.Once);
+            mockMachine.Verify(m => m.Reset(It.IsAny<bool>()), Times.Never);
             mockScheduler.Verify(
                 s => s.ScheduleAt(
                     It.IsAny<Cycle>(),

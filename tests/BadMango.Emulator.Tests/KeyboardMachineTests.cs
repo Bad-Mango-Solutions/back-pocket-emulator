@@ -9,6 +9,7 @@ using System.Text;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Configuration;
+using BadMango.Emulator.Core.Signaling;
 using BadMango.Emulator.Debug.Infrastructure;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.Interfaces;
@@ -264,6 +265,153 @@ public sealed class KeyboardMachineTests
             Assert.That(ReadBuffer(machine), Is.EqualTo("aA!"));
             Assert.That(pb0, Is.EqualTo(0x80), "Open Apple is visible at $C061");
             Assert.That(pb1, Is.EqualTo(0x80), "Closed Apple is visible at $C062");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="KeyboardKey.Reset"/> asserts RESET via <see cref="IKeyboardInput"/>
+    /// and requires a matching key-up to release it.
+    /// </summary>
+    [Test]
+    public void KeyboardKeys_ResetKeyWithControl_AssertsAndReleasesResetSignal()
+    {
+        var machine = CreateMachine();
+        IKeyboardInput input = RequireInput(machine);
+
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.Control);
+        machine.Scheduler.DispatchDue();
+        bool assertedAfterDown = machine.Signals.IsAsserted(SignalLine.Reset);
+
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.Control);
+        machine.Scheduler.DispatchDue();
+        bool assertedAfterUp = machine.Signals.IsAsserted(SignalLine.Reset);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(assertedAfterDown, Is.True);
+            Assert.That(assertedAfterUp, Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="KeyboardKey.Reset"/> without Control does nothing when
+    /// <see cref="IResetSource.RequireControlForReset"/> is enabled.
+    /// </summary>
+    [Test]
+    public void KeyboardKeys_ResetKeyWithoutControl_DoesNotAssertOrLatch()
+    {
+        var machine = CreateMachine();
+        IKeyboardInput input = RequireInput(machine);
+        var keyboard = machine.GetComponent<IKeyboardDevice>()!;
+        keyboard.RequireControlForReset = true;
+        byte keyDataBefore = machine.Cpu.Read8(KeyboardDataAddress);
+        byte keyDownBefore = machine.Cpu.Read8(KeyboardStrobeAddress);
+
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        bool asserted = machine.Signals.IsAsserted(SignalLine.Reset);
+        byte keyDataAfter = machine.Cpu.Read8(KeyboardDataAddress);
+        byte keyDownAfter = machine.Cpu.Read8(KeyboardStrobeAddress);
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(asserted, Is.False);
+            Assert.That(keyDataAfter, Is.EqualTo(keyDataBefore));
+            Assert.That(keyDownAfter, Is.EqualTo(keyDownBefore));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="KeyboardKey.Reset"/> with Control asserts RESET without latching
+    /// keyboard data or AKD.
+    /// </summary>
+    [Test]
+    public void KeyboardKeys_ResetKeyWithControl_DoesNotLatchStrobeOrAkd()
+    {
+        var machine = CreateMachine();
+        IKeyboardInput input = RequireInput(machine);
+        byte keyDataBefore = machine.Cpu.Read8(KeyboardDataAddress);
+        byte keyDownBefore = machine.Cpu.Read8(KeyboardStrobeAddress);
+
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.Control);
+        machine.Scheduler.DispatchDue();
+        bool asserted = machine.Signals.IsAsserted(SignalLine.Reset);
+        byte keyDataAfter = machine.Cpu.Read8(KeyboardDataAddress);
+        byte keyDownAfter = machine.Cpu.Read8(KeyboardStrobeAddress);
+
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.Control);
+        machine.Scheduler.DispatchDue();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(asserted, Is.True);
+            Assert.That(keyDataAfter, Is.EqualTo(keyDataBefore));
+            Assert.That(keyDownAfter, Is.EqualTo(keyDownBefore));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that Reset held with an Apple-key modifier sets that pushbutton, and that
+    /// <see cref="IKeyboardInput.KeyUp"/> clears it. Open Apple is bit 7 of <c>$C061</c>;
+    /// Closed Apple is bit 7 of <c>$C062</c>.
+    /// </summary>
+    [Test]
+    public void KeyboardKeys_ResetWithAppleModifiers_SetsPushbuttonWhileHeld()
+    {
+        var machine = CreateMachine();
+        IKeyboardInput input = RequireInput(machine);
+
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.Control | KeyboardModifiers.OpenApple);
+        machine.Scheduler.DispatchDue();
+        byte openAppleWhileHeld = machine.Cpu.Read8(0xC061);
+
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        byte openAppleAfterRelease = machine.Cpu.Read8(0xC061);
+
+        input.KeyDown(KeyboardKey.Reset, KeyboardModifiers.Control | KeyboardModifiers.ClosedApple);
+        machine.Scheduler.DispatchDue();
+        byte closedAppleWhileHeld = machine.Cpu.Read8(0xC062);
+
+        input.KeyUp(KeyboardKey.Reset, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        byte closedAppleAfterRelease = machine.Cpu.Read8(0xC062);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(openAppleWhileHeld, Is.EqualTo(0x80), "Open Apple is visible at $C061 while Reset is held");
+            Assert.That(openAppleAfterRelease, Is.EqualTo(0x00), "Open Apple clears after KeyUp");
+            Assert.That(closedAppleWhileHeld, Is.EqualTo(0x80), "Closed Apple is visible at $C062 while Reset is held");
+            Assert.That(closedAppleAfterRelease, Is.EqualTo(0x00), "Closed Apple clears after KeyUp");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="KeyboardKey.Power"/> is ignored on the IIe keyboard path.
+    /// </summary>
+    [Test]
+    public void KeyboardKeys_PowerKey_IsIgnored()
+    {
+        var machine = CreateMachine();
+        IKeyboardInput input = RequireInput(machine);
+        byte keyDataBefore = machine.Cpu.Read8(KeyboardDataAddress);
+        byte keyDownBefore = machine.Cpu.Read8(KeyboardStrobeAddress);
+
+        input.KeyDown(KeyboardKey.Power, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        bool asserted = machine.Signals.IsAsserted(SignalLine.Reset);
+        byte keyDataAfter = machine.Cpu.Read8(KeyboardDataAddress);
+        byte keyDownAfter = machine.Cpu.Read8(KeyboardStrobeAddress);
+        input.KeyUp(KeyboardKey.Power, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(asserted, Is.False);
+            Assert.That(keyDataAfter, Is.EqualTo(keyDataBefore));
+            Assert.That(keyDownAfter, Is.EqualTo(keyDownBefore));
         });
     }
 
