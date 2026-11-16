@@ -247,7 +247,7 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
         DB STP Implied 1 3
         DC NOP Absolute 3 4
         DD CMP AbsoluteX 3 4
-        DE DEC AbsoluteX 3 6
+        DE DEC AbsoluteX 3 7
         DF BBS ZeroPageRelative 3 5
         E0 CPX Immediate 2 2
         E1 SBC IndirectX 2 6
@@ -279,11 +279,17 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
         FB NOP Implied 1 1
         FC NOP Absolute 3 4
         FD SBC AbsoluteX 3 4
-        FE INC AbsoluteX 3 6
+        FE INC AbsoluteX 3 7
         FF BBS ZeroPageRelative 3 5
         """;
 
+    private const byte AslAbsoluteXOpcode = 0x1E;
+    private const byte RolAbsoluteXOpcode = 0x3E;
+    private const byte LsrAbsoluteXOpcode = 0x5E;
+    private const byte RorAbsoluteXOpcode = 0x7E;
     private const byte StzAbsoluteXOpcode = 0x9E;
+    private const byte DecAbsoluteXOpcode = 0xDE;
+    private const byte IncAbsoluteXOpcode = 0xFE;
 
     /// <summary>
     /// Verifies that every opcode's explicit metadata matches the frozen table.
@@ -322,11 +328,6 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
         {
             for (int opcode = 0; opcode < 256; opcode++)
             {
-                if (opcode == StzAbsoluteXOpcode)
-                {
-                    continue;
-                }
-
                 byte code = (byte)opcode;
                 ulong consumed = MeasureBaseCycles(code);
                 byte expected = table.GetMetadata(code).BaseCycles;
@@ -336,17 +337,9 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
     }
 
     /// <summary>
-    /// Records that <c>STZ abs,X</c> (<c>$9E</c>) does not charge the datasheet's 5 cycles.
+    /// Verifies that <c>STZ abs,X</c> (<c>$9E</c>) charges 5 cycles.
     /// </summary>
-    /// <remarks>
-    /// WDC W65C02S Table 4-1 note 1 adds a cycle for an indexed store whether or not
-    /// the address crosses a page. <c>STA abs,X</c> does this. <c>$9E</c> is wired to
-    /// <c>AddressingModes.AbsoluteX</c>, which adds that cycle only on a page cross,
-    /// so a same-page <c>STZ abs,X</c> takes 4. The handler is left unchanged.
-    /// Remove <see cref="IgnoreAttribute"/> when issue #422 is fixed; this test should then pass.
-    /// </remarks>
     [Test]
-    [Ignore("Handler charges 4 cycles for STZ abs,X ($9E); W65C02S indexed-store base is 5. Tracked by issue #422.")]
     public void StzAbsoluteX_HandlerChargesDatasheetBaseCycles()
     {
         var table = Cpu65C02OpcodeTableBuilder.Build();
@@ -356,6 +349,118 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
         {
             Assert.That(table.GetMetadata(StzAbsoluteXOpcode).BaseCycles, Is.EqualTo(5));
             Assert.That(consumed, Is.EqualTo(5), $"STZ abs,X consumed {consumed}; datasheet base is 5");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <c>STZ abs,X</c> always consumes 5 cycles, including page crossing.
+    /// </summary>
+    /// <param name="baseAddress">The instruction operand before indexing.</param>
+    /// <param name="x">The X register value added to <paramref name="baseAddress"/>.</param>
+    [TestCase((ushort)0x2000, (byte)0x10)]
+    [TestCase((ushort)0x20FF, (byte)0x01)]
+    public void StzAbsoluteX_AlwaysConsumesFiveCycles(ushort baseAddress, byte x)
+    {
+        ushort effectiveAddress = (ushort)(baseAddress + x);
+        WriteWord(0xFFFC, 0x1000);
+        Write(0x1000, StzAbsoluteXOpcode);
+        WriteWord(0x1001, baseAddress);
+        Write(effectiveAddress, 0xAA);
+        Cpu.Reset();
+        Cpu.Registers.X.SetByte(x);
+
+        var result = Cpu.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.CyclesConsumed.Value, Is.EqualTo(5UL));
+            Assert.That(Read(effectiveAddress), Is.EqualTo(0x00));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <c>INC abs,X</c> and <c>DEC abs,X</c> consume 7 cycles both with and without page crossing.
+    /// </summary>
+    /// <param name="opcode">The opcode under test.</param>
+    /// <param name="baseAddress">The instruction operand before indexing.</param>
+    /// <param name="x">The X register value added to <paramref name="baseAddress"/>.</param>
+    /// <param name="initialValue">The value to place at the effective address before execution.</param>
+    /// <param name="expectedValue">The expected value after execution.</param>
+    /// <param name="expectZero">Whether Z should be set after execution.</param>
+    /// <param name="expectNegative">Whether N should be set after execution.</param>
+    [TestCase(IncAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, (byte)0xFF, (byte)0x00, true, false)]
+    [TestCase(IncAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, (byte)0x7F, (byte)0x80, false, true)]
+    [TestCase(DecAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, (byte)0x01, (byte)0x00, true, false)]
+    [TestCase(DecAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, (byte)0x00, (byte)0xFF, false, true)]
+    public void IncAndDecAbsoluteX_AlwaysConsumeSevenCyclesAndUpdateFlags(
+        byte opcode,
+        ushort baseAddress,
+        byte x,
+        byte initialValue,
+        byte expectedValue,
+        bool expectZero,
+        bool expectNegative)
+    {
+        ushort effectiveAddress = (ushort)(baseAddress + x);
+        WriteWord(0xFFFC, 0x1000);
+        Write(0x1000, opcode);
+        WriteWord(0x1001, baseAddress);
+        Write(effectiveAddress, initialValue);
+        Cpu.Reset();
+        Cpu.Registers.P = ProcessorStatusFlags.R;
+        Cpu.Registers.X.SetByte(x);
+
+        var result = Cpu.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.CyclesConsumed.Value, Is.EqualTo(7UL));
+            Assert.That(Read(effectiveAddress), Is.EqualTo(expectedValue));
+            Assert.That((Cpu.Registers.P & ProcessorStatusFlags.Z) != 0, Is.EqualTo(expectZero));
+            Assert.That((Cpu.Registers.P & ProcessorStatusFlags.N) != 0, Is.EqualTo(expectNegative));
+        });
+    }
+
+    /// <summary>
+    /// Verifies shift/rotate <c>abs,X</c> remain at 6 cycles (+1 on page crossing)
+    /// and write the exact result of operating on <c>0x12</c> with carry clear:
+    /// ASL and ROL store <c>0x24</c>; LSR and ROR store <c>0x09</c>.
+    /// </summary>
+    /// <param name="opcode">The shift/rotate opcode under test.</param>
+    /// <param name="baseAddress">The instruction operand before indexing.</param>
+    /// <param name="x">The X register value added to <paramref name="baseAddress"/>.</param>
+    /// <param name="expectedCycles">The expected cycle count for this addressing case.</param>
+    /// <param name="expectedValue">The byte stored at the effective address.</param>
+    [TestCase(AslAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, 6UL, (byte)0x24)]
+    [TestCase(AslAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, 7UL, (byte)0x24)]
+    [TestCase(LsrAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, 6UL, (byte)0x09)]
+    [TestCase(LsrAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, 7UL, (byte)0x09)]
+    [TestCase(RolAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, 6UL, (byte)0x24)]
+    [TestCase(RolAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, 7UL, (byte)0x24)]
+    [TestCase(RorAbsoluteXOpcode, (ushort)0x2000, (byte)0x10, 6UL, (byte)0x09)]
+    [TestCase(RorAbsoluteXOpcode, (ushort)0x20FF, (byte)0x01, 7UL, (byte)0x09)]
+    public void ShiftAndRotateAbsoluteX_KeepSixPlusPageCrossTiming(
+        byte opcode,
+        ushort baseAddress,
+        byte x,
+        ulong expectedCycles,
+        byte expectedValue)
+    {
+        ushort effectiveAddress = (ushort)(baseAddress + x);
+        WriteWord(0xFFFC, 0x1000);
+        Write(0x1000, opcode);
+        WriteWord(0x1001, baseAddress);
+        Write(effectiveAddress, 0x12);
+        Cpu.Reset();
+        Cpu.Registers.P = ProcessorStatusFlags.R;
+        Cpu.Registers.X.SetByte(x);
+
+        var result = Cpu.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.CyclesConsumed.Value, Is.EqualTo(expectedCycles));
+            Assert.That(Read(effectiveAddress), Is.EqualTo(expectedValue));
         });
     }
 

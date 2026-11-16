@@ -24,8 +24,10 @@ public static class Cpu65C02OpcodeTableBuilder
     //
     // Table 4-1 of the WDC W65C02S datasheet supplies the addressing-mode times.
     // Note 1 adds the fixed extra cycle for indexed stores (STA abs,X / abs,Y,
-    // STA (zp),Y, and STZ abs,X). Note 3 adds 2 for read-modify-write; Table 7-1
-    // states that absolute indexed RMW in the same page is 6, not the NMOS 7.
+    // STA (zp),Y, and STZ abs,X). Note 3 adds 2 for read-modify-write.
+    // For absolute indexed RMW, real hardware keeps DEC/INC abs,X at 7 cycles
+    // regardless of page crossing (https://www.6502.org/tutorials/65c02opcodes.html),
+    // while ASL/LSR/ROL/ROR abs,X remain 6 plus page-cross penalty.
     // Table 7-1 also lists the unused-opcode NOPs (including $5C = 8 and the
     // 1-byte, 1-cycle column 3 and column B NOPs). JMP absolute is 3 because it
     // does not read a data operand. JMP indirect and JMP (abs,X) are 6.
@@ -42,13 +44,13 @@ public static class Cpu65C02OpcodeTableBuilder
         6, 6, 2, 1, 3, 3, 5, 5, 4, 2, 2, 1, 6, 4, 6, 5, // $60
         2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 4, 1, 6, 4, 6, 5, // $70
         3, 6, 2, 1, 3, 3, 3, 5, 2, 2, 2, 1, 4, 4, 4, 5, // $80
-        2, 6, 5, 1, 4, 4, 4, 5, 2, 5, 2, 1, 4, 5, 5, 5, // $90 ($9E is 5; handler charges 4)
+        2, 6, 5, 1, 4, 4, 4, 5, 2, 5, 2, 1, 4, 5, 5, 5, // $90
         2, 6, 2, 1, 3, 3, 3, 5, 2, 2, 2, 1, 4, 4, 4, 5, // $A0
         2, 5, 5, 1, 4, 4, 4, 5, 2, 4, 2, 1, 4, 4, 4, 5, // $B0
         2, 6, 2, 1, 3, 3, 5, 5, 2, 2, 2, 3, 4, 4, 6, 5, // $C0
-        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 3, 3, 4, 4, 6, 5, // $D0
+        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 3, 3, 4, 4, 7, 5, // $D0
         2, 6, 2, 1, 3, 3, 5, 5, 2, 2, 2, 1, 4, 4, 6, 5, // $E0
-        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 4, 1, 4, 4, 6, 5, // $F0
+        2, 5, 5, 1, 4, 4, 6, 5, 2, 4, 4, 1, 4, 4, 7, 5, // $F0
     };
 
     /// <summary>
@@ -258,7 +260,7 @@ public static class Cpu65C02OpcodeTableBuilder
         SetOpcode(0x64, Instructions.STZ(AddressingModes.ZeroPage), CpuInstructions.STZ, CpuAddressingModes.ZeroPage); // Store Zero
         SetOpcode(0x74, Instructions.STZ(AddressingModes.ZeroPageX), CpuInstructions.STZ, CpuAddressingModes.ZeroPageX); // Store Zero
         SetOpcode(0x9C, Instructions.STZ(AddressingModes.Absolute), CpuInstructions.STZ, CpuAddressingModes.Absolute); // Store Zero
-        SetOpcode(0x9E, Instructions.STZ(AddressingModes.AbsoluteX), CpuInstructions.STZ, CpuAddressingModes.AbsoluteX); // Store Zero
+        SetOpcode(0x9E, Instructions.STZ(AddressingModes.AbsoluteXWrite), CpuInstructions.STZ, CpuAddressingModes.AbsoluteX); // Store Zero
         SetOpcode(0x04, Instructions.TSB(AddressingModes.ZeroPage), CpuInstructions.TSB, CpuAddressingModes.ZeroPage); // Test and Set Bits
         SetOpcode(0x0C, Instructions.TSB(AddressingModes.Absolute), CpuInstructions.TSB, CpuAddressingModes.Absolute); // Test and Set Bits
         SetOpcode(0x14, Instructions.TRB(AddressingModes.ZeroPage), CpuInstructions.TRB, CpuAddressingModes.ZeroPage); // Test and Reset Bits
@@ -369,13 +371,13 @@ public static class Cpu65C02OpcodeTableBuilder
         SetOpcode(0xE6, Instructions.INC(AddressingModes.ZeroPage), CpuInstructions.INC, CpuAddressingModes.ZeroPage);
         SetOpcode(0xF6, Instructions.INC(AddressingModes.ZeroPageX), CpuInstructions.INC, CpuAddressingModes.ZeroPageX);
         SetOpcode(0xEE, Instructions.INC(AddressingModes.Absolute), CpuInstructions.INC, CpuAddressingModes.Absolute);
-        SetOpcode(0xFE, Instructions.INC(AddressingModes.AbsoluteX), CpuInstructions.INC, CpuAddressingModes.AbsoluteX);
+        SetOpcode(0xFE, Instructions.INC(AddressingModes.AbsoluteXWrite), CpuInstructions.INC, CpuAddressingModes.AbsoluteX);
         SetOpcode(0x1A, Instructions.INA(AddressingModes.Accumulator), CpuInstructions.INA, CpuAddressingModes.Accumulator); // 65C02 INC A
 
         SetOpcode(0xC6, Instructions.DEC(AddressingModes.ZeroPage), CpuInstructions.DEC, CpuAddressingModes.ZeroPage);
         SetOpcode(0xD6, Instructions.DEC(AddressingModes.ZeroPageX), CpuInstructions.DEC, CpuAddressingModes.ZeroPageX);
         SetOpcode(0xCE, Instructions.DEC(AddressingModes.Absolute), CpuInstructions.DEC, CpuAddressingModes.Absolute);
-        SetOpcode(0xDE, Instructions.DEC(AddressingModes.AbsoluteX), CpuInstructions.DEC, CpuAddressingModes.AbsoluteX);
+        SetOpcode(0xDE, Instructions.DEC(AddressingModes.AbsoluteXWrite), CpuInstructions.DEC, CpuAddressingModes.AbsoluteX);
         SetOpcode(0x3A, Instructions.DEA(AddressingModes.Accumulator), CpuInstructions.DEA, CpuAddressingModes.Accumulator); // 65C02 DEC A
 
         SetOpcode(0xE8, Instructions.INX(AddressingModes.Implied), CpuInstructions.INX, CpuAddressingModes.Implied);
