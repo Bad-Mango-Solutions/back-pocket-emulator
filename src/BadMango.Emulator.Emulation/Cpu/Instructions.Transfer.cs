@@ -6,12 +6,31 @@
 namespace BadMango.Emulator.Emulation.Cpu;
 
 using Core.Cpu;
+using Core.Interfaces.Cpu;
 
 /// <content>
 /// Register transfer instructions (TAX, TAY, TXA, TYA, TXS, TSX).
 /// </content>
 public static partial class Instructions
 {
+    /// <summary>Cached direct-dispatch delegate for TAX implied.</summary>
+    internal static readonly OpcodeDispatch TAXImpliedDispatch = DispatchTAXImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TAY implied.</summary>
+    internal static readonly OpcodeDispatch TAYImpliedDispatch = DispatchTAYImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TXA implied.</summary>
+    internal static readonly OpcodeDispatch TXAImpliedDispatch = DispatchTXAImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TYA implied.</summary>
+    internal static readonly OpcodeDispatch TYAImpliedDispatch = DispatchTYAImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TXS implied.</summary>
+    internal static readonly OpcodeDispatch TXSImpliedDispatch = DispatchTXSImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TSX implied.</summary>
+    internal static readonly OpcodeDispatch TSXImpliedDispatch = DispatchTSXImplied;
+
     /// <summary>
     /// TAX - Transfer Accumulator to X instruction.
     /// </summary>
@@ -26,7 +45,6 @@ public static partial class Instructions
             var value = cpu.Registers.A.GetValue(size);
             cpu.Registers.X.SetValue(value, size);
             cpu.Registers.P.SetZeroAndNegative(value, size);
-
             cpu.Registers.TCU += 1;
         };
     }
@@ -45,7 +63,6 @@ public static partial class Instructions
             var value = cpu.Registers.A.GetValue(size);
             cpu.Registers.Y.SetValue(value, size);
             cpu.Registers.P.SetZeroAndNegative(value, size);
-
             cpu.Registers.TCU += 1;
         };
     }
@@ -64,7 +81,6 @@ public static partial class Instructions
             var value = cpu.Registers.X.GetValue(size);
             cpu.Registers.A.SetValue(value, size);
             cpu.Registers.P.SetZeroAndNegative(value, size);
-
             cpu.Registers.TCU += 1;
         };
     }
@@ -83,7 +99,6 @@ public static partial class Instructions
             var value = cpu.Registers.Y.GetValue(size);
             cpu.Registers.A.SetValue(value, size);
             cpu.Registers.P.SetZeroAndNegative(value, size);
-
             cpu.Registers.TCU += 1;
         };
     }
@@ -99,7 +114,6 @@ public static partial class Instructions
         {
             addressingMode(cpu);
             cpu.Registers.SP.SetDWord(cpu.Registers.X.GetByte());
-
             cpu.Registers.TCU += 1;
         };
     }
@@ -118,8 +132,106 @@ public static partial class Instructions
             byte value = cpu.Registers.SP.GetByte();
             cpu.Registers.X.SetByte(value);
             cpu.Registers.P.SetZeroAndNegative(value, size);
-
             cpu.Registers.TCU += 1;
         };
+    }
+
+    private static void DispatchTAXImplied(ICpu cpu, in OpcodeEntry entry)
+    {
+        _ = entry;
+        OpTAX<ImpliedMode>(cpu);
+    }
+
+    private static void DispatchTAYImplied(ICpu cpu, in OpcodeEntry entry)
+    {
+        _ = entry;
+        OpTAY<ImpliedMode>(cpu);
+    }
+
+    private static void DispatchTXAImplied(ICpu cpu, in OpcodeEntry entry)
+    {
+        _ = entry;
+        OpTXA<ImpliedMode>(cpu);
+    }
+
+    private static void DispatchTYAImplied(ICpu cpu, in OpcodeEntry entry)
+    {
+        _ = entry;
+        OpTYA<ImpliedMode>(cpu);
+    }
+
+    private static void DispatchTXSImplied(ICpu cpu, in OpcodeEntry entry)
+    {
+        _ = entry;
+        OpTXS<ImpliedMode>(cpu);
+    }
+
+    private static void DispatchTSXImplied(ICpu cpu, in OpcodeEntry entry)
+    {
+        _ = entry;
+        OpTSX<ImpliedMode>(cpu);
+    }
+
+    private static void OpTAX<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        var value = cpu.Registers.A.GetValue(size);
+        cpu.Registers.X.SetValue(value, size);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
+    }
+
+    private static void OpTAY<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        var value = cpu.Registers.A.GetValue(size);
+        cpu.Registers.Y.SetValue(value, size);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
+    }
+
+    private static void OpTXA<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetAccumulatorSize();
+        var value = cpu.Registers.X.GetValue(size);
+        cpu.Registers.A.SetValue(value, size);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
+    }
+
+    private static void OpTYA<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetAccumulatorSize();
+        var value = cpu.Registers.Y.GetValue(size);
+        cpu.Registers.A.SetValue(value, size);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
+    }
+
+    private static void OpTXS<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        TMode.Resolve(cpu);
+        cpu.Registers.SP.SetDWord(cpu.Registers.X.GetByte());
+        cpu.Registers.TCU += 1;
+    }
+
+    private static void OpTSX<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        byte value = cpu.Registers.SP.GetByte();
+        cpu.Registers.X.SetByte(value);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
     }
 }

@@ -142,6 +142,34 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
+    /// Flags and transfer opcodes use direct dispatch and do not require legacy delegates.
+    /// </summary>
+    [Test]
+    public void Build_FlagsAndTransferOpcodes_UseDirectDispatchWithNullLegacyHandlers()
+    {
+        var table = Cpu65C02OpcodeTableBuilder.Build();
+
+        byte[] convertedOpcodes =
+        [
+            0x18, 0x38, 0x58, 0x78, 0xB8, 0xD8, 0xF8,
+            0xAA, 0xA8, 0x8A, 0x98, 0x9A, 0xBA,
+        ];
+
+        foreach (byte opcode in convertedOpcodes)
+        {
+            Assert.That(table.GetHandler(opcode), Is.Null, $"${opcode:X2} expected null legacy handler");
+        }
+
+        var cpu = CreateCpu();
+        cpu.Registers.P |= ProcessorStatusFlags.C;
+        cpu.Registers.PC.SetWord(0x0200);
+        cpu.Write8(0x0200, 0x18); // CLC
+        cpu.Step();
+
+        Assert.That((cpu.Registers.P & ProcessorStatusFlags.C) == ProcessorStatusFlags.C, Is.False);
+    }
+
+    /// <summary>
     /// Builds a 64KB RAM machine with its own opcode table.
     /// </summary>
     /// <returns>A resettable 65C02 wired only to RAM.</returns>

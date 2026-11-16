@@ -40,15 +40,18 @@ public class OpcodeTable
     /// </summary>
     /// <param name="handlers">The array of opcode handlers. Must be exactly 256 elements.</param>
     /// <param name="metadata">The per-opcode metadata array. Must be exactly 256 elements.</param>
+    /// <param name="dispatchTargets">
+    /// Optional per-opcode dispatch targets. When null for an opcode slot, the shared legacy trampoline is used.
+    /// </param>
     /// <remarks>
     /// The metadata array is copied. Later changes to the caller's array do not
     /// affect the table. The table is built once, so the copy is not on the dispatch path.
     /// </remarks>
     /// <exception cref="ArgumentNullException">Thrown when handlers or metadata is null.</exception>
     /// <exception cref="ArgumentException">
-    /// Thrown when handlers or metadata arrays are not exactly 256 elements.
+    /// Thrown when handlers, metadata, or dispatchTargets arrays are not exactly 256 elements.
     /// </exception>
-    public OpcodeTable(OpcodeHandler[] handlers, OpcodeInfo[] metadata)
+    public OpcodeTable(OpcodeHandler?[] handlers, OpcodeInfo[] metadata, OpcodeDispatch?[]? dispatchTargets = null)
     {
         ArgumentNullException.ThrowIfNull(handlers);
         ArgumentNullException.ThrowIfNull(metadata);
@@ -63,10 +66,15 @@ public class OpcodeTable
             throw new ArgumentException("Opcode metadata table must have exactly 256 entries.", nameof(metadata));
         }
 
+        if (dispatchTargets is not null && dispatchTargets.Length != 256)
+        {
+            throw new ArgumentException("Opcode dispatch table must have exactly 256 entries.", nameof(dispatchTargets));
+        }
+
         entries = new OpcodeEntry[256];
         for (int i = 0; i < handlers.Length; i++)
         {
-            entries[i] = new(SharedLegacyTrampoline, handlers[i], metadata[i]);
+            entries[i] = new(dispatchTargets?[i] ?? SharedLegacyTrampoline, handlers[i], metadata[i]);
         }
     }
 
@@ -88,9 +96,9 @@ public class OpcodeTable
     /// <param name="opcode">The opcode to get the handler for (0x00-0xFF).</param>
     /// <returns>The handler for the specified opcode.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public OpcodeHandler GetHandler(byte opcode)
+    public OpcodeHandler? GetHandler(byte opcode)
     {
-        return entries[opcode].Legacy!;
+        return entries[opcode].Legacy;
     }
 
     /// <summary>
