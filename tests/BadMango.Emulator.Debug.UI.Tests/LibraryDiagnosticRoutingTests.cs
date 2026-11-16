@@ -30,8 +30,8 @@ public class LibraryDiagnosticRoutingTests
     {
         var window = new Window();
         var service = new GlyphFileService(window);
-        var stdout = new StringWriter();
-        var stderr = new StringWriter();
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
         var originalOut = Console.Out;
         var originalError = Console.Error;
 
@@ -66,8 +66,8 @@ public class LibraryDiagnosticRoutingTests
         using var logger = new LoggerConfiguration().WriteTo.Sink(sink).CreateLogger();
         var window = new Window();
         var service = new GlyphFileService(window, logger);
-        var stdout = new StringWriter();
-        var stderr = new StringWriter();
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
         var originalOut = Console.Out;
         var originalError = Console.Error;
 
@@ -103,8 +103,8 @@ public class LibraryDiagnosticRoutingTests
         var sink = new TestLogEventSink();
         using var logger = new LoggerConfiguration().WriteTo.Sink(sink).CreateLogger();
         using var started = new ManualResetEventSlim(false);
-        var stdout = new StringWriter();
-        var stderr = new StringWriter();
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
         var originalOut = Console.Out;
         var originalError = Console.Error;
 
