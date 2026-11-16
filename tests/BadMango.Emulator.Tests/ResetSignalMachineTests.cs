@@ -38,6 +38,18 @@ public sealed class ResetSignalMachineTests
     private const ushort PushButton0Address = 0xC061;
     private const ushort PushButton2Address = 0xC063;
 
+    /// <summary>
+    /// The Apple ROM images the <c>pocket2e-a2-enh</c> profile loads. They are not
+    /// redistributable, so they are not in the repository; supply them under <c>roms/</c>.
+    /// </summary>
+    private static readonly string[] RequiredRomFiles =
+    [
+        "a2-enh-system.rom",
+        "a2-enh-monitor.rom",
+        "a2-enh-expansion.rom",
+        "a2-diskii-p6.rom",
+    ];
+
     private static string RepositoryRoot { get; } = LocateRepositoryRoot();
 
     /// <summary>
@@ -470,7 +482,13 @@ public sealed class ResetSignalMachineTests
         machine.Cpu.Read8(0xC0E9); // Slot 6 motor on
         Assume.That(controller.IsMotorOn, Is.True);
 
-        using var image = new DiskImageFactory().Open(Path.Join(RepositoryRoot, "disks", "dos33-master.dsk"), forceReadOnly: true);
+        string diskPath = Path.Join(RepositoryRoot, "disks", "dos33-master.dsk");
+        if (!File.Exists(diskPath))
+        {
+            Assert.Ignore("Disk image not present (missing disks/dos33-master.dsk); supply it locally to run this test.");
+        }
+
+        using var image = new DiskImageFactory().Open(diskPath, forceReadOnly: true);
         var media = image switch
         {
             Image525AndBlockResult both => both.TrackMedia,
@@ -674,6 +692,8 @@ public sealed class ResetSignalMachineTests
 
     private static IMachine CreateMachine()
     {
+        IgnoreIfAppleRomsMissing();
+
         string profilePath = Path.Join(RepositoryRoot, "profiles", ProfileName + ".json");
         var loader = new MachineProfileLoader(Path.Join(RepositoryRoot, "profiles"));
         var profile = loader.LoadProfileFromFile(profilePath);
@@ -760,14 +780,28 @@ public sealed class ResetSignalMachineTests
         }
     }
 
+    /// <summary>
+    /// Marks the current test as ignored when the user-supplied Apple ROM images are not
+    /// present under <c>roms/</c> (for example in CI, where the ROMs are not available).
+    /// </summary>
+    private static void IgnoreIfAppleRomsMissing()
+    {
+        var missing = RequiredRomFiles
+            .Where(name => !File.Exists(Path.Join(RepositoryRoot, "roms", name)))
+            .ToArray();
+        if (missing.Length > 0)
+        {
+            Assert.Ignore($"Apple ROMs not present (missing roms/{string.Join(", roms/", missing)}); supply them locally to run this test.");
+        }
+    }
+
     private static string LocateRepositoryRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            if (Directory.Exists(Path.Join(dir.FullName, "profiles")) &&
-                Directory.Exists(Path.Join(dir.FullName, "roms")) &&
-                Directory.Exists(Path.Join(dir.FullName, "disks")))
+            if (File.Exists(Path.Join(dir.FullName, "BackPocketEmulator.slnx")) &&
+                Directory.Exists(Path.Join(dir.FullName, "profiles")))
             {
                 return dir.FullName;
             }

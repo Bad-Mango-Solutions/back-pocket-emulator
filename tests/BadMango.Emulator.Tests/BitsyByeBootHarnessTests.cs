@@ -531,8 +531,8 @@ public sealed class BitsyByeBootHarnessTests
     /// <summary>
     /// Walks up from <see cref="AppContext.BaseDirectory"/> until it finds
     /// the repository root, identified by the simultaneous presence of the
-    /// <c>profiles/</c>, <c>roms/</c>, and <c>disks/</c> directories.
-    /// Requiring all three avoids false positives such as the
+    /// <c>BackPocketEmulator.slnx</c> file and a <c>profiles/</c> directory.
+    /// Requiring the solution file avoids false positives such as the
     /// <c>profiles/</c> folder copied next to the test assembly.
     /// </summary>
     /// <returns>The repository root path.</returns>
@@ -541,9 +541,8 @@ public sealed class BitsyByeBootHarnessTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            if (Directory.Exists(Path.Join(dir.FullName, "profiles")) &&
-                Directory.Exists(Path.Join(dir.FullName, "roms")) &&
-                Directory.Exists(Path.Join(dir.FullName, "disks")))
+            if (File.Exists(Path.Join(dir.FullName, "BackPocketEmulator.slnx")) &&
+                Directory.Exists(Path.Join(dir.FullName, "profiles")))
             {
                 return dir.FullName;
             }
@@ -553,7 +552,7 @@ public sealed class BitsyByeBootHarnessTests
 
         throw new DirectoryNotFoundException(
             $"Could not locate repository root from {AppContext.BaseDirectory} " +
-            "(looking for ancestor containing profiles/, roms/, and disks/).");
+            "(looking for ancestor containing BackPocketEmulator.slnx and profiles/).");
     }
 
     /// <summary>

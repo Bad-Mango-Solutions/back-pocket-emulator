@@ -364,3 +364,6 @@ FodyWeavers.xsd
 
 # Local agent settings. Never commit.
 .claude/settings.local.json
+# Apple ROM and disk images are user-supplied (not redistributable); keep them out of the repo.
+/roms/
+/disks/
