@@ -38,10 +38,21 @@ public interface IMachineIoSession
     void MountDisk(int slot, int drive, string path, bool writeProtect = false);
 
     /// <summary>
-    /// Ejects a mounted disk from the selected removable drive.
+    /// Unmounts the disk image from the selected drive.
     /// </summary>
-    /// <param name="slot">The slot number (1-7).</param>
+    /// <param name="slot">The peripheral slot number (1-7).</param>
     /// <param name="drive">The drive number (1-based).</param>
+    /// <remarks>
+    /// <para>
+    /// Today's controllers are Disk II drives. Unmount flushes pending writes, releases the
+    /// image, and leaves the drive empty. A flush or write-back failure is reported and the
+    /// image stays mounted. Eject signaling, eject-inhibit, and media lock belong to later
+    /// removable drives and are not part of this operation.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The drive is empty, the slot has no disk controller, or pending writes could not be flushed.
+    /// </exception>
     void EjectDisk(int slot, int drive);
 
     /// <summary>
@@ -51,11 +62,18 @@ public interface IMachineIoSession
     IReadOnlyList<DiskControllerSnapshot> ListDisks();
 
     /// <summary>
-    /// Steps execution until the text screen matches a pattern, or budget is exhausted.
+    /// Steps execution until the text screen matches a pattern, or the wait stops for another reason.
     /// </summary>
-    /// <param name="regexPattern">The regular-expression pattern to match.</param>
+    /// <param name="regexPattern">The regular-expression pattern to match. The match has a timeout.</param>
     /// <param name="budget">The execution budget.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns><see langword="true"/> when the pattern matched before budget exhaustion.</returns>
-    bool WaitForScreenText(string regexPattern, RunBudget budget, CancellationToken cancellationToken = default);
+    /// <returns>
+    /// A result whose <see cref="ScreenTextWaitResult.Reason"/> is <see cref="ScreenTextWaitReason.Matched"/>
+    /// or the reason the wait stopped. Step failures are <see cref="ScreenTextWaitReason.Faulted"/>
+    /// and keep the exception.
+    /// </returns>
+    /// <remarks>
+    /// The screen is checked about once per frame (17,030 cycles), not after every instruction.
+    /// </remarks>
+    ScreenTextWaitResult WaitForScreenText(string regexPattern, RunBudget budget, CancellationToken cancellationToken = default);
 }

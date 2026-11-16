@@ -160,6 +160,39 @@ public sealed class DiskRuntimeCommandsTests
         });
     }
 
+    /// <summary>
+    /// One unreadable drive is reported on its row and does not fail the other drive.
+    /// </summary>
+    [Test]
+    public void DiskList_Json_ReportsUnreadableDriveWithoutFailingTheCommand()
+    {
+        var (card, ctl) = MakeMockController(slot: 6, driveCount: 2);
+        this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
+        ctl.Setup(c => c.GetDriveSnapshot(0)).Returns(new DriveSnapshot(
+            Selected: true,
+            MotorOn: false,
+            PhaseLatch: 0,
+            QuarterTrack: 4,
+            WriteProtect: false,
+            HasMedia: true,
+            MountedImagePath: "/tmp/ok.dsk",
+            Geometry: null));
+        ctl.Setup(c => c.GetDriveSnapshot(1)).Throws(new InvalidOperationException("drive 2 is unreadable"));
+
+        var result = new DiskListCommand().Execute(this.debugContext, ["--json"]);
+        Assert.That(result.Success, Is.True, result.Message);
+
+        using JsonDocument json = JsonDocument.Parse(this.outputWriter.ToString());
+        JsonElement drives = json.RootElement[0].GetProperty("drives");
+        Assert.Multiple(() =>
+        {
+            Assert.That(drives.GetArrayLength(), Is.EqualTo(2));
+            Assert.That(drives[0].GetProperty("mountedImagePath").GetString(), Is.EqualTo("/tmp/ok.dsk"));
+            Assert.That(drives[1].GetProperty("error").GetString(), Is.EqualTo("drive 2 is unreadable"));
+            Assert.That(drives[0].TryGetProperty("error", out _), Is.False);
+        });
+    }
+
     /// <summary><c>disk list</c> rejects unknown options.</summary>
     [Test]
     public void DiskList_RejectsUnknownOption()

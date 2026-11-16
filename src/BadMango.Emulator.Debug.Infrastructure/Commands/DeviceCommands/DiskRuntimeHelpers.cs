@@ -6,6 +6,7 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 
 using System.Globalization;
 
+using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Storage.Formats;
 using BadMango.Emulator.Storage.Media;
@@ -94,9 +95,9 @@ internal static class DiskRuntimeHelpers
         var drivePart = token[(colon + 1)..];
 
         if (!int.TryParse(slotPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out slot)
-            || slot < 1 || slot > 7)
+            || slot < PeripheralSlots.Minimum || slot > PeripheralSlots.Maximum)
         {
-            error = $"Slot must be an integer in 1..7; got '{slotPart}'.";
+            error = $"Slot must be an integer in {PeripheralSlots.Minimum}..{PeripheralSlots.Maximum}; got '{slotPart}'.";
             return false;
         }
 

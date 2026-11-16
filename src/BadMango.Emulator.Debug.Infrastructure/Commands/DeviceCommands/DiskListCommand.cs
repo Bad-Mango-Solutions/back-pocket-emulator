@@ -7,40 +7,45 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 using System.Globalization;
 using System.Text.Json;
 
-using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Devices;
-using BadMango.Emulator.Storage.Media;
 
 /// <summary>
 /// Lists every installed disk controller and its drives' mount state (PRD §6.5 FR-DC3).
 /// </summary>
 /// <remarks>
 /// <para>
-/// Resolves the live <see cref="ISlotManager"/> from the attached
-/// <see cref="IDebugContext.Machine"/>, walks slots 1..7 looking for cards that implement
-/// <see cref="IDiskController"/>, and prints one row per drive showing slot, drive number,
-/// mount state, write-protect, image path, motor / quarter-track and (where available)
-/// the medium's geometry.
+/// Reads the live listing from <see cref="IMachineIoSession.ListDisks"/> so the console and the
+/// session API share one snapshot. One unreadable drive is reported on that drive's row and does
+/// not fail the rest of the command. JSON is written with <see cref="DebugSessionJsonContext"/>.
 /// </para>
 /// <para>
-/// Reports image paths exactly as <see cref="DriveSnapshot.MountedImagePath"/> records them
-/// — typically the absolute resolved path supplied at mount time. No <see cref="IDebugPathResolver"/>
-/// round-trip is required because the image path was already resolved when the medium was
-/// originally inserted (FR-DC0).
+/// Reports image paths exactly as the controller records them — typically the absolute resolved
+/// path supplied at mount time.
 /// </para>
 /// </remarks>
 [DeviceDebugCommand]
 public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
 {
-    /// <summary>Maximum slot number scanned (Apple II expansion slots 1..7).</summary>
-    private const int MaxSlot = 7;
+    private readonly IMachineIoSession? session;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DiskListCommand"/> class.
     /// </summary>
     public DiskListCommand()
+        : this(null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DiskListCommand"/> class that lists disks
+    /// through an existing session.
+    /// </summary>
+    /// <param name="session">The session to query, or <see langword="null"/> to open one from the command context.</param>
+    public DiskListCommand(IMachineIoSession? session)
         : base("disk-list", "List installed disk controllers and per-drive mount state")
     {
+        this.session = session;
     }
 
     /// <inheritdoc/>
@@ -57,7 +62,8 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
         "Lists every installed disk controller (Disk II today; SmartPort 3.5\" later), one " +
         "row per drive, showing the slot, drive number, mount state, write-protect flag, " +
         "the path of the mounted image, the motor / quarter-track position, and the " +
-        "medium geometry where available. Requires a running machine.";
+        "medium geometry where available. A drive that cannot be read is reported on its " +
+        "own row. Requires a running machine.";
 
     /// <inheritdoc/>
     public IReadOnlyList<CommandOption> Options { get; } =
@@ -101,21 +107,18 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
             emitJson = true;
         }
 
-        if (!DiskRuntimeHelpers.TryGetSlotManager(context, out var slotManager, out var error))
+        if (!DiskRuntimeHelpers.TryGetSlotManager(context, out _, out var error))
         {
             return CommandResult.Error(error!);
         }
 
-        List<DiskControllerRow> controllers = SnapshotControllers(slotManager!);
+        IMachineIoSession io = this.session ?? new MachineDebugSession((IDebugContext)context);
+        IReadOnlyList<DiskControllerSnapshot> controllers = io.ListDisks();
         if (emitJson)
         {
             string json = JsonSerializer.Serialize(
                 controllers,
-                new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                });
+                DebugSessionJsonContext.Default.IReadOnlyListDiskControllerSnapshot);
             context.Output.WriteLine(json);
             return CommandResult.Ok();
         }
@@ -126,7 +129,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
 
         for (int i = 0; i < controllers.Count; i++)
         {
-            DiskControllerRow controller = controllers[i];
+            DiskControllerSnapshot controller = controllers[i];
             output.WriteLine();
             output.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
@@ -138,7 +141,16 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
 
             for (int d = 0; d < controller.Drives.Count; d++)
             {
-                DiskDriveRow snap = controller.Drives[d];
+                DiskDriveSnapshot snap = controller.Drives[d];
+                if (snap.Error is not null)
+                {
+                    output.WriteLine(string.Format(
+                        CultureInfo.InvariantCulture,
+                        "    Drive {0}: unreadable ({1})",
+                        snap.Drive,
+                        snap.Error));
+                    continue;
+                }
 
                 if (!snap.HasMedia)
                 {
@@ -189,69 +201,4 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
     }
 
     private static string YesNo(bool value) => value ? "yes" : "no";
-
-    private static List<DiskControllerRow> SnapshotControllers(ISlotManager slotManager)
-    {
-        var controllers = new List<DiskControllerRow>();
-        for (int slot = 1; slot <= MaxSlot; slot++)
-        {
-            var card = slotManager.GetCard(slot);
-            if (card is not IDiskController controller)
-            {
-                continue;
-            }
-
-            var drives = new List<DiskDriveRow>(controller.DriveCount);
-            for (int driveIndex = 0; driveIndex < controller.DriveCount; driveIndex++)
-            {
-                DriveSnapshot snapshot = controller.GetDriveSnapshot(driveIndex);
-                DiskGeometryRow? geometry = snapshot.Geometry is null
-                    ? null
-                    : new(
-                        snapshot.Geometry.Value.TrackCount,
-                        snapshot.Geometry.Value.SectorsPerTrack,
-                        snapshot.Geometry.Value.BytesPerSector,
-                        snapshot.Geometry.Value.SectorOrder.ToString(),
-                        snapshot.Geometry.Value.TotalBytes);
-                drives.Add(new(
-                    Drive: driveIndex + 1,
-                    Selected: snapshot.Selected,
-                    MotorOn: snapshot.MotorOn,
-                    PhaseLatch: snapshot.PhaseLatch,
-                    QuarterTrack: snapshot.QuarterTrack,
-                    WriteProtect: snapshot.WriteProtect,
-                    HasMedia: snapshot.HasMedia,
-                    MountedImagePath: snapshot.MountedImagePath,
-                    Geometry: geometry));
-            }
-
-            controllers.Add(new(slot, card.Name, controller.DriveCount, drives));
-        }
-
-        return controllers;
-    }
-
-    private sealed record DiskGeometryRow(
-        int TrackCount,
-        int SectorsPerTrack,
-        int BytesPerSector,
-        string SectorOrder,
-        long TotalBytes);
-
-    private sealed record DiskDriveRow(
-        int Drive,
-        bool Selected,
-        bool MotorOn,
-        int PhaseLatch,
-        int QuarterTrack,
-        bool WriteProtect,
-        bool HasMedia,
-        string? MountedImagePath,
-        DiskGeometryRow? Geometry);
-
-    private sealed record DiskControllerRow(
-        int Slot,
-        string Name,
-        int DriveCount,
-        IReadOnlyList<DiskDriveRow> Drives);
 }

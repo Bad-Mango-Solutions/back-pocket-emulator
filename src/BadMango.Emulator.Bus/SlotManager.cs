@@ -33,12 +33,12 @@ public sealed class SlotManager : ISlotManager, IResetReceiver
     /// <summary>
     /// The minimum valid peripheral slot number.
     /// </summary>
-    private const int MinSlot = 1;
+    private const int MinSlot = PeripheralSlots.Minimum;
 
     /// <summary>
     /// The maximum valid peripheral slot number.
     /// </summary>
-    private const int MaxSlot = 7;
+    private const int MaxSlot = PeripheralSlots.Maximum;
 
     /// <summary>
     /// The number of peripheral slots.

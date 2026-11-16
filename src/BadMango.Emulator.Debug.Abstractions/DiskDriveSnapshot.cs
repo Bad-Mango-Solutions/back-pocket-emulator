@@ -16,6 +16,9 @@ namespace BadMango.Emulator.Debug.Abstractions;
 /// <param name="HasMedia">Whether media is present.</param>
 /// <param name="MountedImagePath">Mounted image path, if available.</param>
 /// <param name="Geometry">Mounted-media geometry, if available.</param>
+/// <param name="Error">
+/// The error reported while reading this drive, when the rest of the controller listing succeeded.
+/// </param>
 public sealed record DiskDriveSnapshot(
     int Drive,
     bool Selected,
@@ -25,4 +28,5 @@ public sealed record DiskDriveSnapshot(
     bool WriteProtect,
     bool HasMedia,
     string? MountedImagePath,
-    DiskGeometrySnapshot? Geometry);
+    DiskGeometrySnapshot? Geometry,
+    string? Error = null);

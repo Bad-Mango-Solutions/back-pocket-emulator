@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Devices;
+using BadMango.Emulator.Rendering;
 
 /// <summary>
 /// Command to write text directly to the screen buffer.
@@ -34,12 +35,8 @@ using BadMango.Emulator.Devices;
 [DeviceDebugCommand]
 public sealed partial class PrintCommand : CommandHandlerBase, ICommandHelp
 {
-    private const ushort TextPage1Base = 0x0400;
-    private const int TextRows = 24;
-    private const int TextColumns = 40;
-
-    // Pre-computed row addresses for text page 1
-    private static readonly ushort[] TextRowAddresses = ComputeTextRowAddresses();
+    private const int TextRows = TextScreen.Rows;
+    private const int TextColumns = TextScreen.Columns40;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PrintCommand"/> class.
@@ -177,7 +174,7 @@ public sealed partial class PrintCommand : CommandHandlerBase, ICommandHelp
         // Fill all text page 1 screen positions with normal space
         for (int row = 0; row < TextRows; row++)
         {
-            ushort rowAddress = TextRowAddresses[row];
+            ushort rowAddress = TextScreen.Page1RowAddress(row);
             for (int col = 0; col < TextColumns; col++)
             {
                 ushort address = (ushort)(rowAddress + col);
@@ -196,19 +193,6 @@ public sealed partial class PrintCommand : CommandHandlerBase, ICommandHelp
                 bus.Write8(in access, NormalSpace);
             }
         }
-    }
-
-    private static ushort[] ComputeTextRowAddresses()
-    {
-        var addresses = new ushort[TextRows];
-        for (int row = 0; row < TextRows; row++)
-        {
-            int group = row / 8;
-            int offset = row % 8;
-            addresses[row] = (ushort)(TextPage1Base + (offset * 128) + (group * 40));
-        }
-
-        return addresses;
     }
 
     private static string ProcessEscapeSequences(string input)
@@ -311,7 +295,7 @@ public sealed partial class PrintCommand : CommandHandlerBase, ICommandHelp
             byte screenCode = AsciiToScreenCode(c);
 
             // Calculate address
-            ushort address = (ushort)(TextRowAddresses[row] + col);
+            ushort address = (ushort)(TextScreen.Page1RowAddress(row) + col);
 
             // Write using debug access
             var access = new BusAccess(

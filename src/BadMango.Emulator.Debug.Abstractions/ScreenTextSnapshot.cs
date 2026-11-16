@@ -24,7 +24,7 @@ public sealed record ScreenTextSnapshot(
     IReadOnlyList<string> Lines)
 {
     /// <summary>
-    /// Gets all rows joined by newline characters.
+    /// Gets all rows joined by a single <c>\n</c>, independent of the host newline.
     /// </summary>
-    public string CombinedText => string.Join(Environment.NewLine, this.Lines);
+    public string CombinedText => string.Join("\n", this.Lines);
 }

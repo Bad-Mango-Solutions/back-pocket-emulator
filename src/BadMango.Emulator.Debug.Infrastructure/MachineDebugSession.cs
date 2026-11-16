@@ -14,8 +14,11 @@ using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.Interfaces;
+using BadMango.Emulator.Rendering;
 using BadMango.Emulator.Storage.Formats;
 using BadMango.Emulator.Storage.Media;
+
+using Serilog;
 
 using InfrastructureWatchAccess = WatchAccess;
 using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
@@ -52,14 +55,21 @@ using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
 /// </remarks>
 public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 {
+    /// <summary>
+    /// Cycles between screen checks. One Apple II frame is 65 cycles by 262 lines.
+    /// </summary>
+    public const ulong ScreenTextPollIntervalCycles = 17_030;
+
     private const int ExecutionLockPollMilliseconds = 15;
     private const string NoMachineMessage = "No machine is attached to the debug context.";
 
     private static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ScreenTextMatchTimeout = TimeSpan.FromMilliseconds(100);
 
     private readonly Lock executionLock = new();
     private readonly Lock backgroundRunLock = new();
     private readonly IDebugContext debugContext;
+    private readonly ILogger logger;
     private readonly Dictionary<Guid, BackgroundRunState> backgroundRuns = [];
     private readonly Dictionary<Guid, RunResult> completedRuns = [];
     private Guid? activeRunId;
@@ -68,11 +78,13 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// Initializes a new instance of the <see cref="MachineDebugSession"/> class.
     /// </summary>
     /// <param name="debugContext">The attached debug context.</param>
+    /// <param name="logger">The logger for mount rollback and unmount failures. A silent logger is used when omitted.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="debugContext"/> is <see langword="null"/>.</exception>
-    public MachineDebugSession(IDebugContext debugContext)
+    public MachineDebugSession(IDebugContext debugContext, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(debugContext);
         this.debugContext = debugContext;
+        this.logger = logger ?? Serilog.Core.Logger.None;
     }
 
     private IMachine Machine => debugContext.Machine ?? throw new InvalidOperationException(NoMachineMessage);
@@ -498,8 +510,8 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <inheritdoc />
     public void MountDisk(int slot, int drive, string path, bool writeProtect = false)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(slot, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(slot, 7);
+        ArgumentOutOfRangeException.ThrowIfLessThan(slot, PeripheralSlots.Minimum);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(slot, PeripheralSlots.Maximum);
         ArgumentOutOfRangeException.ThrowIfLessThan(drive, 1);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -552,17 +564,7 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 
         if (debugContext.MountedDisks.IsDisposed)
         {
-            try
-            {
-                controller.Eject(driveIndex);
-            }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
-            {
-                _ = ex;
-            }
-
-            open.Dispose();
-            throw new InvalidOperationException("Mount tracking is unavailable because the debug context has been disposed.");
+            RollbackMount(controller, slot, drive, driveIndex, open, disposed: null);
         }
 
         try
@@ -571,25 +573,15 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         }
         catch (ObjectDisposedException ex)
         {
-            try
-            {
-                controller.Eject(driveIndex);
-            }
-            catch (Exception rollbackEx) when (rollbackEx is ArgumentException or InvalidOperationException)
-            {
-                _ = rollbackEx;
-            }
-
-            open.Dispose();
-            throw new InvalidOperationException("Mount tracking is unavailable because the debug context was disposed.", ex);
+            RollbackMount(controller, slot, drive, driveIndex, open, ex);
         }
     }
 
     /// <inheritdoc />
     public void EjectDisk(int slot, int drive)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(slot, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(slot, 7);
+        ArgumentOutOfRangeException.ThrowIfLessThan(slot, PeripheralSlots.Minimum);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(slot, PeripheralSlots.Maximum);
         ArgumentOutOfRangeException.ThrowIfLessThan(drive, 1);
 
         IMachine machine = Machine;
@@ -598,9 +590,17 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         if (!ejected)
         {
             DriveSnapshot snapshot = controller.GetDriveSnapshot(driveIndex);
-            throw new InvalidOperationException(snapshot.HasMedia
-                ? $"Eject of slot {slot} drive {drive} was rejected because flush failed."
-                : $"Slot {slot} drive {drive} is already empty.");
+            if (snapshot.HasMedia)
+            {
+                logger.Error(
+                    "Unmount of slot {Slot} drive {Drive} failed because pending writes could not be flushed. The image remains mounted.",
+                    slot,
+                    drive);
+                throw new InvalidOperationException(
+                    $"Eject of slot {slot} drive {drive} failed because pending writes could not be flushed. The image remains mounted.");
+            }
+
+            throw new InvalidOperationException($"Slot {slot} drive {drive} is already empty.");
         }
 
         if (!debugContext.MountedDisks.IsDisposed)
@@ -609,9 +609,13 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             {
                 debugContext.MountedDisks.Release(slot, driveIndex);
             }
-            catch (ObjectDisposedException)
+            catch (ObjectDisposedException ex)
             {
-                // The registry was disposed after the IsDisposed check.
+                logger.Warning(
+                    ex,
+                    "Mounted-disk registry was disposed while releasing the image for slot {Slot} drive {Drive}. The drive was already unmounted.",
+                    slot,
+                    drive);
             }
         }
     }
@@ -624,9 +628,10 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             ?? throw new InvalidOperationException("No slot manager available on the attached machine.");
 
         var controllers = new List<DiskControllerSnapshot>();
-        for (int slot = 1; slot <= 7; slot++)
+        for (int slot = PeripheralSlots.Minimum; slot <= PeripheralSlots.Maximum; slot++)
         {
-            if (slotManager.GetCard(slot) is not IDiskController controller)
+            ISlotCard? card = slotManager.GetCard(slot);
+            if (card is not IDiskController controller)
             {
                 continue;
             }
@@ -634,22 +639,30 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             var drives = new List<BadMango.Emulator.Debug.Abstractions.DiskDriveSnapshot>(controller.DriveCount);
             for (int i = 0; i < controller.DriveCount; i++)
             {
-                DriveSnapshot snapshot = controller.GetDriveSnapshot(i);
-                drives.Add(ToDriveSnapshot(i + 1, snapshot));
+                try
+                {
+                    DriveSnapshot snapshot = controller.GetDriveSnapshot(i);
+                    drives.Add(ToDriveSnapshot(i + 1, snapshot));
+                }
+                catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NotSupportedException)
+                {
+                    logger.Warning(ex, "Drive {Drive} on slot {Slot} could not be read.", i + 1, slot);
+                    drives.Add(UnreadableDrive(i + 1, ex.Message));
+                }
             }
 
-            controllers.Add(new DiskControllerSnapshot(slot, ResolveControllerName(slotManager, slot), controller.DriveCount, drives));
+            controllers.Add(new DiskControllerSnapshot(slot, card.Name, controller.DriveCount, drives));
         }
 
         return controllers;
     }
 
     /// <inheritdoc />
-    public bool WaitForScreenText(string regexPattern, RunBudget budget, CancellationToken cancellationToken = default)
+    public ScreenTextWaitResult WaitForScreenText(string regexPattern, RunBudget budget, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(regexPattern);
         ArgumentNullException.ThrowIfNull(budget);
-        var regex = new Regex(regexPattern, RegexOptions.CultureInvariant);
+        var regex = new Regex(regexPattern, RegexOptions.CultureInvariant, ScreenTextMatchTimeout);
 
         EnterExecutionUnlessBackgroundRunActive();
         try
@@ -661,32 +674,79 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 
             while (true)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return ScreenTextWaitResult.Cancelled(cycleCount);
+                }
+
                 EnsureStillAttached(bound);
 
-                if (regex.IsMatch(GetScreenText(bound).CombinedText))
+                try
                 {
-                    return true;
+                    if (regex.IsMatch(GetScreenText(bound).CombinedText))
+                    {
+                        return ScreenTextWaitResult.Match(cycleCount);
+                    }
+                }
+                catch (RegexMatchTimeoutException ex)
+                {
+                    return ScreenTextWaitResult.Fault(cycleCount, ex);
                 }
 
                 if (budget.WallClock is TimeSpan wallClock && stopwatch.Elapsed >= wallClock)
                 {
-                    return false;
+                    return ScreenTextWaitResult.WallClockTimeout(cycleCount);
                 }
 
-                if (cycleCount >= budget.MaxCycles || bound.Cpu.Halted)
+                if (bound.Cpu.Halted)
                 {
-                    return false;
+                    return ScreenTextWaitResult.Halted(cycleCount);
+                }
+
+                if (cycleCount >= budget.MaxCycles)
+                {
+                    return ScreenTextWaitResult.BudgetExhausted(cycleCount);
+                }
+
+                ulong frameBudget = ScreenTextPollIntervalCycles;
+                ulong remaining = budget.MaxCycles - cycleCount;
+                if (frameBudget > remaining)
+                {
+                    frameBudget = remaining;
                 }
 
                 try
                 {
-                    var stepResult = bound.Step();
-                    cycleCount += stepResult.CyclesConsumed.Value;
+                    while (frameBudget > 0)
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return ScreenTextWaitResult.Cancelled(cycleCount);
+                        }
+
+                        if (bound.Cpu.Halted)
+                        {
+                            break;
+                        }
+
+                        var stepResult = bound.Step();
+                        ulong consumed = stepResult.CyclesConsumed.Value;
+                        if (consumed == 0)
+                        {
+                            consumed = 1;
+                        }
+
+                        cycleCount += consumed;
+                        frameBudget = frameBudget > consumed ? frameBudget - consumed : 0;
+                    }
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException && !IsCriticalException(ex))
+                catch (OperationCanceledException)
                 {
-                    return false;
+                    return ScreenTextWaitResult.Cancelled(cycleCount);
+                }
+                catch (Exception ex) when (!IsCriticalException(ex))
+                {
+                    return ScreenTextWaitResult.Fault(cycleCount, ex);
                 }
             }
         }
@@ -721,38 +781,18 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             Geometry: geometry);
     }
 
-    private static string ResolveControllerName(ISlotManager slotManager, int slot)
-    {
-        return slotManager.GetCard(slot)?.Name ?? $"Slot {slot}";
-    }
-
-    private static ushort[] ComputeTextRowAddresses()
-    {
-        var addresses = new ushort[24];
-        for (int row = 0; row < addresses.Length; row++)
-        {
-            int group = row / 8;
-            int offset = row % 8;
-            addresses[row] = (ushort)(0x0400 + (offset * 0x80) + (group * 0x28));
-        }
-
-        return addresses;
-    }
-
-    private static char DecodeTextCharacter(byte charCode)
-    {
-        byte displayCode = charCode switch
-        {
-            < 0x20 => (byte)(charCode + 0x40),
-            < 0x40 => charCode,
-            < 0x60 => charCode,
-            < 0x80 => (byte)(charCode - 0x40),
-            < 0xA0 => (byte)(charCode - 0x40),
-            _ => (byte)(charCode - 0x80),
-        };
-
-        return displayCode is >= 0x20 and <= 0x7E ? (char)displayCode : '.';
-    }
+    private static BadMango.Emulator.Debug.Abstractions.DiskDriveSnapshot UnreadableDrive(int drive, string error) =>
+        new(
+            Drive: drive,
+            Selected: false,
+            MotorOn: false,
+            PhaseLatch: 0,
+            QuarterTrack: 0,
+            WriteProtect: false,
+            HasMedia: false,
+            MountedImagePath: null,
+            Geometry: null,
+            Error: error);
 
     private static RunResult CreateResult(IMachine bound, StopReason stopReason, ulong instructions, ulong cycles, TimeSpan elapsed, string message) =>
         new(
@@ -871,6 +911,53 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         return controller;
     }
 
+    private void RollbackMount(
+        IDiskController controller,
+        int slot,
+        int drive,
+        int driveIndex,
+        DiskImageOpenResult open,
+        ObjectDisposedException? disposed)
+    {
+        if (!TryUnmountForRollback(controller, slot, drive, driveIndex))
+        {
+            throw new InvalidOperationException(
+                "Mount tracking is unavailable because the debug context has been disposed, and rolling back the mount failed. The image remains mounted.",
+                disposed);
+        }
+
+        open.Dispose();
+        throw new InvalidOperationException(
+            "Mount tracking is unavailable because the debug context has been disposed.",
+            disposed);
+    }
+
+    private bool TryUnmountForRollback(IDiskController controller, int slot, int drive, int driveIndex)
+    {
+        try
+        {
+            if (controller.Eject(driveIndex))
+            {
+                return true;
+            }
+
+            logger.Error(
+                "Rollback unmount of slot {Slot} drive {Drive} failed because pending writes could not be flushed. The image remains mounted and will not be disposed.",
+                slot,
+                drive);
+            return false;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            logger.Error(
+                ex,
+                "Rollback unmount of slot {Slot} drive {Drive} failed. The image remains mounted and will not be disposed.",
+                slot,
+                drive);
+            return false;
+        }
+    }
+
     private ScreenTextSnapshot GetScreenText(IMachine machine)
     {
         IVideoDevice video = machine.GetComponent<IVideoDevice>()
@@ -887,46 +974,19 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             }
             : mainMemory.ReadMainRam;
 
-        bool use80Columns = video.Is80Column && aux is not null;
-        int columns = use80Columns ? 80 : 40;
-        var lines = new string[24];
-        ushort[] rowAddresses = ComputeTextRowAddresses();
-        for (int row = 0; row < lines.Length; row++)
-        {
-            var chars = new char[columns];
-            ushort rowAddress = rowAddresses[row];
-            if (use80Columns)
-            {
-                for (int col = 0; col < columns; col++)
-                {
-                    int memCol = col / 2;
-                    ushort address = (ushort)(rowAddress + memCol);
-                    byte charCode = (col & 1) == 0
-                        ? aux!.ReadAuxRam(address)
-                        : readMain(address);
-                    chars[col] = DecodeTextCharacter(charCode);
-                }
-            }
-            else
-            {
-                ushort pageOffset = video.IsPage2 ? (ushort)0x0400 : (ushort)0;
-                ushort rowBase = (ushort)(rowAddress + pageOffset);
-                for (int col = 0; col < columns; col++)
-                {
-                    byte charCode = readMain((ushort)(rowBase + col));
-                    chars[col] = DecodeTextCharacter(charCode);
-                }
-            }
-
-            lines[row] = new string(chars);
-        }
+        bool is80Column = video.Is80Column;
+        string[] lines = TextScreen.ReadLines(
+            readMain,
+            aux is null ? null : aux.ReadAuxRam,
+            is80Column,
+            video.IsPage2);
 
         return new ScreenTextSnapshot(
             Rows: lines.Length,
-            Columns: columns,
+            Columns: lines.Length == 0 ? TextScreen.Columns40 : lines[0].Length,
             IsTextMode: video.IsTextMode,
             IsMixedMode: video.IsMixedMode,
-            Is80Column: video.Is80Column,
+            Is80Column: is80Column,
             IsPage2: video.IsPage2,
             Lines: lines);
     }

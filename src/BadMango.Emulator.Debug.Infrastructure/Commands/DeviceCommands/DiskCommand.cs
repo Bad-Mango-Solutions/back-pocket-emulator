@@ -4,6 +4,7 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 
+using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Devices;
 
 /// <summary>
@@ -33,7 +34,7 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
 {
     private readonly DiskCreateCommand createCommand = new();
     private readonly DiskInfoCommand infoCommand = new();
-    private readonly DiskListCommand listCommand = new();
+    private readonly DiskListCommand listCommand;
     private readonly DiskInsertCommand insertCommand = new();
     private readonly DiskEjectCommand ejectCommand = new();
     private readonly DiskFlushCommand flushCommand = new();
@@ -44,8 +45,19 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
     /// Initializes a new instance of the <see cref="DiskCommand"/> class.
     /// </summary>
     public DiskCommand()
+        : this(null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DiskCommand"/> class that lists disks
+    /// through an existing session.
+    /// </summary>
+    /// <param name="session">The session used by <c>disk list</c>, or <see langword="null"/> to open one from the command context.</param>
+    public DiskCommand(IMachineIoSession? session)
         : base("disk", "Author, inspect, and live-mount disk images (create / info / list / insert / eject / flush / dump-track / read-sector)")
     {
+        this.listCommand = new DiskListCommand(session);
     }
 
     /// <inheritdoc/>

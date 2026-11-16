@@ -14,6 +14,8 @@ using BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using Commands.DeviceCommands;
 
+using Serilog;
+
 /// <summary>
 /// Autofac module for registering debug console services.
 /// </summary>
@@ -276,7 +278,9 @@ public class DebugConsoleModule : Module
         .As<ICommandContext>()
         .SingleInstance();
 
-        builder.RegisterType<MachineDebugSession>()
+        builder.Register(ctx => new MachineDebugSession(
+                ctx.Resolve<IDebugContext>(),
+                ctx.ResolveOptional<ILogger>()))
             .As<IDebugSession>()
             .As<IMachineIoSession>()
             .SingleInstance();
