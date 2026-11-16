@@ -136,6 +136,39 @@ public class LibraryDiagnosticRoutingTests
         });
     }
 
+    /// <summary>
+    /// A failed Avalonia start stays uninitialized so a later call can retry.
+    /// </summary>
+    [Test]
+    public void TryInitialize_FailedStartup_AllowsALaterCallToRetry()
+    {
+        AvaloniaBootstrapper.ResetForTests();
+        var retried = false;
+
+        try
+        {
+            var firstSucceeded = AvaloniaBootstrapper.TryInitialize(
+                Serilog.Core.Logger.None,
+                () => throw new InvalidOperationException("display missing"));
+
+            var secondSucceeded = AvaloniaBootstrapper.TryInitialize(
+                Serilog.Core.Logger.None,
+                () => retried = true);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstSucceeded, Is.False);
+                Assert.That(AvaloniaBootstrapper.IsRunning, Is.False);
+                Assert.That(retried, Is.True);
+                Assert.That(secondSucceeded, Is.True);
+            });
+        }
+        finally
+        {
+            AvaloniaBootstrapper.ResetForTests();
+        }
+    }
+
     private sealed class TestLogEventSink : ILogEventSink
     {
         private readonly List<LogEvent> events = [];
