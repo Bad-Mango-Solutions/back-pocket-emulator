@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Tests;
 
 using Core.Cpu;
+using Core.Interfaces.Cpu;
 
 using Emulation.Cpu;
 
@@ -545,6 +546,248 @@ public class AddressingModesTests : CpuTestBase
     }
 
     /// <summary>
+    /// Verifies that <see cref="ImpliedMode"/> resolves identically to the legacy implied handler.
+    /// </summary>
+    [Test]
+    public void ImpliedMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<ImpliedMode>(AddressingModes.Implied, () => SetupCpu(pc: 0x1000, cycles: 10));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ImmediateMode"/> resolves identically to the legacy immediate handler.
+    /// </summary>
+    [Test]
+    public void ImmediateMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<ImmediateMode>(AddressingModes.Immediate, () => SetupCpu(pc: 0x1000, cycles: 10));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ZeroPageMode"/> resolves identically to the legacy zero-page handler.
+    /// </summary>
+    [Test]
+    public void ZeroPageMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<ZeroPageMode>(AddressingModes.ZeroPage, () =>
+        {
+            Write(0x1000, 0x42);
+            SetupCpu(pc: 0x1000, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ZeroPageXMode"/> resolves identically to the legacy zero-page,X handler.
+    /// </summary>
+    [Test]
+    public void ZeroPageXMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<ZeroPageXMode>(AddressingModes.ZeroPageX, () =>
+        {
+            Write(0x1000, 0xF0);
+            SetupCpu(pc: 0x1000, x: 0x20, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ZeroPageYMode"/> resolves identically to the legacy zero-page,Y handler.
+    /// </summary>
+    [Test]
+    public void ZeroPageYMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<ZeroPageYMode>(AddressingModes.ZeroPageY, () =>
+        {
+            Write(0x1000, 0x80);
+            SetupCpu(pc: 0x1000, y: 0x90, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteMode"/> resolves identically to the legacy absolute handler.
+    /// </summary>
+    [Test]
+    public void AbsoluteMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<AbsoluteMode>(AddressingModes.Absolute, () =>
+        {
+            WriteWord(0x1000, 0x5678);
+            SetupCpu(pc: 0x1000, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteXMode"/> resolves identically to the legacy absolute,X handler.
+    /// </summary>
+    [Test]
+    public void AbsoluteXMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<AbsoluteXMode>(AddressingModes.AbsoluteX, () =>
+        {
+            WriteWord(0x1000, 0x12FF);
+            SetupCpu(pc: 0x1000, x: 0x02, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteYMode"/> resolves identically to the legacy absolute,Y handler.
+    /// </summary>
+    [Test]
+    public void AbsoluteYMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<AbsoluteYMode>(AddressingModes.AbsoluteY, () =>
+        {
+            WriteWord(0x1000, 0x20F0);
+            SetupCpu(pc: 0x1000, y: 0x20, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="IndirectXMode"/> resolves identically to the legacy indirect,X handler.
+    /// </summary>
+    [Test]
+    public void IndirectXMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<IndirectXMode>(AddressingModes.IndirectX, () =>
+        {
+            Write(0x1000, 0x40);
+            WriteWord(0x0045, 0x3000);
+            SetupCpu(pc: 0x1000, x: 0x05, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="IndirectYMode"/> resolves identically to the legacy indirect,Y handler.
+    /// </summary>
+    [Test]
+    public void IndirectYMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<IndirectYMode>(AddressingModes.IndirectY, () =>
+        {
+            Write(0x1000, 0x60);
+            WriteWord(0x0060, 0x40FF);
+            SetupCpu(pc: 0x1000, y: 0x02, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteXWriteMode"/> resolves identically to the legacy absolute,X write handler.
+    /// </summary>
+    [Test]
+    public void AbsoluteXWriteMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<AbsoluteXWriteMode>(AddressingModes.AbsoluteXWrite, () =>
+        {
+            WriteWord(0x1000, 0x2000);
+            SetupCpu(pc: 0x1000, x: 0x10, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteYWriteMode"/> resolves identically to the legacy absolute,Y write handler.
+    /// </summary>
+    [Test]
+    public void AbsoluteYWriteMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<AbsoluteYWriteMode>(AddressingModes.AbsoluteYWrite, () =>
+        {
+            WriteWord(0x1000, 0x3000);
+            SetupCpu(pc: 0x1000, y: 0x20, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="IndirectYWriteMode"/> resolves identically to the legacy indirect,Y write handler.
+    /// </summary>
+    [Test]
+    public void IndirectYWriteMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<IndirectYWriteMode>(AddressingModes.IndirectYWrite, () =>
+        {
+            Write(0x1000, 0x70);
+            WriteWord(0x0070, 0x5000);
+            SetupCpu(pc: 0x1000, y: 0x30, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AccumulatorMode"/> resolves identically to the legacy accumulator handler.
+    /// </summary>
+    [Test]
+    public void AccumulatorMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<AccumulatorMode>(AddressingModes.Accumulator, () => SetupCpu(pc: 0x1000, cycles: 10));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="RelativeMode"/> resolves identically to the legacy relative handler.
+    /// </summary>
+    [Test]
+    public void RelativeMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<RelativeMode>(AddressingModes.Relative, () =>
+        {
+            Write(0x1000, 0xF8);
+            SetupCpu(pc: 0x1000, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="IndirectMode"/> resolves identically to the legacy indirect handler.
+    /// </summary>
+    [Test]
+    public void IndirectMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<IndirectMode>(AddressingModes.Indirect, () =>
+        {
+            WriteWord(0x1000, 0x2200);
+            WriteWord(0x2200, 0x3456);
+            SetupCpu(pc: 0x1000, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ZeroPageIndirectMode"/> resolves identically to the legacy zero-page indirect handler.
+    /// </summary>
+    [Test]
+    public void ZeroPageIndirectMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<ZeroPageIndirectMode>(AddressingModes.ZeroPageIndirect, () =>
+        {
+            Write(0x1000, 0x80);
+            WriteWord(0x0080, 0x5678);
+            SetupCpu(pc: 0x1000, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteIndirectXMode"/> resolves identically to the legacy absolute indirect,X handler.
+    /// </summary>
+    [Test]
+    public void AbsoluteIndirectXMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<AbsoluteIndirectXMode>(AddressingModes.AbsoluteIndirectX, () =>
+        {
+            WriteWord(0x1000, 0x2000);
+            WriteWord(0x2005, 0x4ABC);
+            SetupCpu(pc: 0x1000, x: 0x05, cycles: 10);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ZeroPageRelativeMode"/> resolves identically to the legacy zero-page relative handler.
+    /// </summary>
+    [Test]
+    public void ZeroPageRelativeMode_MatchesLegacyHandler()
+    {
+        AssertStructMatchesLegacy<ZeroPageRelativeMode>(AddressingModes.ZeroPageRelative, () =>
+        {
+            Write(0x1000, 0x7F);
+            Write(0x1001, 0xFA);
+            SetupCpu(pc: 0x1000, cycles: 10);
+        });
+    }
+
+    /// <summary>
     /// Sets up CPU registers for testing.
     /// </summary>
     private void SetupCpu(
@@ -562,6 +805,49 @@ public class AddressingModesTests : CpuTestBase
         Cpu.Registers.Y.SetByte(y);
         Cpu.Registers.SP.SetByte(sp);
         Cpu.Registers.P = p;
+        Cpu.Registers.TCU = 0;
         Cpu.SetCycles(cycles);
     }
+
+    /// <summary>
+    /// Runs a legacy and generic addressing resolver against identical CPU setup and compares outputs.
+    /// </summary>
+    /// <typeparam name="TMode">The generic addressing mode struct under test.</typeparam>
+    /// <param name="legacyHandler">The existing delegate-based handler.</param>
+    /// <param name="arrange">The shared setup action to apply before each execution.</param>
+    private void AssertStructMatchesLegacy<TMode>(AddressingModeHandler legacyHandler, Action arrange)
+        where TMode : struct, IAddressingMode
+    {
+        var legacyResult = ExecuteMode(cpu => legacyHandler(cpu), arrange);
+        var structResult = ExecuteMode(static cpu => TMode.Resolve(cpu), arrange);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(structResult.Address, Is.EqualTo(legacyResult.Address));
+            Assert.That(structResult.ProgramCounter, Is.EqualTo(legacyResult.ProgramCounter));
+            Assert.That(structResult.Cycles, Is.EqualTo(legacyResult.Cycles));
+        });
+    }
+
+    /// <summary>
+    /// Executes an addressing-mode resolver and captures address, PC, and cycles after execution.
+    /// </summary>
+    /// <param name="resolver">The resolver to run.</param>
+    /// <param name="arrange">The setup action to apply before execution.</param>
+    /// <returns>The captured execution result.</returns>
+    private ModeExecutionResult ExecuteMode(Func<ICpu, Addr> resolver, Action arrange)
+    {
+        arrange();
+        Addr address = resolver(Cpu);
+
+        return new ModeExecutionResult(address, Cpu.Registers.PC.GetWord(), Cpu.GetCycles());
+    }
+
+    /// <summary>
+    /// Captures the observable result of one addressing-mode execution.
+    /// </summary>
+    /// <param name="Address">The resolved address.</param>
+    /// <param name="ProgramCounter">The program counter after resolution.</param>
+    /// <param name="Cycles">The cycle counter after resolution.</param>
+    private readonly record struct ModeExecutionResult(Addr Address, Word ProgramCounter, ulong Cycles);
 }
