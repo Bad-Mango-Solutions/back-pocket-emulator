@@ -114,7 +114,7 @@ public class DebugWindowManager : IDebugWindowManager
     public async Task<bool> ShowWindowAsync(string windowType, object? context)
     {
         // Ensure Avalonia is initialized
-        AvaloniaBootstrapper.EnsureInitialized();
+        AvaloniaBootstrapper.EnsureInitialized(this.logger);
 
         if (!this.IsAvaloniaRunning)
         {
@@ -332,16 +332,6 @@ public class DebugWindowManager : IDebugWindowManager
         };
     }
 
-    private static GlyphEditorWindow CreateGlyphEditorWindow(object? context)
-    {
-        if (context is ICharacterDevice characterDevice)
-        {
-            return GlyphEditorWindow.Create(characterDevice);
-        }
-
-        return GlyphEditorWindow.Create();
-    }
-
     private static ScheduleMonitorWindow CreateScheduleMonitorWindow(object? context)
     {
         var window = new ScheduleMonitorWindow();
@@ -366,6 +356,16 @@ public class DebugWindowManager : IDebugWindowManager
         }
 
         return window;
+    }
+
+    private GlyphEditorWindow CreateGlyphEditorWindow(object? context)
+    {
+        if (context is ICharacterDevice characterDevice)
+        {
+            return GlyphEditorWindow.Create(characterDevice, this.logger);
+        }
+
+        return GlyphEditorWindow.Create(this.logger);
     }
 
     private VideoWindow CreateVideoWindow(object? context)
@@ -429,7 +429,7 @@ public class DebugWindowManager : IDebugWindowManager
         {
             "ABOUT" => new AboutWindow(),
             "CHARACTERPREVIEW" => CreateCharacterPreviewWindow(context),
-            "GLYPHEDITOR" => CreateGlyphEditorWindow(context),
+            "GLYPHEDITOR" => this.CreateGlyphEditorWindow(context),
             "LOG" => this.CreateLogWindow(),
             "SCHEDULEMONITOR" => CreateScheduleMonitorWindow(context),
             "STATUSMONITOR" => CreateStatusMonitorWindow(context),

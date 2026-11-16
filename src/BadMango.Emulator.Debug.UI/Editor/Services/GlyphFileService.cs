@@ -12,20 +12,27 @@ using Models;
 
 using Rendering;
 
+using Serilog;
+
 /// <summary>
 /// Service implementation for glyph file operations and dialogs.
 /// </summary>
 public sealed class GlyphFileService : IGlyphFileService
 {
     private readonly Window parentWindow;
+    private readonly ILogger logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="GlyphFileService"/> class.
     /// </summary>
     /// <param name="parentWindow">The parent window for dialogs.</param>
-    public GlyphFileService(Window parentWindow)
+    /// <param name="logger">
+    /// Receives glyph-editor errors. When <see langword="null"/>, errors are not written to the console.
+    /// </param>
+    public GlyphFileService(Window parentWindow, ILogger? logger = null)
     {
         this.parentWindow = parentWindow;
+        this.logger = logger ?? Serilog.Core.Logger.None;
     }
 
     /// <inheritdoc />
@@ -113,12 +120,14 @@ public sealed class GlyphFileService : IGlyphFileService
     }
 
     /// <inheritdoc />
-    public async Task ShowErrorDialogAsync(string message)
+    public Task ShowErrorDialogAsync(string message)
     {
-        // For now, just log to console. In a full implementation,
-        // this would show a dialog with the error message.
-        await Task.CompletedTask;
-        Console.WriteLine($"Error: {message}");
+        ArgumentNullException.ThrowIfNull(message);
+
+        // No modal error dialog exists yet. Report the failure through the
+        // injected logger instead of the process console.
+        this.logger.Error("Glyph editor error: {Message}", message);
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
