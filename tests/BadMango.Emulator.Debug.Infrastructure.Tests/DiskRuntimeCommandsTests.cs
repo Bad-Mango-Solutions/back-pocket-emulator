@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Tests;
 
+using System.Text.Json;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
@@ -124,6 +126,45 @@ public sealed class DiskRuntimeCommandsTests
     public void DiskList_RejectsExtraArgs()
     {
         var result = new DiskListCommand().Execute(this.debugContext, ["6:1"]);
+        Assert.That(result.Success, Is.False);
+    }
+
+    /// <summary><c>disk list --json</c> emits machine-readable live controller and drive data.</summary>
+    [Test]
+    public void DiskList_Json_PrintsControllerAndDriveSnapshot()
+    {
+        var (card, ctl) = MakeMockController(slot: 6, driveCount: 1);
+        this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
+        ctl.Setup(c => c.GetDriveSnapshot(0)).Returns(new DriveSnapshot(
+            Selected: true,
+            MotorOn: true,
+            PhaseLatch: 1,
+            QuarterTrack: 16,
+            WriteProtect: false,
+            HasMedia: true,
+            MountedImagePath: "/tmp/json.dsk",
+            Geometry: DiskGeometry.Standard525Dos));
+
+        var result = new DiskListCommand().Execute(this.debugContext, ["--json"]);
+        Assert.That(result.Success, Is.True, result.Message);
+
+        using JsonDocument json = JsonDocument.Parse(this.outputWriter.ToString());
+        JsonElement root = json.RootElement;
+        Assert.Multiple(() =>
+        {
+            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(root.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(root[0].GetProperty("slot").GetInt32(), Is.EqualTo(6));
+            Assert.That(root[0].GetProperty("drives")[0].GetProperty("mountedImagePath").GetString(), Is.EqualTo("/tmp/json.dsk"));
+            Assert.That(root[0].GetProperty("drives")[0].GetProperty("geometry").GetProperty("trackCount").GetInt32(), Is.EqualTo(35));
+        });
+    }
+
+    /// <summary><c>disk list</c> rejects unknown options.</summary>
+    [Test]
+    public void DiskList_RejectsUnknownOption()
+    {
+        var result = new DiskListCommand().Execute(this.debugContext, ["--yaml"]);
         Assert.That(result.Success, Is.False);
     }
 

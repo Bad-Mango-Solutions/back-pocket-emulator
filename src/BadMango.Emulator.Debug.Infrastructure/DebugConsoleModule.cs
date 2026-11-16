@@ -278,6 +278,7 @@ public class DebugConsoleModule : Module
 
         builder.RegisterType<MachineDebugSession>()
             .As<IDebugSession>()
+            .As<IMachineIoSession>()
             .SingleInstance();
 
         // Register the REPL

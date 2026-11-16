@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 
 using System.Globalization;
+using System.Text.Json;
 
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Devices;
@@ -46,7 +47,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
     public override IReadOnlyList<string> Aliases { get; } = ["disklist"];
 
     /// <inheritdoc/>
-    public override string Usage => "disk-list";
+    public override string Usage => "disk-list [--json]";
 
     /// <inheritdoc/>
     public string Synopsis => this.Usage;
@@ -59,13 +60,17 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
         "medium geometry where available. Requires a running machine.";
 
     /// <inheritdoc/>
-    public IReadOnlyList<CommandOption> Options { get; } = [];
+    public IReadOnlyList<CommandOption> Options { get; } =
+    [
+        new("--json", null, "flag", "Emit machine-readable JSON output.", null),
+    ];
 
     /// <inheritdoc/>
     public IReadOnlyList<string> Examples { get; } =
     [
         "disk-list",
         "disk list",
+        "disk list --json",
     ];
 
     /// <inheritdoc/>
@@ -80,9 +85,20 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(args);
 
-        if (args.Length > 0)
+        bool emitJson = false;
+        if (args.Length > 1)
         {
-            return CommandResult.Error("disk-list takes no arguments.");
+            return CommandResult.Error("Usage: disk-list [--json]");
+        }
+
+        if (args.Length == 1)
+        {
+            if (!args[0].Equals("--json", StringComparison.OrdinalIgnoreCase))
+            {
+                return CommandResult.Error($"Unknown option: '{args[0]}'.");
+            }
+
+            emitJson = true;
         }
 
         if (!DiskRuntimeHelpers.TryGetSlotManager(context, out var slotManager, out var error))
@@ -90,48 +106,46 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error(error!);
         }
 
+        List<DiskControllerRow> controllers = SnapshotControllers(slotManager!);
+        if (emitJson)
+        {
+            string json = JsonSerializer.Serialize(
+                controllers,
+                new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                });
+            context.Output.WriteLine(json);
+            return CommandResult.Ok();
+        }
+
         var output = context.Output;
         output.WriteLine();
         output.WriteLine("Disk controllers:");
 
-        var found = 0;
-        for (var slot = 1; slot <= MaxSlot; slot++)
+        for (int i = 0; i < controllers.Count; i++)
         {
-            var card = slotManager!.GetCard(slot);
-            if (card is not IDiskController disk)
-            {
-                continue;
-            }
-
-            found++;
+            DiskControllerRow controller = controllers[i];
             output.WriteLine();
             output.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
                 "  Slot {0}: {1} ({2} drive{3})",
-                slot,
-                card.Name,
-                disk.DriveCount,
-                disk.DriveCount == 1 ? string.Empty : "s"));
+                controller.Slot,
+                controller.Name,
+                controller.DriveCount,
+                controller.DriveCount == 1 ? string.Empty : "s"));
 
-            for (var d = 0; d < disk.DriveCount; d++)
+            for (int d = 0; d < controller.Drives.Count; d++)
             {
-                DriveSnapshot snap;
-                try
-                {
-                    snap = disk.GetDriveSnapshot(d);
-                }
-                catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
-                {
-                    output.WriteLine($"    Drive {d + 1}: <unreadable: {ex.Message}>");
-                    continue;
-                }
+                DiskDriveRow snap = controller.Drives[d];
 
                 if (!snap.HasMedia)
                 {
                     output.WriteLine(string.Format(
                         CultureInfo.InvariantCulture,
                         "    Drive {0}: empty (selected={1}, motor={2}, quarter-track={3})",
-                        d + 1,
+                        snap.Drive,
                         YesNo(snap.Selected),
                         YesNo(snap.MotorOn),
                         snap.QuarterTrack));
@@ -141,7 +155,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
                 output.WriteLine(string.Format(
                     CultureInfo.InvariantCulture,
                     "    Drive {0}: mounted '{1}'",
-                    d + 1,
+                    snap.Drive,
                     snap.MountedImagePath ?? "<unknown>"));
                 output.WriteLine(string.Format(
                     CultureInfo.InvariantCulture,
@@ -164,7 +178,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
             }
         }
 
-        if (found == 0)
+        if (controllers.Count == 0)
         {
             output.WriteLine();
             output.WriteLine("  No disk controllers installed.");
@@ -175,4 +189,69 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
     }
 
     private static string YesNo(bool value) => value ? "yes" : "no";
+
+    private static List<DiskControllerRow> SnapshotControllers(ISlotManager slotManager)
+    {
+        var controllers = new List<DiskControllerRow>();
+        for (int slot = 1; slot <= MaxSlot; slot++)
+        {
+            var card = slotManager.GetCard(slot);
+            if (card is not IDiskController controller)
+            {
+                continue;
+            }
+
+            var drives = new List<DiskDriveRow>(controller.DriveCount);
+            for (int driveIndex = 0; driveIndex < controller.DriveCount; driveIndex++)
+            {
+                DriveSnapshot snapshot = controller.GetDriveSnapshot(driveIndex);
+                DiskGeometryRow? geometry = snapshot.Geometry is null
+                    ? null
+                    : new(
+                        snapshot.Geometry.Value.TrackCount,
+                        snapshot.Geometry.Value.SectorsPerTrack,
+                        snapshot.Geometry.Value.BytesPerSector,
+                        snapshot.Geometry.Value.SectorOrder.ToString(),
+                        snapshot.Geometry.Value.TotalBytes);
+                drives.Add(new(
+                    Drive: driveIndex + 1,
+                    Selected: snapshot.Selected,
+                    MotorOn: snapshot.MotorOn,
+                    PhaseLatch: snapshot.PhaseLatch,
+                    QuarterTrack: snapshot.QuarterTrack,
+                    WriteProtect: snapshot.WriteProtect,
+                    HasMedia: snapshot.HasMedia,
+                    MountedImagePath: snapshot.MountedImagePath,
+                    Geometry: geometry));
+            }
+
+            controllers.Add(new(slot, card.Name, controller.DriveCount, drives));
+        }
+
+        return controllers;
+    }
+
+    private sealed record DiskGeometryRow(
+        int TrackCount,
+        int SectorsPerTrack,
+        int BytesPerSector,
+        string SectorOrder,
+        long TotalBytes);
+
+    private sealed record DiskDriveRow(
+        int Drive,
+        bool Selected,
+        bool MotorOn,
+        int PhaseLatch,
+        int QuarterTrack,
+        bool WriteProtect,
+        bool HasMedia,
+        string? MountedImagePath,
+        DiskGeometryRow? Geometry);
+
+    private sealed record DiskControllerRow(
+        int Slot,
+        string Name,
+        int DriveCount,
+        IReadOnlyList<DiskDriveRow> Drives);
 }

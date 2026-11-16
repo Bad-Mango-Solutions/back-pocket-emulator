@@ -23,6 +23,12 @@ using System.Text.Json.Serialization;
 [JsonSerializable(typeof(RunBudget))]
 [JsonSerializable(typeof(RunResult))]
 [JsonSerializable(typeof(MachineInfo))]
+[JsonSerializable(typeof(ScreenTextSnapshot))]
+[JsonSerializable(typeof(VideoStateSnapshot))]
+[JsonSerializable(typeof(TypeKeysReceipt))]
+[JsonSerializable(typeof(DiskGeometrySnapshot))]
+[JsonSerializable(typeof(DiskDriveSnapshot))]
+[JsonSerializable(typeof(DiskControllerSnapshot))]
 [JsonSerializable(typeof(DebugEnvelope<RegisterSnapshot>))]
 [JsonSerializable(typeof(DebugEnvelope<MemoryBlock>))]
 [JsonSerializable(typeof(DebugEnvelope<DisassemblyLine>))]
@@ -32,6 +38,10 @@ using System.Text.Json.Serialization;
 [JsonSerializable(typeof(DebugEnvelope<RunBudget>))]
 [JsonSerializable(typeof(DebugEnvelope<RunResult>))]
 [JsonSerializable(typeof(DebugEnvelope<MachineInfo>))]
+[JsonSerializable(typeof(DebugEnvelope<ScreenTextSnapshot>))]
+[JsonSerializable(typeof(DebugEnvelope<VideoStateSnapshot>))]
+[JsonSerializable(typeof(DebugEnvelope<TypeKeysReceipt>))]
+[JsonSerializable(typeof(DebugEnvelope<DiskControllerSnapshot>))]
 public partial class DebugSessionJsonContext : JsonSerializerContext
 {
 }

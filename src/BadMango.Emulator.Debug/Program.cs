@@ -21,6 +21,7 @@ using Serilog.Sinks.File;
 // For verbose device-level logging, add to the chain below:
 // .MinimumLevel.Override("BadMango.Emulator.Devices", LogEventLevel.Verbose)
 var debugLogEventStream = new DebugLogEventStream();
+bool headless = args.Any(static arg => arg.Equals("--headless", StringComparison.OrdinalIgnoreCase));
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()
@@ -52,7 +53,11 @@ try
         .ConfigureContainer<ContainerBuilder>(builder =>
         {
             builder.RegisterModule<DebugConsoleModule>();
-            builder.RegisterModule<DebugUiModule>();
+            if (!headless)
+            {
+                builder.RegisterModule<DebugUiModule>();
+            }
+
             builder.RegisterInstance(debugLogEventStream).As<IDebugLogEventStream>().SingleInstance();
             builder.RegisterInstance(Log.Logger).As<ILogger>().SingleInstance();
         })
