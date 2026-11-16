@@ -7,7 +7,6 @@ using Autofac.Extensions.DependencyInjection;
 
 using BadMango.Emulator.Debug;
 using BadMango.Emulator.Debug.Infrastructure;
-using BadMango.Emulator.Debug.UI;
 using BadMango.Emulator.Devices;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -21,7 +20,12 @@ using Serilog.Sinks.File;
 // For verbose device-level logging, add to the chain below:
 // .MinimumLevel.Override("BadMango.Emulator.Devices", LogEventLevel.Verbose)
 var debugLogEventStream = new DebugLogEventStream();
-bool headless = args.Any(static arg => arg.Equals("--headless", StringComparison.OrdinalIgnoreCase));
+
+// Host flags are consumed here. Passing them through to the generic host would let
+// configuration binding treat "--headless" as a key and the following token as its value.
+bool headless = DebugHostArguments.Has(args, DebugHostArguments.HeadlessOption);
+bool dumpAssemblies = DebugHostArguments.Has(args, DebugHostArguments.DumpAssembliesOption);
+string[] hostArgs = DebugHostArguments.WithoutHostOptions(args);
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()
@@ -45,17 +49,20 @@ DeviceFactoryRegistry.LoggerFactory = deviceType => Log.Logger.ForContext(device
 
 try
 {
-    Log.Information("Starting Emulator Debug Console");
+    Log.Information(headless
+        ? "Starting Emulator Debug Console (headless)"
+        : "Starting Emulator Debug Console");
 
-    // Build the host
-    var host = Host.CreateDefaultBuilder(args)
+    // Build the host. The headless branch never calls InteractiveUiRegistration.Register,
+    // and that method is not inlined, so Avalonia and the debug UI assembly stay unloaded.
+    var host = Host.CreateDefaultBuilder(hostArgs)
         .UseServiceProviderFactory(new AutofacServiceProviderFactory())
         .ConfigureContainer<ContainerBuilder>(builder =>
         {
             builder.RegisterModule<DebugConsoleModule>();
             if (!headless)
             {
-                builder.RegisterModule<DebugUiModule>();
+                InteractiveUiRegistration.Register(builder);
             }
 
             builder.RegisterInstance(debugLogEventStream).As<IDebugLogEventStream>().SingleInstance();
@@ -83,5 +90,10 @@ catch (Exception ex)
 }
 finally
 {
+    if (dumpAssemblies)
+    {
+        DebugHostArguments.WriteLoadedAssemblies();
+    }
+
     await Log.CloseAndFlushAsync();
 }
