@@ -14,6 +14,8 @@ using Devices;
 
 using Rendering;
 
+using Serilog;
+
 using Services;
 
 using ViewModels;
@@ -63,11 +65,14 @@ public partial class GlyphEditorWindow : Window
     /// <summary>
     /// Creates a new glyph editor window with default services.
     /// </summary>
+    /// <param name="logger">
+    /// Receives glyph-editor errors. When <see langword="null"/>, errors are not written to the console.
+    /// </param>
     /// <returns>A new <see cref="GlyphEditorWindow"/>.</returns>
-    public static GlyphEditorWindow Create()
+    public static GlyphEditorWindow Create(ILogger? logger = null)
     {
         var window = new GlyphEditorWindow();
-        var fileService = new GlyphFileService(window);
+        var fileService = new GlyphFileService(window, logger);
         var emulatorConnection = new EmulatorConnectionService();
         var vm = new GlyphEditorViewModel(fileService, emulatorConnection);
 
@@ -84,13 +89,16 @@ public partial class GlyphEditorWindow : Window
     /// Creates a new glyph editor window connected to a character device.
     /// </summary>
     /// <param name="characterDevice">The character device to connect to.</param>
+    /// <param name="logger">
+    /// Receives glyph-editor errors. When <see langword="null"/>, errors are not written to the console.
+    /// </param>
     /// <returns>A new <see cref="GlyphEditorWindow"/>.</returns>
-    public static GlyphEditorWindow Create(Devices.Interfaces.ICharacterDevice characterDevice)
+    public static GlyphEditorWindow Create(Devices.Interfaces.ICharacterDevice characterDevice, ILogger? logger = null)
     {
         // Create the window with a connected emulator connection
         var window = new GlyphEditorWindow();
         var emulatorConnection = new EmulatorConnectionService();
-        var fileService = new GlyphFileService(window);
+        var fileService = new GlyphFileService(window, logger);
         var vm = new GlyphEditorViewModel(fileService, emulatorConnection);
 
         window.viewModel = vm;

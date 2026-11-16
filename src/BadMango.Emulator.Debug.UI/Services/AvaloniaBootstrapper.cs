@@ -9,6 +9,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 
+using Serilog;
+
 /// <summary>
 /// Bootstraps and manages the Avalonia UI thread for the console debugger.
 /// </summary>
@@ -43,13 +45,15 @@ public sealed class AvaloniaBootstrapper : IDisposable
     private static AvaloniaBootstrapper? instance;
     private static bool isInitialized;
 
+    private readonly ILogger logger;
     private readonly Thread avaloniaThread;
     private readonly ManualResetEventSlim startedEvent = new(false);
     private readonly CancellationTokenSource cancellationTokenSource = new();
     private bool disposed;
 
-    private AvaloniaBootstrapper()
+    private AvaloniaBootstrapper(ILogger? logger)
     {
+        this.logger = logger ?? Serilog.Core.Logger.None;
         this.avaloniaThread = new Thread(this.RunAvalonia)
         {
             Name = "Avalonia UI Thread",
@@ -77,6 +81,28 @@ public sealed class AvaloniaBootstrapper : IDisposable
     /// </remarks>
     public static void EnsureInitialized()
     {
+        EnsureInitialized(logger: null);
+    }
+
+    /// <summary>
+    /// Ensures Avalonia is initialized and running on a background thread.
+    /// </summary>
+    /// <param name="logger">
+    /// Receives startup failures. When <see langword="null"/>, failures are not written to the console.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// This method is thread-safe and can be called multiple times. Subsequent
+    /// calls after the first return immediately, and the logger from the first
+    /// call is the one that records a startup failure.
+    /// </para>
+    /// <para>
+    /// The method blocks until Avalonia is fully initialized and ready to
+    /// accept UI operations, or until startup fails and the caller is unblocked.
+    /// </para>
+    /// </remarks>
+    public static void EnsureInitialized(ILogger? logger)
+    {
         if (isInitialized)
         {
             return;
@@ -89,7 +115,7 @@ public sealed class AvaloniaBootstrapper : IDisposable
                 return;
             }
 
-            instance = new AvaloniaBootstrapper();
+            instance = new AvaloniaBootstrapper(logger);
             instance.Start();
             isInitialized = true;
         }
@@ -137,6 +163,22 @@ public sealed class AvaloniaBootstrapper : IDisposable
         this.cancellationTokenSource.Dispose();
     }
 
+    /// <summary>
+    /// Records an Avalonia startup failure and unblocks <see cref="Start"/>.
+    /// </summary>
+    /// <param name="logger">The logger that receives the failure.</param>
+    /// <param name="exception">The exception thrown while starting Avalonia.</param>
+    /// <param name="startedEvent">The event that unblocks the caller waiting for startup.</param>
+    internal static void ReportInitializationFailure(ILogger logger, Exception exception, ManualResetEventSlim startedEvent)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(exception);
+        ArgumentNullException.ThrowIfNull(startedEvent);
+
+        logger.Error(exception, "Avalonia initialization failed: {Message}", exception.Message);
+        startedEvent.Set();
+    }
+
     private static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<DebugApp>()
             .UsePlatformDetect()
@@ -168,8 +210,7 @@ public sealed class AvaloniaBootstrapper : IDisposable
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Avalonia initialization failed: {ex.Message}");
-            this.startedEvent.Set(); // Unblock caller even on failure
+            ReportInitializationFailure(this.logger, ex, this.startedEvent);
         }
     }
 }
