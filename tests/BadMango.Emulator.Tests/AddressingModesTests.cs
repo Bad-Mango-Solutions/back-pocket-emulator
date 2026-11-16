@@ -616,97 +616,306 @@ public class AddressingModesTests : CpuTestBase
     }
 
     /// <summary>
-    /// Verifies that <see cref="AbsoluteXMode"/> resolves identically to the legacy absolute,X handler.
+    /// Verifies that <see cref="AbsoluteXMode"/> matches <see cref="AddressingModes.AbsoluteX"/>
+    /// for a same-page index, a page cross, and a wrap past <c>$FFFF</c>.
+    /// The extra cycle is charged only when the high byte changes.
     /// </summary>
-    [Test]
-    public void AbsoluteXMode_MatchesLegacyHandler()
+    /// <param name="baseAddress">The 16-bit operand before indexing.</param>
+    /// <param name="index">The X register.</param>
+    /// <param name="expectedAddress">The effective address, wrapped to 16 bits.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x1234, 0x10, 0x1244, 12)]
+    [TestCase(0x12FF, 0x02, 0x1301, 13)]
+    [TestCase(0xFFFE, 0x10, 0x000E, 13)]
+    public void AbsoluteXMode_MatchesLegacyHandler(int baseAddress, int index, int expectedAddress, int expectedCycles)
     {
-        AssertStructMatchesLegacy<AbsoluteXMode>(AddressingModes.AbsoluteX, () =>
+        AssertParity<AbsoluteXMode>(
+            AddressingModes.AbsoluteX,
+            () =>
+            {
+                WriteWord(0x1000, (ushort)baseAddress);
+                SetupCpu(pc: 0x1000, x: (byte)index, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1002,
+            (ulong)expectedCycles);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteYMode"/> matches <see cref="AddressingModes.AbsoluteY"/>
+    /// for a same-page index, a page cross, and a wrap past <c>$FFFF</c>.
+    /// The extra cycle is charged only when the high byte changes.
+    /// </summary>
+    /// <param name="baseAddress">The 16-bit operand before indexing.</param>
+    /// <param name="index">The Y register.</param>
+    /// <param name="expectedAddress">The effective address, wrapped to 16 bits.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x2000, 0x50, 0x2050, 12)]
+    [TestCase(0x20F0, 0x20, 0x2110, 13)]
+    [TestCase(0xFF48, 0xFE, 0x0046, 13)]
+    public void AbsoluteYMode_MatchesLegacyHandler(int baseAddress, int index, int expectedAddress, int expectedCycles)
+    {
+        AssertParity<AbsoluteYMode>(
+            AddressingModes.AbsoluteY,
+            () =>
+            {
+                WriteWord(0x1000, (ushort)baseAddress);
+                SetupCpu(pc: 0x1000, y: (byte)index, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1002,
+            (ulong)expectedCycles);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="IndirectXMode"/> matches <see cref="AddressingModes.IndirectX"/>,
+    /// including a zero-page pointer that lands on <c>$FF</c>.
+    /// The high byte is read from <c>$0000</c>, not from <c>$0100</c>.
+    /// </summary>
+    /// <param name="operand">The zero-page operand byte.</param>
+    /// <param name="index">The X register added to <paramref name="operand"/>, wrapping in the zero page.</param>
+    /// <param name="pointer">The 16-bit pointer stored at the indexed zero-page address.</param>
+    /// <param name="expectedAddress">The effective address read through that pointer.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x40, 0x05, 0x3000, 0x3000, 14)]
+    [TestCase(0xFE, 0x01, 0x1234, 0x1234, 14)]
+    public void IndirectXMode_MatchesLegacyHandler(int operand, int index, int pointer, int expectedAddress, int expectedCycles)
+    {
+        AssertParity<IndirectXMode>(
+            AddressingModes.IndirectX,
+            () =>
+            {
+                Write(0x1000, (byte)operand);
+                WriteZeroPagePointer((uint)((operand + index) & 0xFF), pointer);
+                SetupCpu(pc: 0x1000, x: (byte)index, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1001,
+            (ulong)expectedCycles);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="IndirectYMode"/> matches <see cref="AddressingModes.IndirectY"/>
+    /// with no page cross, with a page cross, and with the zero-page pointer at <c>$FF</c>.
+    /// The extra cycle is charged only when <c>pointer + Y</c> changes the high byte.
+    /// A pointer at <c>$FF</c> reads its high byte from <c>$0000</c>.
+    /// </summary>
+    /// <param name="zeroPage">The zero-page address of the pointer.</param>
+    /// <param name="pointer">The 16-bit pointer. At <c>$FF</c> the high byte is stored at <c>$0000</c>.</param>
+    /// <param name="index">The Y register added to <paramref name="pointer"/>.</param>
+    /// <param name="expectedAddress">The effective address, wrapped to 16 bits.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x50, 0x4000, 0x10, 0x4010, 13)]
+    [TestCase(0x60, 0x40FF, 0x02, 0x4101, 14)]
+    [TestCase(0xFF, 0x1234, 0x01, 0x1235, 13)]
+    public void IndirectYMode_MatchesLegacyHandler(int zeroPage, int pointer, int index, int expectedAddress, int expectedCycles)
+    {
+        AssertParity<IndirectYMode>(
+            AddressingModes.IndirectY,
+            () =>
+            {
+                Write(0x1000, (byte)zeroPage);
+                WriteZeroPagePointer((uint)zeroPage, pointer);
+                SetupCpu(pc: 0x1000, y: (byte)index, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1001,
+            (ulong)expectedCycles);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteXWriteMode"/> matches <see cref="AddressingModes.AbsoluteXWrite"/>
+    /// with and without a page cross, including a wrap past <c>$FFFF</c>.
+    /// Write indexing charges a fixed cycle count.
+    /// </summary>
+    /// <param name="baseAddress">The 16-bit operand before indexing.</param>
+    /// <param name="index">The X register.</param>
+    /// <param name="expectedAddress">The effective address, wrapped to 16 bits.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x2000, 0x10, 0x2010, 13)]
+    [TestCase(0x12FF, 0x02, 0x1301, 13)]
+    [TestCase(0xFFC0, 0x80, 0x0040, 13)]
+    public void AbsoluteXWriteMode_MatchesLegacyHandler(int baseAddress, int index, int expectedAddress, int expectedCycles)
+    {
+        AssertParity<AbsoluteXWriteMode>(
+            AddressingModes.AbsoluteXWrite,
+            () =>
+            {
+                WriteWord(0x1000, (ushort)baseAddress);
+                SetupCpu(pc: 0x1000, x: (byte)index, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1002,
+            (ulong)expectedCycles);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AbsoluteYWriteMode"/> matches <see cref="AddressingModes.AbsoluteYWrite"/>
+    /// with and without a page cross, including a wrap past <c>$FFFF</c>.
+    /// Write indexing charges a fixed cycle count.
+    /// </summary>
+    /// <param name="baseAddress">The 16-bit operand before indexing.</param>
+    /// <param name="index">The Y register.</param>
+    /// <param name="expectedAddress">The effective address, wrapped to 16 bits.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x3000, 0x20, 0x3020, 13)]
+    [TestCase(0x20F0, 0x20, 0x2110, 13)]
+    [TestCase(0xFFC0, 0x80, 0x0040, 13)]
+    public void AbsoluteYWriteMode_MatchesLegacyHandler(int baseAddress, int index, int expectedAddress, int expectedCycles)
+    {
+        AssertParity<AbsoluteYWriteMode>(
+            AddressingModes.AbsoluteYWrite,
+            () =>
+            {
+                WriteWord(0x1000, (ushort)baseAddress);
+                SetupCpu(pc: 0x1000, y: (byte)index, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1002,
+            (ulong)expectedCycles);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="IndirectYWriteMode"/> matches <see cref="AddressingModes.IndirectYWrite"/>
+    /// with and without a page cross, and with the zero-page pointer at <c>$FF</c>.
+    /// Write indexing charges a fixed cycle count, and a pointer at <c>$FF</c> reads its high byte from <c>$0000</c>.
+    /// </summary>
+    /// <param name="zeroPage">The zero-page address of the pointer.</param>
+    /// <param name="pointer">The 16-bit pointer. At <c>$FF</c> the high byte is stored at <c>$0000</c>.</param>
+    /// <param name="index">The Y register added to <paramref name="pointer"/>.</param>
+    /// <param name="expectedAddress">The effective address, wrapped to 16 bits.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x70, 0x5000, 0x30, 0x5030, 14)]
+    [TestCase(0x60, 0x40FF, 0x02, 0x4101, 14)]
+    [TestCase(0xFF, 0x1234, 0x01, 0x1235, 14)]
+    public void IndirectYWriteMode_MatchesLegacyHandler(int zeroPage, int pointer, int index, int expectedAddress, int expectedCycles)
+    {
+        AssertParity<IndirectYWriteMode>(
+            AddressingModes.IndirectYWrite,
+            () =>
+            {
+                Write(0x1000, (byte)zeroPage);
+                WriteZeroPagePointer((uint)zeroPage, pointer);
+                SetupCpu(pc: 0x1000, y: (byte)index, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1001,
+            (ulong)expectedCycles);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="RelativeMode"/> matches <see cref="AddressingModes.Relative"/>
+    /// for a taken forward branch and a taken backward branch, each with and without a page cross.
+    /// The mode returns the branch target and charges the offset fetch. The taken and page-cross
+    /// cycles are applied by the branch instruction, checked here with <c>BEQ</c> while Z is set.
+    /// </summary>
+    /// <param name="startPc">The program counter where the offset byte is fetched.</param>
+    /// <param name="offset">The raw relative offset byte.</param>
+    /// <param name="expectedModePc">The program counter after the mode fetches the offset.</param>
+    /// <param name="expectedTarget">The taken branch target.</param>
+    /// <param name="expectedModeCycles">The cycle counter after the mode alone, starting from 10.</param>
+    /// <param name="expectedTakenCycles">The cycle counter after a taken <c>BEQ</c>, starting from 10.</param>
+    [TestCase(0x1000, 0x10, 0x1001, 0x1011, 11, 12)]
+    [TestCase(0x10F0, 0x20, 0x10F1, 0x1111, 11, 13)]
+    [TestCase(0x1020, 0xF0, 0x1021, 0x1011, 11, 12)]
+    [TestCase(0x1000, 0xF0, 0x1001, 0x0FF1, 11, 13)]
+    public void RelativeMode_MatchesLegacyHandler(
+        int startPc,
+        int offset,
+        int expectedModePc,
+        int expectedTarget,
+        int expectedModeCycles,
+        int expectedTakenCycles)
+    {
+        Action arrange = () =>
         {
-            WriteWord(0x1000, 0x12FF);
-            SetupCpu(pc: 0x1000, x: 0x02, cycles: 10);
+            Write((uint)startPc, (byte)offset);
+            SetupCpu(pc: (ushort)startPc, p: ProcessorStatusFlags.Z, cycles: 10);
+        };
+
+        AssertParity<RelativeMode>(
+            AddressingModes.Relative,
+            arrange,
+            (Addr)expectedTarget,
+            (Word)expectedModePc,
+            (ulong)expectedModeCycles);
+
+        OpcodeHandler legacy = Instructions.BEQ(AddressingModes.Relative);
+        OpcodeHandler viaStruct = Instructions.BEQ(static cpu => RelativeMode.Resolve(cpu));
+
+        arrange();
+        legacy(Cpu);
+        Word legacyPc = Cpu.Registers.PC.GetWord();
+        ulong legacyCycles = Cpu.GetCycles();
+
+        arrange();
+        viaStruct(Cpu);
+        Word structPc = Cpu.Registers.PC.GetWord();
+        ulong structCycles = Cpu.GetCycles();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(structPc, Is.EqualTo(legacyPc));
+            Assert.That(structCycles, Is.EqualTo(legacyCycles));
+            Assert.That(structPc, Is.EqualTo((Word)expectedTarget));
+            Assert.That(structCycles, Is.EqualTo((ulong)expectedTakenCycles));
         });
     }
 
     /// <summary>
-    /// Verifies that <see cref="AbsoluteYMode"/> resolves identically to the legacy absolute,Y handler.
+    /// Verifies that <see cref="IndirectMode"/> matches <see cref="AddressingModes.Indirect"/>
+    /// for <c>JMP (abs)</c>, including a pointer at <c>$xxFF</c>.
+    /// The 65C02 reads the high byte from the next page and charges the extra indirect cycle.
     /// </summary>
-    [Test]
-    public void AbsoluteYMode_MatchesLegacyHandler()
+    /// <param name="pointer">The indirect pointer address fetched from the operand.</param>
+    /// <param name="target">The 16-bit target stored at <paramref name="pointer"/>, crossing a page when the pointer is <c>$xxFF</c>.</param>
+    /// <param name="expectedAddress">The address <c>JMP</c> would take. This is <paramref name="target"/>, not a page-wrapped read.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x2200, 0x3456, 0x3456, 15)]
+    [TestCase(0x12FF, 0x5678, 0x5678, 15)]
+    public void IndirectMode_MatchesLegacyHandler(int pointer, int target, int expectedAddress, int expectedCycles)
     {
-        AssertStructMatchesLegacy<AbsoluteYMode>(AddressingModes.AbsoluteY, () =>
-        {
-            WriteWord(0x1000, 0x20F0);
-            SetupCpu(pc: 0x1000, y: 0x20, cycles: 10);
-        });
+        AssertParity<IndirectMode>(
+            AddressingModes.Indirect,
+            () =>
+            {
+                WriteWord(0x1000, (ushort)pointer);
+                if ((pointer & 0xFF) == 0xFF)
+                {
+                    Write((uint)(pointer & 0xFF00), 0xAB);
+                }
+
+                WriteWord((uint)pointer, (ushort)target);
+                SetupCpu(pc: 0x1000, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1002,
+            (ulong)expectedCycles);
     }
 
     /// <summary>
-    /// Verifies that <see cref="IndirectXMode"/> resolves identically to the legacy indirect,X handler.
+    /// Verifies that <see cref="ZeroPageIndirectMode"/> matches <see cref="AddressingModes.ZeroPageIndirect"/>,
+    /// including a pointer at <c>$FF</c> whose high byte comes from <c>$0000</c>.
     /// </summary>
-    [Test]
-    public void IndirectXMode_MatchesLegacyHandler()
+    /// <param name="zeroPage">The zero-page address of the pointer.</param>
+    /// <param name="pointer">The 16-bit pointer. At <c>$FF</c> the high byte is stored at <c>$0000</c>.</param>
+    /// <param name="expectedAddress">The effective address read through the pointer.</param>
+    /// <param name="expectedCycles">The cycle counter after resolution, starting from 10.</param>
+    [TestCase(0x80, 0x5678, 0x5678, 13)]
+    [TestCase(0xFF, 0x1234, 0x1234, 13)]
+    public void ZeroPageIndirectMode_MatchesLegacyHandler(int zeroPage, int pointer, int expectedAddress, int expectedCycles)
     {
-        AssertStructMatchesLegacy<IndirectXMode>(AddressingModes.IndirectX, () =>
-        {
-            Write(0x1000, 0x40);
-            WriteWord(0x0045, 0x3000);
-            SetupCpu(pc: 0x1000, x: 0x05, cycles: 10);
-        });
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="IndirectYMode"/> resolves identically to the legacy indirect,Y handler.
-    /// </summary>
-    [Test]
-    public void IndirectYMode_MatchesLegacyHandler()
-    {
-        AssertStructMatchesLegacy<IndirectYMode>(AddressingModes.IndirectY, () =>
-        {
-            Write(0x1000, 0x60);
-            WriteWord(0x0060, 0x40FF);
-            SetupCpu(pc: 0x1000, y: 0x02, cycles: 10);
-        });
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="AbsoluteXWriteMode"/> resolves identically to the legacy absolute,X write handler.
-    /// </summary>
-    [Test]
-    public void AbsoluteXWriteMode_MatchesLegacyHandler()
-    {
-        AssertStructMatchesLegacy<AbsoluteXWriteMode>(AddressingModes.AbsoluteXWrite, () =>
-        {
-            WriteWord(0x1000, 0x2000);
-            SetupCpu(pc: 0x1000, x: 0x10, cycles: 10);
-        });
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="AbsoluteYWriteMode"/> resolves identically to the legacy absolute,Y write handler.
-    /// </summary>
-    [Test]
-    public void AbsoluteYWriteMode_MatchesLegacyHandler()
-    {
-        AssertStructMatchesLegacy<AbsoluteYWriteMode>(AddressingModes.AbsoluteYWrite, () =>
-        {
-            WriteWord(0x1000, 0x3000);
-            SetupCpu(pc: 0x1000, y: 0x20, cycles: 10);
-        });
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="IndirectYWriteMode"/> resolves identically to the legacy indirect,Y write handler.
-    /// </summary>
-    [Test]
-    public void IndirectYWriteMode_MatchesLegacyHandler()
-    {
-        AssertStructMatchesLegacy<IndirectYWriteMode>(AddressingModes.IndirectYWrite, () =>
-        {
-            Write(0x1000, 0x70);
-            WriteWord(0x0070, 0x5000);
-            SetupCpu(pc: 0x1000, y: 0x30, cycles: 10);
-        });
+        AssertParity<ZeroPageIndirectMode>(
+            AddressingModes.ZeroPageIndirect,
+            () =>
+            {
+                Write(0x1000, (byte)zeroPage);
+                WriteZeroPagePointer((uint)zeroPage, pointer);
+                SetupCpu(pc: 0x1000, cycles: 10);
+            },
+            (Addr)expectedAddress,
+            0x1001,
+            (ulong)expectedCycles);
     }
 
     /// <summary>
@@ -716,47 +925,6 @@ public class AddressingModesTests : CpuTestBase
     public void AccumulatorMode_MatchesLegacyHandler()
     {
         AssertStructMatchesLegacy<AccumulatorMode>(AddressingModes.Accumulator, () => SetupCpu(pc: 0x1000, cycles: 10));
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="RelativeMode"/> resolves identically to the legacy relative handler.
-    /// </summary>
-    [Test]
-    public void RelativeMode_MatchesLegacyHandler()
-    {
-        AssertStructMatchesLegacy<RelativeMode>(AddressingModes.Relative, () =>
-        {
-            Write(0x1000, 0xF8);
-            SetupCpu(pc: 0x1000, cycles: 10);
-        });
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="IndirectMode"/> resolves identically to the legacy indirect handler.
-    /// </summary>
-    [Test]
-    public void IndirectMode_MatchesLegacyHandler()
-    {
-        AssertStructMatchesLegacy<IndirectMode>(AddressingModes.Indirect, () =>
-        {
-            WriteWord(0x1000, 0x2200);
-            WriteWord(0x2200, 0x3456);
-            SetupCpu(pc: 0x1000, cycles: 10);
-        });
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="ZeroPageIndirectMode"/> resolves identically to the legacy zero-page indirect handler.
-    /// </summary>
-    [Test]
-    public void ZeroPageIndirectMode_MatchesLegacyHandler()
-    {
-        AssertStructMatchesLegacy<ZeroPageIndirectMode>(AddressingModes.ZeroPageIndirect, () =>
-        {
-            Write(0x1000, 0x80);
-            WriteWord(0x0080, 0x5678);
-            SetupCpu(pc: 0x1000, cycles: 10);
-        });
     }
 
     /// <summary>
@@ -788,6 +956,25 @@ public class AddressingModesTests : CpuTestBase
     }
 
     /// <summary>
+    /// Writes a 16-bit zero-page pointer. A pointer at <c>$FF</c> stores its high byte at <c>$0000</c>
+    /// and plants a decoy at <c>$0100</c> so a stack-page fetch fails the expected address.
+    /// </summary>
+    /// <param name="zeroPage">The zero-page address of the low byte.</param>
+    /// <param name="pointer">The 16-bit pointer value.</param>
+    private void WriteZeroPagePointer(uint zeroPage, int pointer)
+    {
+        if (zeroPage == 0xFF)
+        {
+            Write(0x00FF, (byte)pointer);
+            Write(0x0000, (byte)(pointer >> 8));
+            Write(0x0100, 0xAB);
+            return;
+        }
+
+        WriteWord(zeroPage, (ushort)pointer);
+    }
+
+    /// <summary>
     /// Sets up CPU registers for testing.
     /// </summary>
     private void SetupCpu(
@@ -815,7 +1002,8 @@ public class AddressingModesTests : CpuTestBase
     /// <typeparam name="TMode">The generic addressing mode struct under test.</typeparam>
     /// <param name="legacyHandler">The existing delegate-based handler.</param>
     /// <param name="arrange">The shared setup action to apply before each execution.</param>
-    private void AssertStructMatchesLegacy<TMode>(AddressingModeHandler legacyHandler, Action arrange)
+    /// <returns>The generic resolver's address, program counter, and cycles.</returns>
+    private ModeExecutionResult AssertStructMatchesLegacy<TMode>(AddressingModeHandler legacyHandler, Action arrange)
         where TMode : struct, IAddressingMode
     {
         var legacyResult = ExecuteMode(cpu => legacyHandler(cpu), arrange);
@@ -826,6 +1014,34 @@ public class AddressingModesTests : CpuTestBase
             Assert.That(structResult.Address, Is.EqualTo(legacyResult.Address));
             Assert.That(structResult.ProgramCounter, Is.EqualTo(legacyResult.ProgramCounter));
             Assert.That(structResult.Cycles, Is.EqualTo(legacyResult.Cycles));
+        });
+
+        return structResult;
+    }
+
+    /// <summary>
+    /// Compares a generic resolver with the legacy handler, then checks the shared result.
+    /// </summary>
+    /// <typeparam name="TMode">The generic addressing mode struct under test.</typeparam>
+    /// <param name="legacyHandler">The existing delegate-based handler.</param>
+    /// <param name="arrange">The shared setup action to apply before each execution.</param>
+    /// <param name="expectedAddress">The effective address both resolvers must produce.</param>
+    /// <param name="expectedProgramCounter">The program counter both resolvers must leave.</param>
+    /// <param name="expectedCycles">The cycle counter both resolvers must leave.</param>
+    private void AssertParity<TMode>(
+        AddressingModeHandler legacyHandler,
+        Action arrange,
+        Addr expectedAddress,
+        Word expectedProgramCounter,
+        ulong expectedCycles)
+        where TMode : struct, IAddressingMode
+    {
+        ModeExecutionResult result = AssertStructMatchesLegacy<TMode>(legacyHandler, arrange);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Address, Is.EqualTo(expectedAddress));
+            Assert.That(result.ProgramCounter, Is.EqualTo(expectedProgramCounter));
+            Assert.That(result.Cycles, Is.EqualTo(expectedCycles));
         });
     }
 
