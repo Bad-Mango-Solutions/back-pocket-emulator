@@ -381,6 +381,30 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
     }
 
     /// <summary>
+    /// Verifies that opcode dispatch still invokes legacy delegates through the table.
+    /// </summary>
+    [Test]
+    public void OpcodeTable_ExecutesLegacyHandler()
+    {
+        bool invoked = false;
+        var handlers = new OpcodeHandler[256];
+        handlers[0xEA] = _ => invoked = true;
+
+        var metadata = new OpcodeInfo[256];
+        metadata[0xEA] = new(CpuInstructions.NOP, CpuAddressingModes.Implied, 0, 2);
+
+        var table = new OpcodeTable(handlers, metadata);
+        table.Execute(0xEA, Cpu);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(invoked, Is.True);
+            Assert.That(table.GetHandler(0xEA), Is.SameAs(handlers[0xEA]));
+            Assert.That(table.GetMetadata(0xEA).Instruction, Is.EqualTo(CpuInstructions.NOP));
+        });
+    }
+
+    /// <summary>
     /// Runs one opcode at <c>$0200</c> with X = Y = 0, D clear, and operands that
     /// do not cross a page. Conditional branches and BBR/BBS are not taken.
     /// BRA uses a zero offset, so it is taken inside the same page.

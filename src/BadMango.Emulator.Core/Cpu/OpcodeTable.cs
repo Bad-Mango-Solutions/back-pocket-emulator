@@ -12,14 +12,28 @@ using Interfaces.Cpu;
 /// Represents an opcode lookup table for 6502-family CPUs.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This class encapsulates the opcode table, providing O(1) opcode dispatch.
 /// The table maps 8-bit opcodes (0x00-0xFF) to instruction handlers.
 /// Handlers receive the CPU instance for accessing state and memory through the bus.
+/// </para>
+/// <para>
+/// Each slot is an <see cref="OpcodeEntry"/>. <see cref="Execute"/> always calls
+/// <see cref="OpcodeEntry.Fn"/> and passes that same entry by readonly reference.
+/// Every opcode shares <see cref="SharedLegacyTrampoline"/>, one static readonly delegate,
+/// which invokes <see cref="OpcodeEntry.Legacy"/>. Nothing is stored in a mutable
+/// static field.
+/// </para>
 /// </remarks>
 public class OpcodeTable
 {
-    private readonly OpcodeHandler[] handlers;
-    private readonly OpcodeInfo[] metadata;
+    /// <summary>
+    /// The single legacy trampoline instance. Converted opcodes use the same cache
+    /// shape: one static readonly <see cref="OpcodeDispatch"/> per static method.
+    /// </summary>
+    private static readonly OpcodeDispatch SharedLegacyTrampoline = LegacyTrampoline;
+
+    private readonly OpcodeEntry[] entries;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OpcodeTable"/> class.
@@ -49,8 +63,11 @@ public class OpcodeTable
             throw new ArgumentException("Opcode metadata table must have exactly 256 entries.", nameof(metadata));
         }
 
-        this.handlers = handlers;
-        this.metadata = metadata.ToArray();
+        entries = new OpcodeEntry[256];
+        for (int i = 0; i < handlers.Length; i++)
+        {
+            entries[i] = new(SharedLegacyTrampoline, handlers[i], metadata[i]);
+        }
     }
 
     /// <summary>
@@ -61,7 +78,8 @@ public class OpcodeTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Execute(byte opcode, ICpu cpu)
     {
-        handlers[opcode](cpu);
+        ref readonly OpcodeEntry entry = ref entries[opcode];
+        entry.Fn(cpu, in entry);
     }
 
     /// <summary>
@@ -72,7 +90,7 @@ public class OpcodeTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public OpcodeHandler GetHandler(byte opcode)
     {
-        return handlers[opcode];
+        return entries[opcode].Legacy!;
     }
 
     /// <summary>
@@ -83,6 +101,16 @@ public class OpcodeTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public OpcodeInfo GetMetadata(byte opcode)
     {
-        return metadata[opcode];
+        return entries[opcode].Metadata;
+    }
+
+    /// <summary>
+    /// Invokes the legacy delegate on the entry <see cref="Execute"/> passed in.
+    /// </summary>
+    /// <param name="cpu">The CPU instance to pass to the legacy delegate.</param>
+    /// <param name="entry">The opcode entry whose <see cref="OpcodeEntry.Legacy"/> delegate runs.</param>
+    private static void LegacyTrampoline(ICpu cpu, in OpcodeEntry entry)
+    {
+        entry.Legacy!(cpu);
     }
 }
