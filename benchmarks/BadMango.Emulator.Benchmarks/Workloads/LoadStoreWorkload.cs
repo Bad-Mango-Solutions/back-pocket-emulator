@@ -61,7 +61,8 @@ public static class LoadStoreWorkload
     private const byte JumpAbsolute = 0x4C;
 
     /// <summary>
-    /// Gets the opcodes the loop must execute, in body order. The closing jump is not included.
+    /// Gets one copy of the loop body, in memory order. Each opcode byte is followed by its operand bytes.
+    /// The closing jump is not included. <see cref="OpcodeBytes"/> is the opcode bytes alone.
     /// </summary>
     public static ReadOnlySpan<byte> ExercisedOpcodes => Body;
 
@@ -163,7 +164,7 @@ public static class LoadStoreWorkload
     }
 
     /// <summary>
-    /// Builds one benchmark parameter per opcode in <see cref="ExercisedOpcodes"/>.
+    /// Builds one benchmark parameter per opcode returned by <see cref="OpcodeBytes"/>.
     /// </summary>
     /// <returns>The opcodes, in body order.</returns>
     /// <exception cref="InvalidOperationException">Thrown when a mnemonic is missing for an opcode.</exception>
