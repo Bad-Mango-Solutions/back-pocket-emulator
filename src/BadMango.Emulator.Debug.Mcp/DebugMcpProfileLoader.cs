@@ -80,6 +80,7 @@ public sealed class DebugMcpProfileLoader
         var tracingListener = new TracingDebugListener();
         machine.Cpu.AttachDebugger(tracingListener);
         debugContext.AttachMachine(machine, disassembler, info, tracingListener);
+        debugContext.Watchpoints.SetLogOutput(Console.Error);
         return this.session.GetMachineInfo();
     }
 
