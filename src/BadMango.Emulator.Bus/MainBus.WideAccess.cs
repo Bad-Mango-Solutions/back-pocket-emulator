@@ -4,18 +4,32 @@
 
 namespace BadMango.Emulator.Bus;
 
+using System.Diagnostics.CodeAnalysis;
+
+using Interfaces;
+
 /// <content>
 /// Wide access (16/32-bit) operations and decomposition helpers for the main memory bus.
 /// </content>
 public sealed partial class MainBus
 {
     /// <inheritdoc />
+    /// <remarks>
+    /// A same-page access whose live slot publishes <see cref="FastPathOps.Read"/> is indexed
+    /// and does not call <see cref="IBusTarget.Read16"/>. An access that crosses a 4 KB page
+    /// is one byte at a time, and each byte indexes or uses <see cref="Read8"/>.
+    /// </remarks>
     public Word Read16(in BusAccess access)
     {
-        // Cross-page check: always decompose
+        if (TryReadIndexedSpan(access.Address, 2, out uint indexed))
+        {
+            return (Word)indexed;
+        }
+
+        // A 4 KB crossing is one byte at a time. Each byte indexes or uses Read8.
         if (CrossesPageBoundary(access.Address, 2))
         {
-            return DecomposeRead16(access);
+            return (Word)ReadIndexedSplit(access, 2);
         }
 
         // Decompose flag forces byte-wise
@@ -30,7 +44,7 @@ public sealed partial class MainBus
         if (access.IsAtomicRequested && page.SupportsWide)
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            return page.Target!.Read16(physicalAddress, access);
+            return InvokeTargetRead16(page.Target!, physicalAddress, access);
         }
 
         // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
@@ -43,19 +57,28 @@ public sealed partial class MainBus
         if (page.SupportsWide)
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            return page.Target!.Read16(physicalAddress, access);
+            return InvokeTargetRead16(page.Target!, physicalAddress, access);
         }
 
         return DecomposeRead16(access);
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A same-page access whose live slot publishes <see cref="FastPathOps.Write"/> is indexed
+    /// and does not call <see cref="IBusTarget.Write16"/>. A <see cref="RomTarget"/> never
+    /// publishes write. An access that crosses a 4 KB page is one byte at a time.
+    /// </remarks>
     public void Write16(in BusAccess access, Word value)
     {
-        // Cross-page check: always decompose
+        if (TryWriteIndexedSpan(access.Address, value, 2))
+        {
+            return;
+        }
+
         if (CrossesPageBoundary(access.Address, 2))
         {
-            DecomposeWrite16(access, value);
+            WriteIndexedSplit(access, value, 2);
             return;
         }
 
@@ -72,7 +95,7 @@ public sealed partial class MainBus
         if (access.IsAtomicRequested && page.SupportsWide)
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            page.Target!.Write16(physicalAddress, value, access);
+            InvokeTargetWrite16(page.Target!, physicalAddress, value, access);
             return;
         }
 
@@ -87,7 +110,7 @@ public sealed partial class MainBus
         if (page.SupportsWide)
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            page.Target!.Write16(physicalAddress, value, access);
+            InvokeTargetWrite16(page.Target!, physicalAddress, value, access);
             return;
         }
 
@@ -95,12 +118,21 @@ public sealed partial class MainBus
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A same-page access whose live slot publishes <see cref="FastPathOps.Read"/> is indexed
+    /// and does not call <see cref="IBusTarget.Read32"/>. An access that crosses a 4 KB page
+    /// is one byte at a time.
+    /// </remarks>
     public DWord Read32(in BusAccess access)
     {
-        // Cross-page check: always decompose
+        if (TryReadIndexedSpan(access.Address, 4, out uint indexed))
+        {
+            return indexed;
+        }
+
         if (CrossesPageBoundary(access.Address, 4))
         {
-            return DecomposeRead32(access);
+            return ReadIndexedSplit(access, 4);
         }
 
         // Decompose flag forces byte-wise
@@ -115,7 +147,7 @@ public sealed partial class MainBus
         if (access.IsAtomicRequested && page.SupportsWide)
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            return page.Target!.Read32(physicalAddress, access);
+            return InvokeTargetRead32(page.Target!, physicalAddress, access);
         }
 
         // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
@@ -128,19 +160,28 @@ public sealed partial class MainBus
         if (page.SupportsWide)
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            return page.Target!.Read32(physicalAddress, access);
+            return InvokeTargetRead32(page.Target!, physicalAddress, access);
         }
 
         return DecomposeRead32(access);
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A same-page access whose live slot publishes <see cref="FastPathOps.Write"/> is indexed
+    /// and does not call <see cref="IBusTarget.Write32"/>. An access that crosses a 4 KB page
+    /// is one byte at a time.
+    /// </remarks>
     public void Write32(in BusAccess access, DWord value)
     {
-        // Cross-page check: always decompose
+        if (TryWriteIndexedSpan(access.Address, value, 4))
+        {
+            return;
+        }
+
         if (CrossesPageBoundary(access.Address, 4))
         {
-            DecomposeWrite32(access, value);
+            WriteIndexedSplit(access, value, 4);
             return;
         }
 
@@ -157,7 +198,7 @@ public sealed partial class MainBus
         if (access.IsAtomicRequested && page.SupportsWide)
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            page.Target!.Write32(physicalAddress, value, access);
+            InvokeTargetWrite32(page.Target!, physicalAddress, value, access);
             return;
         }
 
@@ -172,7 +213,7 @@ public sealed partial class MainBus
         if (page.SupportsWide)
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            page.Target!.Write32(physicalAddress, value, access);
+            InvokeTargetWrite32(page.Target!, physicalAddress, value, access);
             return;
         }
 
@@ -610,5 +651,251 @@ public sealed partial class MainBus
         }
 
         return BusResult.Success(cycles: result0.Cycles + result1.Cycles + result2.Cycles + result3.Cycles);
+    }
+
+    /// <summary>
+    /// Indexes every byte of a same-page read when each live slot publishes <see cref="FastPathOps.Read"/>.
+    /// </summary>
+    /// <param name="address">The address of the least-significant byte.</param>
+    /// <param name="bytes">The number of bytes.</param>
+    /// <param name="value">The little-endian value when this method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when every byte was indexed.</returns>
+    private bool TryReadIndexedSpan(Addr address, int bytes, out uint value)
+    {
+        value = 0;
+        if (CrossesPageBoundary(address, bytes))
+        {
+            return false;
+        }
+
+        uint assembled = 0;
+        for (int i = 0; i < bytes; i++)
+        {
+            if (!TryReadIndexed(address + (uint)i, out byte piece))
+            {
+                return false;
+            }
+
+            assembled |= (uint)piece << (8 * i);
+        }
+
+        value = assembled;
+        return true;
+    }
+
+    /// <summary>
+    /// Stores every byte of a same-page write when each live slot publishes <see cref="FastPathOps.Write"/>.
+    /// </summary>
+    /// <param name="address">The address of the least-significant byte.</param>
+    /// <param name="value">The little-endian value.</param>
+    /// <param name="bytes">The number of bytes.</param>
+    /// <returns>
+    /// <see langword="true"/> when the store is finished. A miss on the first byte returns
+    /// <see langword="false"/> so the caller keeps the target wide path.
+    /// </returns>
+    private bool TryWriteIndexedSpan(Addr address, uint value, int bytes)
+    {
+        if (CrossesPageBoundary(address, bytes))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < bytes; i++)
+        {
+            if (TryWriteIndexed(address + (uint)i, (byte)(value >> (8 * i))))
+            {
+                continue;
+            }
+
+            return i > 0;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Reads a crossing access one byte at a time, indexing a byte that publishes <see cref="FastPathOps.Read"/>.
+    /// </summary>
+    /// <param name="access">The wide access. Each byte keeps its intent and replaces the address.</param>
+    /// <param name="bytes">The number of bytes.</param>
+    /// <returns>The little-endian value.</returns>
+    private uint ReadIndexedSplit(in BusAccess access, int bytes)
+    {
+        uint assembled = 0;
+        for (int i = 0; i < bytes; i++)
+        {
+            byte piece = ReadIndexedOrSlow(access, access.Address + (uint)i);
+            assembled |= (uint)piece << (8 * i);
+        }
+
+        return assembled;
+    }
+
+    /// <summary>
+    /// Stores a crossing access one byte at a time, indexing a byte that publishes <see cref="FastPathOps.Write"/>.
+    /// </summary>
+    /// <param name="access">The wide access.</param>
+    /// <param name="value">The little-endian value.</param>
+    /// <param name="bytes">The number of bytes.</param>
+    private void WriteIndexedSplit(in BusAccess access, uint value, int bytes)
+    {
+        for (int i = 0; i < bytes; i++)
+        {
+            WriteIndexedOrSlow(access, access.Address + (uint)i, (byte)(value >> (8 * i)));
+        }
+    }
+
+    /// <summary>
+    /// Indexes one byte when the live slot publishes <see cref="FastPathOps.Read"/>.
+    /// </summary>
+    /// <param name="address">The CPU address.</param>
+    /// <param name="value">The indexed byte when this method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when the byte was indexed.</returns>
+    private bool TryReadIndexed(Addr address, out byte value)
+    {
+        value = 0;
+        if (!TryGetIndexedSlot(address, FastPathOps.Read, out byte[]? backing, out int index))
+        {
+            return false;
+        }
+
+        value = backing[index];
+        return true;
+    }
+
+    /// <summary>
+    /// Stores one byte when the live slot publishes <see cref="FastPathOps.Write"/>.
+    /// </summary>
+    /// <param name="address">The CPU address.</param>
+    /// <param name="stored">The byte to store.</param>
+    /// <returns><see langword="true"/> when the byte was indexed.</returns>
+    private bool TryWriteIndexed(Addr address, byte stored)
+    {
+        if (!TryGetIndexedSlot(address, FastPathOps.Write, out byte[]? backing, out int index))
+        {
+            return false;
+        }
+
+        backing[index] = stored;
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves the live backing array when <paramref name="operation"/> is published.
+    /// </summary>
+    /// <param name="address">The CPU address.</param>
+    /// <param name="operation">The operation that must be published.</param>
+    /// <param name="backing">The page array when this method returns <see langword="true"/>.</param>
+    /// <param name="index">The index of <paramref name="address"/> in <paramref name="backing"/>.</param>
+    /// <returns><see langword="true"/> when the page can be indexed for <paramref name="operation"/>.</returns>
+    private bool TryGetIndexedSlot(
+        Addr address,
+        FastPathOps operation,
+        [NotNullWhen(true)] out byte[]? backing,
+        out int index)
+    {
+        backing = null;
+        index = 0;
+        int pageIndex = (int)(address >> PageShift);
+        if ((uint)pageIndex >= (uint)pageTable.Length)
+        {
+            return false;
+        }
+
+        // Eligibility is FastOps. The null check only refuses an index that would throw.
+        ref readonly PageEntry page = ref pageTable[pageIndex];
+        byte[]? slot = page.FastBacking;
+        if ((page.FastOps & operation) == 0 || slot is null)
+        {
+            return false;
+        }
+
+        backing = slot;
+        index = page.FastBase + (int)page.PhysicalBase + (int)(address & PageMask);
+        return true;
+    }
+
+    /// <summary>
+    /// Indexes one read byte, or uses <see cref="Read8"/> when the page does not publish read.
+    /// </summary>
+    /// <param name="access">The wide access whose address is replaced.</param>
+    /// <param name="address">The byte address.</param>
+    /// <returns>The byte at <paramref name="address"/>.</returns>
+    private byte ReadIndexedOrSlow(in BusAccess access, Addr address)
+    {
+        if (TryReadIndexed(address, out byte value))
+        {
+            return value;
+        }
+
+        return Read8(access with { Address = address, WidthBits = 8 });
+    }
+
+    /// <summary>
+    /// Indexes one stored byte, or uses <see cref="Write8"/> when the page does not publish write.
+    /// </summary>
+    /// <param name="access">The wide access whose address is replaced.</param>
+    /// <param name="address">The byte address.</param>
+    /// <param name="stored">The byte to store.</param>
+    private void WriteIndexedOrSlow(in BusAccess access, Addr address, byte stored)
+    {
+        if (TryWriteIndexed(address, stored))
+        {
+            return;
+        }
+
+        Write8(access with { Address = address, WidthBits = 8 }, stored);
+    }
+
+    /// <summary>
+    /// Calls <see cref="IBusTarget.Read16"/> and counts the call.
+    /// </summary>
+    /// <param name="target">The page target.</param>
+    /// <param name="physicalAddress">The target-local address.</param>
+    /// <param name="access">The wide access.</param>
+    /// <returns>The target's 16-bit value.</returns>
+    private Word InvokeTargetRead16(IBusTarget target, Addr physicalAddress, in BusAccess access)
+    {
+        targetWideCallCount++;
+        return target.Read16(physicalAddress, access);
+    }
+
+    /// <summary>
+    /// Calls <see cref="IBusTarget.Write16"/> and counts the call.
+    /// </summary>
+    /// <param name="target">The page target.</param>
+    /// <param name="physicalAddress">The target-local address.</param>
+    /// <param name="value">The value to store.</param>
+    /// <param name="access">The wide access.</param>
+    private void InvokeTargetWrite16(IBusTarget target, Addr physicalAddress, Word value, in BusAccess access)
+    {
+        targetWideCallCount++;
+        target.Write16(physicalAddress, value, access);
+    }
+
+    /// <summary>
+    /// Calls <see cref="IBusTarget.Read32"/> and counts the call.
+    /// </summary>
+    /// <param name="target">The page target.</param>
+    /// <param name="physicalAddress">The target-local address.</param>
+    /// <param name="access">The wide access.</param>
+    /// <returns>The target's 32-bit value.</returns>
+    private DWord InvokeTargetRead32(IBusTarget target, Addr physicalAddress, in BusAccess access)
+    {
+        targetWideCallCount++;
+        return target.Read32(physicalAddress, access);
+    }
+
+    /// <summary>
+    /// Calls <see cref="IBusTarget.Write32"/> and counts the call.
+    /// </summary>
+    /// <param name="target">The page target.</param>
+    /// <param name="physicalAddress">The target-local address.</param>
+    /// <param name="value">The value to store.</param>
+    /// <param name="access">The wide access.</param>
+    private void InvokeTargetWrite32(IBusTarget target, Addr physicalAddress, DWord value, in BusAccess access)
+    {
+        targetWideCallCount++;
+        target.Write32(physicalAddress, value, access);
     }
 }
