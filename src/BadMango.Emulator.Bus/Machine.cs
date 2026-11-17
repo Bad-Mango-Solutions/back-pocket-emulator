@@ -1062,13 +1062,19 @@ public sealed class Machine : IMachine
     /// <summary>
     /// Collects the RESET receivers in delivery order, each exactly once.
     /// </summary>
-    /// <returns>The receivers: components first, then scheduled devices.</returns>
+    /// <returns>The receivers: the memory bus, then components, then scheduled devices.</returns>
     /// <remarks>
+    /// <para>
+    /// The memory bus is notified first when it implements <see cref="IResetReceiver"/>, even
+    /// though it is not stored in the component bucket. Components follow, then scheduled devices.
+    /// </para>
+    /// <para>
     /// Slot cards installed in a slot manager that is itself a receiver are excluded: on the
     /// IIe the line reaches each card through slot pin 31, so the slot manager delivers RESET
     /// to its cards (including cards added with <c>WithCard</c>, which are not scheduled
     /// devices). Profile-built cards are also scheduled devices, and would otherwise be
     /// notified twice.
+    /// </para>
     /// </remarks>
     private List<IResetReceiver> CollectResetReceivers()
     {
@@ -1080,6 +1086,13 @@ public sealed class Machine : IMachine
 
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
         var receivers = new List<IResetReceiver>();
+
+        // The MMU is not in the component bucket. Reset still clears its fault registers.
+        if (Bus is IResetReceiver busReceiver && seen.Add(Bus))
+        {
+            receivers.Add(busReceiver);
+        }
+
         foreach (var candidate in components.Concat<object>(scheduledDevices))
         {
             if (candidate is IResetReceiver receiver

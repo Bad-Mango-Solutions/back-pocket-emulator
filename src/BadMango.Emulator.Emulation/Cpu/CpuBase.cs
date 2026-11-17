@@ -417,7 +417,8 @@ public abstract class CpuBase : ICpu
     /// A same-page store indexes when the live slot publishes <see cref="FastPathOps.Write"/>.
     /// A <see cref="RomTarget"/> never publishes write. A 4 KB crossing stores one byte at a
     /// time and stops at the first <see cref="IMemoryBus.TryWrite8"/> fault, leaving the bytes
-    /// already stored. That fault is the current <c>Try*</c> result. Nothing is latched here.
+    /// already stored. The bus latches that fault inside <c>Try*</c>. This method does not
+    /// read or clear the fault registers, and a fast index does not either.
     /// </remarks>
     public virtual void Write16(Addr address, Word value)
     {

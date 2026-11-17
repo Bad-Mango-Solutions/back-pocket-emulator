@@ -88,6 +88,49 @@ public interface IMemoryBus
     bool FaultRecordingEnabled { get; set; }
 
     /// <summary>
+    /// Gets the latched fault status.
+    /// </summary>
+    /// <value>
+    /// <see cref="FaultKind.None"/> when no fault is latched. A non-debug <c>Try*</c> failure
+    /// stores the low byte of its <see cref="FaultKind"/> and leaves that value until
+    /// <see cref="ClearFaultStatus"/> or a machine reset.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// The register is host-visible. No 65C02, 65816, or 65832 instruction reads or writes it.
+    /// A successful access, a fast-path index, a debug access, and a composite-page hole do not change it.
+    /// The first fault wins: a later fault does not replace a nonzero status, its address, or the private latch.
+    /// </para>
+    /// <para>
+    /// A 65C02 latch never sets the high byte (<see cref="FaultKind.Write"/>, <see cref="FaultKind.Fetch"/>,
+    /// <see cref="FaultKind.BankCrossing"/>, or <see cref="FaultKind.Privilege"/>).
+    /// </para>
+    /// </remarks>
+    FaultKind FaultStatus { get; }
+
+    /// <summary>
+    /// Gets the address of the byte that raised <see cref="FaultStatus"/>.
+    /// </summary>
+    /// <value>
+    /// The faulting byte, or zero when <see cref="FaultStatus"/> is <see cref="FaultKind.None"/>.
+    /// </value>
+    /// <remarks>
+    /// This is the byte that faulted, not the base of a wide access whose later byte faulted.
+    /// <see cref="ClearFaultStatus"/> and a machine reset write zero here together with the status.
+    /// </remarks>
+    Addr FaultAddress { get; }
+
+    /// <summary>
+    /// Writes <see cref="FaultKind.None"/> into <see cref="FaultStatus"/>.
+    /// </summary>
+    /// <remarks>
+    /// The write also zeroes <see cref="FaultAddress"/> and the private latch, so the next
+    /// non-debug <c>Try*</c> fault can latch. No emulated instruction calls this method.
+    /// A fast-path access does not clear the registers.
+    /// </remarks>
+    void ClearFaultStatus();
+
+    /// <summary>
     /// Reads a single byte from the specified address.
     /// </summary>
     /// <param name="access">The access context describing the operation.</param>

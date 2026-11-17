@@ -130,7 +130,7 @@ public class CpuWideFastPathTests
 
     /// <summary>
     /// A <see cref="CpuBase.Write16"/> whose second page is unmapped stores the first byte,
-    /// does not latch a halt, and the wide <c>Try*</c> result is still that byte's unmapped fault.
+    /// latches that second address, and the wide <c>Try*</c> result is still that byte's unmapped fault.
     /// </summary>
     [Test]
     public void Write16_SecondPageUnmapped_StoresFirstByte_AndTryWriteReturnsUnmapped()
@@ -151,7 +151,9 @@ public class CpuWideFastPathTests
             Assert.That(bus.TryWrite8CallCount, Is.EqualTo(writes + 1), "Only the unmapped byte is checked");
             Assert.That(cpu.HaltReason, Is.EqualTo(HaltState.None));
             Assert.That(cpu.Registers.TCU, Is.EqualTo(new Cycle(3)));
-            Assert.That(ring.Count, Is.EqualTo(0), "Fault recording is off, and A4 has not added a latch");
+            Assert.That(bus.FaultStatus, Is.EqualTo(FaultKind.Unmapped));
+            Assert.That(bus.FaultAddress, Is.EqualTo((Addr)0x1000));
+            Assert.That(ring.Count, Is.EqualTo(0), "Fault recording is off. The latch is the status register.");
         });
 
         var access = new BusAccess(
@@ -205,6 +207,8 @@ public class CpuWideFastPathTests
             Assert.That(ring.Last.HasValue, Is.True);
             Assert.That(ring.Last.GetValueOrDefault().Kind, Is.EqualTo(FaultKind.Unmapped));
             Assert.That(ring.Last.GetValueOrDefault().Address, Is.EqualTo((Addr)0x10000));
+            Assert.That(bus.FaultStatus, Is.EqualTo(FaultKind.Unmapped));
+            Assert.That(bus.FaultAddress, Is.EqualTo((Addr)0x10000));
         });
     }
 

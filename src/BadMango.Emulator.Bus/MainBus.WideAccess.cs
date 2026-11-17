@@ -238,7 +238,7 @@ public sealed partial class MainBus
         int pageIndex = (int)(access.Address >> PageShift);
         if (pageIndex >= pageTable.Length)
         {
-            return BusFault.Unmapped(access);
+            return LatchAndReturn(in access, BusFault.Unmapped(in access));
         }
 
         ref readonly var page = ref pageTable[pageIndex];
@@ -246,13 +246,13 @@ public sealed partial class MainBus
         // Check for unmapped page
         if (page.Target is null)
         {
-            return BusFault.Unmapped(access);
+            return LatchAndReturn(in access, BusFault.Unmapped(in access));
         }
 
         // Check read permission
         if (!page.CanRead)
         {
-            return BusFault.PermissionDenied(access, page.DeviceId, page.RegionTag);
+            return LatchAndReturn(in access, BusFault.PermissionDenied(in access, page.DeviceId, page.RegionTag));
         }
 
         // Atomic request + target supports it
@@ -298,7 +298,7 @@ public sealed partial class MainBus
         int pageIndex = (int)(access.Address >> PageShift);
         if (pageIndex >= pageTable.Length)
         {
-            return BusResult.FromFault(BusFault.Unmapped(access));
+            return BusResult.FromFault(LatchAndReturn(in access, BusFault.Unmapped(in access)));
         }
 
         ref readonly var page = ref pageTable[pageIndex];
@@ -306,13 +306,13 @@ public sealed partial class MainBus
         // Check for unmapped page
         if (page.Target is null)
         {
-            return BusResult.FromFault(BusFault.Unmapped(access));
+            return BusResult.FromFault(LatchAndReturn(in access, BusFault.Unmapped(in access)));
         }
 
         // Check write permission
         if (!page.CanWrite)
         {
-            return BusResult.FromFault(BusFault.PermissionDenied(access, page.DeviceId, page.RegionTag));
+            return BusResult.FromFault(LatchAndReturn(in access, BusFault.PermissionDenied(in access, page.DeviceId, page.RegionTag)));
         }
 
         // Atomic request + target supports it
@@ -358,7 +358,7 @@ public sealed partial class MainBus
         int pageIndex = (int)(access.Address >> PageShift);
         if (pageIndex >= pageTable.Length)
         {
-            return BusFault.Unmapped(access);
+            return LatchAndReturn(in access, BusFault.Unmapped(in access));
         }
 
         ref readonly var page = ref pageTable[pageIndex];
@@ -366,13 +366,13 @@ public sealed partial class MainBus
         // Check for unmapped page
         if (page.Target is null)
         {
-            return BusFault.Unmapped(access);
+            return LatchAndReturn(in access, BusFault.Unmapped(in access));
         }
 
         // Check read permission
         if (!page.CanRead)
         {
-            return BusFault.PermissionDenied(access, page.DeviceId, page.RegionTag);
+            return LatchAndReturn(in access, BusFault.PermissionDenied(in access, page.DeviceId, page.RegionTag));
         }
 
         // Atomic request + target supports it
@@ -418,7 +418,7 @@ public sealed partial class MainBus
         int pageIndex = (int)(access.Address >> PageShift);
         if (pageIndex >= pageTable.Length)
         {
-            return BusResult.FromFault(BusFault.Unmapped(access));
+            return BusResult.FromFault(LatchAndReturn(in access, BusFault.Unmapped(in access)));
         }
 
         ref readonly var page = ref pageTable[pageIndex];
@@ -426,13 +426,13 @@ public sealed partial class MainBus
         // Check for unmapped page
         if (page.Target is null)
         {
-            return BusResult.FromFault(BusFault.Unmapped(access));
+            return BusResult.FromFault(LatchAndReturn(in access, BusFault.Unmapped(in access)));
         }
 
         // Check write permission
         if (!page.CanWrite)
         {
-            return BusResult.FromFault(BusFault.PermissionDenied(access, page.DeviceId, page.RegionTag));
+            return BusResult.FromFault(LatchAndReturn(in access, BusFault.PermissionDenied(in access, page.DeviceId, page.RegionTag)));
         }
 
         // Atomic request + target supports it

@@ -30,7 +30,7 @@ using Serilog.Events;
 /// The CPU computes intent; the bus enforces consequences.
 /// </para>
 /// </remarks>
-public sealed partial class MainBus : IMemoryBus
+public sealed partial class MainBus : IMemoryBus, IResetReceiver
 {
     /// <summary>
     /// The default page shift value for 4KB pages.
@@ -404,6 +404,7 @@ public sealed partial class MainBus : IMemoryBus
     [MethodImpl(MethodImplOptions.NoInlining)]
     private BusResult<byte> RecordAndReturnFault(in BusAccess access, in BusFault fault)
     {
+        LatchFault(in access, in fault);
         if (faultRecordingEnabled && !access.IsDebugAccess)
         {
             faultRecorder?.Record(in fault);
@@ -428,6 +429,7 @@ public sealed partial class MainBus : IMemoryBus
     [MethodImpl(MethodImplOptions.NoInlining)]
     private BusResult RecordAndReturnFaultVoid(in BusAccess access, in BusFault fault)
     {
+        LatchFault(in access, in fault);
         if (faultRecordingEnabled && !access.IsDebugAccess)
         {
             faultRecorder?.Record(in fault);
