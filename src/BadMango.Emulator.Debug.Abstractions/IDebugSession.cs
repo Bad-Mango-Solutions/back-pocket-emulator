@@ -46,8 +46,12 @@ public interface IDebugSession
     /// </summary>
     /// <param name="count">The number of instructions to execute.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="maxCycles">
+    /// Optional cycle budget for this call. <see langword="null"/> keeps the session default.
+    /// The step stops before an instruction that would begin at or beyond the budget.
+    /// </param>
     /// <returns>The number of instructions processed.</returns>
-    ulong Step(int count = 1, CancellationToken cancellationToken = default);
+    ulong Step(int count = 1, CancellationToken cancellationToken = default, ulong? maxCycles = null);
 
     /// <summary>
     /// Runs the machine until the provided condition is met or the budget is exhausted.

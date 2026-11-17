@@ -11,6 +11,25 @@ dotnet test BackPocketEmulator.slnx -c Release
 
 The debug host project is `src/BadMango.Emulator.Debug`. Its assembly name is `emudbg`.
 
+The stdio MCP host is `src/BadMango.Emulator.Debug.Mcp`. Its assembly name is `emudbg-mcp`. stdout is the protocol. Serilog writes to stderr and `logs/debug-mcp-.log` under the application directory. Sandbox roots are the `DebugMcp:SandboxRoots` list of absolute directories. An empty list denies sandboxed file access. Part 3 uses that list for disk paths.
+
+```json
+{
+  "servers": {
+    "emudbg-mcp": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "exec",
+        "src/BadMango.Emulator.Debug.Mcp/bin/Release/net10.0/emudbg-mcp.dll"
+      ]
+    }
+  }
+}
+```
+
+Put that document at `.vscode/mcp.json`. The same `servers` entry is the `mcp.json` shape. Build the host before the client launches it. Do not add a console logger on stdout.
+
 ## Driving emudbg
 
 Prefer a batch over a piped interactive session. Option names are case-insensitive.
