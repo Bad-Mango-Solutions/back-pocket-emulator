@@ -30,6 +30,7 @@ using Core.Interfaces.Cpu;
 public sealed class DebugContext : IDebugContext, IDisposable
 {
     private readonly Lock attachmentLock = new();
+    private BadMango.Emulator.Debug.Abstractions.IDebugSession? sharedSession;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DebugContext"/> class.
@@ -356,6 +357,36 @@ public sealed class DebugContext : IDebugContext, IDisposable
     /// <see cref="DiskImageOpenResult"/> (and its underlying file handle).
     /// </summary>
     public void Dispose() => this.MountedDisks.Dispose();
+
+    /// <summary>
+    /// Binds the process-wide debug session so later commands share it.
+    /// </summary>
+    /// <param name="session">The session registered with dependency injection.</param>
+    internal void BindSession(BadMango.Emulator.Debug.Abstractions.IDebugSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        this.sharedSession = session;
+    }
+
+    /// <summary>
+    /// Returns the bound session, creating one for this context when the host did not bind one.
+    /// </summary>
+    /// <returns>The session shared by commands on this context.</returns>
+    /// <remarks>
+    /// The host binds the container's <see cref="MachineDebugSession"/>. Unit tests that construct
+    /// a command without the container get one session per context instead of a new session per call.
+    /// </remarks>
+    internal BadMango.Emulator.Debug.Abstractions.IDebugSession GetSharedSession()
+    {
+        if (this.sharedSession is not null)
+        {
+            return this.sharedSession;
+        }
+
+        var created = new MachineDebugSession(this);
+        this.sharedSession = created;
+        return created;
+    }
 
     /// <summary>
     /// Wires the composite debug listener, breakpoint manager, and watchpoint

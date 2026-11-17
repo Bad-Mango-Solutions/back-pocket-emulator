@@ -97,7 +97,13 @@ The run should finish with no failed tests.
 dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj
 ```
 
-That starts the `emudbg` console debugger.
+That starts the `emudbg` console debugger. Scripted runs use the same host:
+
+```bash
+dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj -- --headless --exec "regs;step;exit" --json --no-banner
+```
+
+`--exec` / `--file` exit with the last command's status (0 success, 1 failure, 2 usage error). `--agent` is headless plus JSON. `--max-cycles` bounds `run`, `run-until`, and `step`. `--seed` is rejected until the machine grows a seeded RNG. See `emudbg.md`.
 
 ## IDE Configuration
 

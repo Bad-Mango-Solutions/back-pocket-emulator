@@ -189,6 +189,29 @@ public class DebugReplTests
     }
 
     /// <summary>
+    /// Verifies ExecuteBatch executes commands and tracks the last result.
+    /// </summary>
+    [Test]
+    public void ExecuteBatch_ExecutesCommandsAndTracksLastResult()
+    {
+        var dispatcher = new CommandDispatcher();
+        var handler = new TestCommand("ok", "ok command", resultMessage: "done");
+        dispatcher.Register(handler);
+        dispatcher.Register(new ExitCommand());
+        var context = CreateTestDebugContext(dispatcher, out _, out _);
+        var repl = new DebugRepl(dispatcher, context, new StringReader(string.Empty));
+
+        var result = repl.ExecuteBatch(["ok", "exit", "ok"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handler.ExecuteCount, Is.EqualTo(1));
+            Assert.That(result.ShouldExit, Is.True);
+            Assert.That(repl.LastCommandResult.ShouldExit, Is.True);
+        });
+    }
+
+    /// <summary>
     /// Verifies that CreateConsoleRepl creates REPL with built-in commands.
     /// </summary>
     [Test]

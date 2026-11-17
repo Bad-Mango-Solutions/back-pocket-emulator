@@ -20,7 +20,10 @@ public interface IDebugSession
     /// </summary>
     /// <param name="address">The memory address to read from.</param>
     /// <param name="length">The number of bytes to read.</param>
-    /// <returns>A memory block containing the requested bytes.</returns>
+    /// <returns>
+    /// A memory block containing the requested bytes. Unreadable addresses stay in the block:
+    /// <see cref="MemoryBlock.Faults"/> marks them and the corresponding data byte is 0.
+    /// </returns>
     MemoryBlock ReadMemory(uint address, int length);
 
     /// <summary>

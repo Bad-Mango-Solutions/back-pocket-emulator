@@ -16,7 +16,7 @@ public sealed class DebugHostArgumentsTests
     [Test]
     public void WithoutHostOptions_RemovesHeadlessWithoutEatingTheNextArgument()
     {
-        string[] args = ["--headless", "--dump-assemblies", "version", "--headless=no"];
+        string[] args = ["--HEADLESS", "--dump-assemblies", "--profile", "pocket2e", "--exec=regs;exit", "version", "--headless=no"];
 
         string[] hostArgs = DebugHostArguments.WithoutHostOptions(args);
 

@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using BadMango.Emulator.Bus;
+using BadMango.Emulator.Debug.Abstractions;
 
 /// <summary>
 /// Runs the CPU until it halts or reaches a limit.
@@ -24,12 +25,27 @@ using BadMango.Emulator.Bus;
 /// </remarks>
 public sealed class RunCommand : ExecutionCommandBase
 {
+    private readonly IDebugSession? session;
+    private readonly IDebugOutputRenderer renderer;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="RunCommand"/> class.
     /// </summary>
     public RunCommand()
+        : this(null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="RunCommand"/> class that runs the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    public RunCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
         : base("run", "Run CPU until halt or limit reached")
     {
+        this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -111,9 +127,14 @@ public sealed class RunCommand : ExecutionCommandBase
         // Parse options
         var options = ParseRunOptions(args);
 
+        if (debugContext.Machine is not null)
+        {
+            return this.ExecuteOnSession(debugContext, options);
+        }
+
         debugContext.Output.WriteLine($"Running from PC=${debugContext.Cpu.GetPC():X4}...");
 
-        // Execute the instruction loop - RunCommand terminates only on halt/limits
+        // CPU-only contexts have no machine for IDebugSession.RunUntil. Keep the local loop.
         var result = ExecuteInstructionLoop(
             debugContext,
             options,
@@ -160,5 +181,52 @@ public sealed class RunCommand : ExecutionCommandBase
         }
 
         return options;
+    }
+
+    private CommandResult ExecuteOnSession(IDebugContext debugContext, ExecutionOptions options)
+    {
+        IDebugSession active = DebugSessions.Require(this.session, debugContext);
+        ulong budget = this.renderer.DefaultMaxCycles
+            ?? (options.CycleLimit > 0 && options.CycleLimit != long.MaxValue
+                ? (ulong)options.CycleLimit
+                : ulong.MaxValue);
+
+        if (options.EnableTrace && debugContext.TracingListener is not null)
+        {
+            ConfigureTracing(debugContext, debugContext.TracingListener, options);
+        }
+
+        try
+        {
+            if (options.InstructionLimit != int.MaxValue)
+            {
+                ulong executed = active.Step(options.InstructionLimit);
+                var cpu = debugContext.Cpu!;
+                if (!this.renderer.JsonOutput)
+                {
+                    debugContext.Output.WriteLine(cpu.Halted
+                        ? $"CPU halted ({cpu.HaltReason})"
+                        : "instruction limit reached");
+                }
+
+                this.renderer.WriteStep(debugContext.Output, new StepReceipt(executed, cpu.GetPC()));
+                return CommandResult.Ok();
+            }
+
+            TimeSpan? wall = options.TimeoutMs > 0 ? TimeSpan.FromMilliseconds(options.TimeoutMs) : null;
+            RunResult run = active.RunUntil(
+                new RunCondition(RunConditionKind.CycleCount, CycleLimit: ulong.MaxValue),
+                new RunBudget(budget, wall));
+            this.renderer.WriteRun(debugContext.Output, run);
+            return CommandResult.Ok();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return CommandResult.Error(ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            return CommandResult.UsageError(ex.Message);
+        }
     }
 }

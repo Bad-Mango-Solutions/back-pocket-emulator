@@ -5,10 +5,8 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using System.Globalization;
-using System.Text;
 
-using BadMango.Emulator.Bus;
-using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Debug.Abstractions;
 
 /// <summary>
 /// Displays a hex dump of memory contents.
@@ -22,15 +20,29 @@ using BadMango.Emulator.Bus.Interfaces;
 public sealed class MemCommand : CommandHandlerBase, ICommandHelp
 {
     private const int DefaultByteCount = 256;
-    private const int BytesPerLine = 16;
     private const int MaxByteCount = 65536;
+
+    private readonly IDebugSession? session;
+    private readonly IDebugOutputRenderer renderer;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MemCommand"/> class.
     /// </summary>
     public MemCommand()
+        : this(null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="MemCommand"/> class that reads the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    public MemCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
         : base("mem", "Display memory contents as hex dump")
     {
+        this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -76,11 +88,6 @@ public sealed class MemCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error("Debug context required for this command.");
         }
 
-        if (debugContext.Bus is null)
-        {
-            return CommandResult.Error("No memory bus attached to debug context.");
-        }
-
         if (args.Length == 0)
         {
             return CommandResult.Error("Address required. Usage: mem <address> [length]");
@@ -97,7 +104,6 @@ public sealed class MemCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error($"Invalid length: '{args[1]}'. Expected a positive integer.");
         }
 
-        // Clamp byte count to valid range
         if (byteCount < 1)
         {
             byteCount = 1;
@@ -108,128 +114,30 @@ public sealed class MemCommand : CommandHandlerBase, ICommandHelp
             byteCount = MaxByteCount;
         }
 
-        // Calculate memory size from bus page count
-        uint memorySize = (uint)debugContext.Bus.PageCount << debugContext.Bus.PageShift;
-
-        // Validate address range
-        if (startAddress >= memorySize)
+        if (debugContext.Bus is { } bus)
         {
-            return CommandResult.Error($"Address ${startAddress:X4} is out of range (memory size: ${memorySize:X4}).");
-        }
-
-        // Adjust byte count if it would exceed memory bounds
-        if (startAddress + (uint)byteCount > memorySize)
-        {
-            byteCount = (int)(memorySize - startAddress);
-        }
-
-        var faults = new List<(uint Address, BusFault Fault)>();
-        FormatHexDump(debugContext.Output, debugContext.Bus, startAddress, byteCount, faults);
-
-        // Report any faults at the end
-        if (faults.Count > 0)
-        {
-            debugContext.Output.WriteLine();
-            debugContext.Output.WriteLine($"Bus faults encountered ({faults.Count}):");
-            foreach (var (faultAddr, fault) in faults)
+            uint memorySize = (uint)bus.PageCount << bus.PageShift;
+            if (startAddress >= memorySize)
             {
-                debugContext.Output.WriteLine($"  ${faultAddr:X4}: {FormatFault(fault)}");
+                return CommandResult.Error($"Address ${startAddress:X4} is out of range (memory size: ${memorySize:X4}).");
+            }
+
+            if (startAddress + (uint)byteCount > memorySize)
+            {
+                byteCount = (int)(memorySize - startAddress);
             }
         }
 
-        return CommandResult.Ok();
-    }
-
-    private static void FormatHexDump(TextWriter output, IMemoryBus bus, uint startAddress, int byteCount, List<(uint Address, BusFault Fault)> faults)
-    {
-        // Align start address to 16-byte boundary for clean display
-        uint alignedStart = startAddress & 0xFFFFFFF0;
-        uint endAddress = startAddress + (uint)byteCount;
-
-        var hexBuilder = new StringBuilder(48); // 16 bytes * 3 chars each
-        var asciiBuilder = new StringBuilder(16);
-
-        output.WriteLine($"Memory dump: ${startAddress:X4} - ${endAddress - 1:X4} ({byteCount} bytes)");
-        output.WriteLine();
-
-        for (uint addr = alignedStart; addr < endAddress; addr += BytesPerLine)
+        try
         {
-            hexBuilder.Clear();
-            asciiBuilder.Clear();
-
-            for (int offset = 0; offset < BytesPerLine; offset++)
-            {
-                uint currentAddr = addr + (uint)offset;
-
-                if (currentAddr < startAddress || currentAddr >= endAddress)
-                {
-                    hexBuilder.Append("   ");
-                    asciiBuilder.Append(' ');
-                }
-                else
-                {
-                    var result = ReadByteWithFault(bus, currentAddr);
-                    if (result.Fault.IsFault)
-                    {
-                        faults.Add((currentAddr, result.Fault));
-                        hexBuilder.Append("?? ");
-                        asciiBuilder.Append('?');
-                    }
-                    else
-                    {
-                        byte value = result.Value;
-                        hexBuilder.Append($"{value:X2} ");
-
-                        // ASCII representation (printable chars only)
-                        if (value >= 0x20 && value < 0x7F)
-                        {
-                            asciiBuilder.Append((char)value);
-                        }
-                        else
-                        {
-                            asciiBuilder.Append('.');
-                        }
-                    }
-                }
-
-                // Add extra space at 8-byte boundary
-                if (offset == 7)
-                {
-                    hexBuilder.Append(' ');
-                }
-            }
-
-            output.WriteLine($"${addr:X4}:  {hexBuilder} |{asciiBuilder}|");
+            MemoryBlock block = DebugSessions.Require(this.session, debugContext).ReadMemory(startAddress, byteCount);
+            this.renderer.WriteMemory(debugContext.Output, block);
+            return CommandResult.Ok();
         }
-    }
-
-    private static BusResult<byte> ReadByteWithFault(IMemoryBus bus, uint address)
-    {
-        var access = new BusAccess(
-            Address: address,
-            Value: 0,
-            WidthBits: 8,
-            Mode: BusAccessMode.Decomposed,
-            EmulationFlag: true,
-            Intent: AccessIntent.DebugRead,
-            SourceId: 0,
-            Cycle: 0,
-            Flags: AccessFlags.NoSideEffects);
-
-        return bus.TryRead8(access);
-    }
-
-    private static string FormatFault(BusFault fault)
-    {
-        return fault.Kind switch
+        catch (InvalidOperationException ex)
         {
-            FaultKind.Unmapped => "Unmapped - no memory or device at this address",
-            FaultKind.Permission => $"Permission denied - region {fault.RegionTag} does not allow read",
-            FaultKind.Nx => "No execute - attempted instruction fetch from non-executable region",
-            FaultKind.Misaligned => "Misaligned access",
-            FaultKind.DeviceFault => "Device fault - device rejected the access",
-            _ => $"Unknown fault kind: {fault.Kind}",
-        };
+            return CommandResult.Error(ex.Message);
+        }
     }
 
     private static bool TryParseAddress(string value, out uint result)

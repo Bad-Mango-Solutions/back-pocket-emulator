@@ -5,6 +5,10 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using System.Globalization;
+using System.Text;
+
+using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
+using SessionWatchpoint = BadMango.Emulator.Debug.Abstractions.Watchpoint;
 
 /// <summary>
 /// Manages memory watchpoints that fire on read / write of an effective address.
@@ -16,12 +20,27 @@ using System.Globalization;
 /// </remarks>
 public sealed class WatchCommand : CommandHandlerBase, ICommandHelp
 {
+    private readonly BadMango.Emulator.Debug.Abstractions.IDebugSession? session;
+    private readonly IDebugOutputRenderer renderer;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="WatchCommand"/> class.
     /// </summary>
     public WatchCommand()
+        : this(null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WatchCommand"/> class that uses the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    public WatchCommand(BadMango.Emulator.Debug.Abstractions.IDebugSession? session, IDebugOutputRenderer? renderer)
         : base("watch", "Manage memory watchpoints")
     {
+        this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -94,16 +113,16 @@ public sealed class WatchCommand : CommandHandlerBase, ICommandHelp
         };
     }
 
-    private static CommandResult Add(IDebugContext context, string[] args)
+    private CommandResult Add(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {
-            return CommandResult.Error("Usage: watch add <address> [r|w|rw] [--stop] [label]");
+            return CommandResult.UsageError("Usage: watch add <address> [r|w|rw] [--stop] [label]");
         }
 
         if (!AddressParser.TryParse(args[1], context.Machine, out uint address))
         {
-            return CommandResult.Error($"Invalid address: '{args[1]}'.");
+            return CommandResult.UsageError($"Invalid address: '{args[1]}'.");
         }
 
         var access = WatchAccess.ReadWrite;
@@ -139,19 +158,22 @@ public sealed class WatchCommand : CommandHandlerBase, ICommandHelp
 
         string? label = labelParts.Count == 0 ? null : string.Join(' ', labelParts);
 
-        if (!context.Watchpoints.Add(address, access, stopOnHit, label))
+        var active = DebugSessions.Require(this.session, context);
+        if (active.GetWatchpoints().Any(item => item.Address == address))
         {
             return CommandResult.Error($"Watchpoint at ${address:X4} already exists.");
         }
 
-        context.Output.WriteLine(
-            $"Watchpoint set at ${address:X4} ({access}{(stopOnHit ? ", stop" : string.Empty)})" +
+        active.AddWatchpoint(address, ToSessionAccess(access), stopOnHit, label);
+        SessionWatchpoint added = active.GetWatchpoints().First(item => item.Address == address);
+        string text = $"Watchpoint set at ${address:X4} ({access}{(stopOnHit ? ", stop" : string.Empty)})" +
             (label is null ? string.Empty : $"  ; {label}") +
-            ".");
+            ".";
+        this.renderer.WriteWatchpoint(context.Output, added, text);
         return CommandResult.Ok();
     }
 
-    private static CommandResult Remove(IDebugContext context, string[] args)
+    private CommandResult Remove(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {
@@ -163,7 +185,7 @@ public sealed class WatchCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error($"Invalid address: '{args[1]}'.");
         }
 
-        if (!context.Watchpoints.Remove(address))
+        if (!DebugSessions.Require(this.session, context).RemoveWatchpoint(address))
         {
             return CommandResult.Error($"No watchpoint at ${address:X4}.");
         }
@@ -172,15 +194,16 @@ public sealed class WatchCommand : CommandHandlerBase, ICommandHelp
         return CommandResult.Ok();
     }
 
-    private static CommandResult Clear(IDebugContext context)
+    private CommandResult Clear(IDebugContext context)
     {
-        int count = context.Watchpoints.GetAll().Count;
-        context.Watchpoints.Clear();
+        var active = DebugSessions.Require(this.session, context);
+        int count = active.GetWatchpoints().Count;
+        active.ClearWatchpoints();
         context.Output.WriteLine($"Cleared {count} watchpoint(s).");
         return CommandResult.Ok();
     }
 
-    private static CommandResult SetEnabled(IDebugContext context, string[] args, bool enabled)
+    private CommandResult SetEnabled(IDebugContext context, string[] args, bool enabled)
     {
         if (args.Length < 2)
         {
@@ -201,7 +224,7 @@ public sealed class WatchCommand : CommandHandlerBase, ICommandHelp
         return CommandResult.Ok();
     }
 
-    private static CommandResult Log(IDebugContext context, string[] args)
+    private CommandResult Log(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {
@@ -225,42 +248,60 @@ public sealed class WatchCommand : CommandHandlerBase, ICommandHelp
         }
     }
 
-    private static CommandResult List(IDebugContext context)
+    private CommandResult List(IDebugContext context)
     {
-        var all = context.Watchpoints.GetAll();
+        var active = DebugSessions.Require(this.session, context);
+        IReadOnlyList<SessionWatchpoint> all = active.GetWatchpoints();
+        var text = new StringBuilder();
         if (all.Count == 0)
         {
-            context.Output.WriteLine("No watchpoints set.");
-            return CommandResult.Ok();
+            text.Append("No watchpoints set.");
         }
-
-        context.Output.WriteLine("ADDR   ACCESS  STOP  EN  HITS       LABEL");
-        foreach (var wp in all)
+        else
         {
-            context.Output.WriteLine(string.Format(
-                CultureInfo.InvariantCulture,
-                "${0:X4}  {1,-6}  {2,-4}  {3}   {4,-9}  {5}",
-                wp.Address,
-                wp.Access,
-                wp.StopOnHit ? "Y" : "n",
-                wp.Enabled ? "Y" : "n",
-                wp.Hits,
-                wp.Label ?? string.Empty));
+            text.Append("ADDR   ACCESS  STOP  EN  HITS       LABEL");
+            foreach (SessionWatchpoint wp in all)
+            {
+                text.AppendLine();
+                text.Append(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "${0:X4}  {1,-6}  {2,-4}  {3}   {4,-9}  {5}",
+                    wp.Address,
+                    wp.Access,
+                    wp.StopOnHit ? "Y" : "n",
+                    wp.Enabled ? "Y" : "n",
+                    wp.HitCount,
+                    wp.Label ?? string.Empty));
+            }
+
+            uint? lastHit = context.Watchpoints.LastHitAddress;
+            if (lastHit is not null)
+            {
+                byte? lastValue = context.Watchpoints.LastHitValue;
+                string valueSuffix = lastValue.HasValue ? $" = ${lastValue.Value:X2}" : string.Empty;
+                text.AppendLine();
+                text.AppendLine();
+                text.Append(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Last hit: ${0:X4} ({1}){2}",
+                    lastHit.Value,
+                    context.Watchpoints.LastHitAccess,
+                    valueSuffix));
+            }
         }
 
-        var lastHit = context.Watchpoints.LastHitAddress;
-        if (lastHit is not null)
-        {
-            context.Output.WriteLine();
-            var lastValue = context.Watchpoints.LastHitValue;
-            var valueSuffix = lastValue.HasValue ? $" = ${lastValue.Value:X2}" : string.Empty;
-            context.Output.WriteLine($"Last hit: ${lastHit.Value:X4} ({context.Watchpoints.LastHitAccess}){valueSuffix}");
-        }
-
+        this.renderer.WriteWatchpoints(context.Output, all, text.ToString());
         return CommandResult.Ok();
     }
 
-    private static CommandResult Save(IDebugContext context, string[] args)
+    private SessionWatchAccess ToSessionAccess(WatchAccess access) => access switch
+    {
+        WatchAccess.Read => SessionWatchAccess.Read,
+        WatchAccess.Write => SessionWatchAccess.Write,
+        _ => SessionWatchAccess.ReadWrite,
+    };
+
+    private CommandResult Save(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {
@@ -294,7 +335,7 @@ public sealed class WatchCommand : CommandHandlerBase, ICommandHelp
         }
     }
 
-    private static CommandResult Load(IDebugContext context, string[] args)
+    private CommandResult Load(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {
