@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Bus\BadMango.Emulator.Bus.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Debug.Abstractions\BadMango.Emulator.Debug.Abstractions.csproj" />
   </ItemGroup>
 

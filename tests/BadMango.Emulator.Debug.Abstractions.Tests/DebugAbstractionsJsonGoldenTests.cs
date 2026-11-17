@@ -6,6 +6,7 @@ namespace BadMango.Emulator.Debug.Abstractions.Tests;
 
 using System.Text.Json;
 
+using BadMango.Emulator.Bus;
 using BadMango.Emulator.Debug.Abstractions;
 
 /// <summary>
