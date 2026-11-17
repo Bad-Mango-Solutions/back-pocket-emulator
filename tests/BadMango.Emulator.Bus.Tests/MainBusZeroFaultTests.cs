@@ -216,12 +216,11 @@ public class MainBusZeroFaultTests
                 Assert.Fail($"Unknown IL opcode 0x{operation:X2} in {method.Name}.");
             }
 
-            if (operation is 0x28 or 0x6F)
+            if (operation is 0x28 or 0x6F
+                && index + 4 <= il.Length
+                && IsNineFieldSuccess(method, ReadInt32(il, index)))
             {
-                if (index + 4 <= il.Length && IsNineFieldSuccess(method, ReadInt32(il, index)))
-                {
-                    count++;
-                }
+                count++;
             }
 
             if (operand == -2)
@@ -265,18 +264,11 @@ public class MainBusZeroFaultTests
             return false;
         }
 
-        foreach (ParameterInfo parameter in resolved.GetParameters())
-        {
-            Type parameterType = parameter.ParameterType.IsByRef
+        return resolved.GetParameters()
+            .Select(parameter => parameter.ParameterType.IsByRef
                 ? parameter.ParameterType.GetElementType()!
-                : parameter.ParameterType;
-            if (parameterType == typeof(BusAccess))
-            {
-                return true;
-            }
-        }
-
-        return false;
+                : parameter.ParameterType)
+            .Any(parameterType => parameterType == typeof(BusAccess));
     }
 
     private static int ReadInt32(byte[] il, int index) =>
