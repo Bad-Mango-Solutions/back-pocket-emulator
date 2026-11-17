@@ -11,7 +11,7 @@ using BadMango.Emulator.Emulation.Cpu;
 using BenchmarkDotNet.Attributes;
 
 /// <summary>
-/// Effective-megahertz runs of the mix, RAM, and flags-transfer loops.
+/// Effective-megahertz runs of the mix, RAM, flags-transfer, and load-store loops.
 /// </summary>
 /// <remarks>
 /// Each method steps a fixed instruction count on a bare 65C02. Counted megahertz is
@@ -26,6 +26,7 @@ public class WorkloadMhzDispatchBenchmark
     private Cpu65C02 mixCpu = null!;
     private Cpu65C02 ramCpu = null!;
     private Cpu65C02 flagsCpu = null!;
+    private Cpu65C02 loadStoreCpu = null!;
 
     /// <summary>
     /// Loads each workload onto its own bare CPU and checks one loop.
@@ -36,6 +37,7 @@ public class WorkloadMhzDispatchBenchmark
         mixCpu = StartMix();
         ramCpu = StartRam();
         flagsCpu = StartFlagsTransfer();
+        loadStoreCpu = StartLoadStore();
     }
 
     /// <summary>
@@ -65,6 +67,15 @@ public class WorkloadMhzDispatchBenchmark
         Step(flagsCpu, FlagsTransferWorkload.StepsPerMeasurement);
     }
 
+    /// <summary>
+    /// Steps the load and store loop.
+    /// </summary>
+    [Benchmark(OperationsPerInvoke = LoadStoreWorkload.StepsPerMeasurement)]
+    public void LoadStore()
+    {
+        Step(loadStoreCpu, LoadStoreWorkload.StepsPerMeasurement);
+    }
+
     private static Cpu65C02 StartMix()
     {
         var fixture = new BareCpuFixture();
@@ -80,6 +91,19 @@ public class WorkloadMhzDispatchBenchmark
         RamWorkload.Load(fixture.Memory);
         RamWorkload.Prepare(fixture.Cpu);
         WorkloadLoop.RequireClosed(fixture.Cpu, RamWorkload.EntryPoint, RamWorkload.InstructionsPerLoop, RamWorkload.CyclesPerLoop);
+        return fixture.Cpu;
+    }
+
+    private static Cpu65C02 StartLoadStore()
+    {
+        var fixture = new BareCpuFixture();
+        LoadStoreWorkload.Load(fixture.Memory);
+        LoadStoreWorkload.Prepare(fixture.Cpu);
+        WorkloadLoop.RequireClosed(
+            fixture.Cpu,
+            LoadStoreWorkload.EntryPoint,
+            LoadStoreWorkload.InstructionsPerLoop,
+            LoadStoreWorkload.CyclesPerLoop);
         return fixture.Cpu;
     }
 

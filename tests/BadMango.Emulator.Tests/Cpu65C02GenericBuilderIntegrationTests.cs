@@ -7,6 +7,8 @@ namespace BadMango.Emulator.Tests;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Systems;
 
+using Core.Cpu;
+
 using Emulation.Cpu;
 
 /// <summary>
@@ -312,25 +314,22 @@ public class Cpu65C02GenericBuilderIntegrationTests
     }
 
     /// <summary>
-    /// Demonstrates the clean syntax of the compositional pattern.
+    /// Load and store opcodes are registered as cached direct-dispatch delegates.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This test exists primarily for documentation purposes.
-    /// It shows how the compositional pattern provides clean, readable code.
-    /// Instructions compose cleanly with addressing modes without combinatorial explosion.
-    /// </para>
-    /// </remarks>
     [Test]
-    public void Builder_DemonstratesCleanSyntax()
+    public void Builder_LoadAndStore_UseDirectDispatch()
     {
-        // Instructions compose cleanly with addressing modes:
-        var handler1 = Instructions.LDA(AddressingModes.Immediate);
-        var handler2 = Instructions.STA(AddressingModes.ZeroPage);
+        var table = Cpu65C02OpcodeTableBuilder.Build();
 
-        // The pattern allows easy extension without combinatorial explosion
-        Assert.That(handler1, Is.Not.Null);
-        Assert.That(handler2, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(table.GetHandler(0xA9), Is.Null, "LDA immediate legacy handler");
+            Assert.That(table.GetHandler(0x85), Is.Null, "STA zero page legacy handler");
+            Assert.That(table.GetMetadata(0xA9).Instruction, Is.EqualTo(CpuInstructions.LDA));
+            Assert.That(table.GetMetadata(0xA9).AddressingMode, Is.EqualTo(CpuAddressingModes.Immediate));
+            Assert.That(table.GetMetadata(0x85).Instruction, Is.EqualTo(CpuInstructions.STA));
+            Assert.That(table.GetMetadata(0x85).AddressingMode, Is.EqualTo(CpuAddressingModes.ZeroPage));
+        });
     }
 
     /// <summary>
