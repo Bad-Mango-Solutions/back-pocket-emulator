@@ -187,6 +187,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
     /// <inheritdoc />
     public byte Read8(in BusAccess access)
     {
+        read8CallCount++;
         ref readonly var page = ref pageTable[access.Address >> PageShift];
         Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
 
@@ -229,6 +230,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
     /// <inheritdoc />
     public void Write8(in BusAccess access, byte value)
     {
+        write8CallCount++;
         ref readonly var page = ref pageTable[access.Address >> PageShift];
         Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
 

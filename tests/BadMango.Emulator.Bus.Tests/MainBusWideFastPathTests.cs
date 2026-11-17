@@ -101,7 +101,106 @@ public class MainBusWideFastPathTests
         });
     }
 
-    private static BusAccess Access(Addr address, AccessIntent intent, BusAccessMode mode, byte widthBits)
+    /// <summary>
+    /// On an eligible fast page, <see cref="AccessFlags.Decompose"/> and
+    /// <see cref="BusAccessMode.Decomposed"/> use byte-wise <see cref="MainBus.Read8"/> /
+    /// <see cref="MainBus.Write8"/> for all four wide methods. Atomic mode still indexes.
+    /// </summary>
+    [Test]
+    public void EligiblePage_DecomposeAndDecomposedMode_UseByteAccess_AtomicModeIndexes()
+    {
+        var memory = new PhysicalMemory(PageSize, "TestRAM");
+        memory.AsSpan()[0x100] = 0x78;
+        memory.AsSpan()[0x101] = 0x56;
+        memory.AsSpan()[0x102] = 0x34;
+        memory.AsSpan()[0x103] = 0x12;
+        var target = new RamTarget(memory.Slice(0, PageSize));
+        var bus = new MainBus();
+        bus.MapPage(0, new(1, RegionTag.Ram, PagePerms.All, target.Capabilities, target, 0));
+        Assert.That(
+            bus.GetPageEntryByIndex(0).FastOps,
+            Is.EqualTo(FastPathOps.Read | FastPathOps.Write | FastPathOps.Fetch));
+
+        int wideBefore = bus.TargetWideCallCount;
+        Word atomic16 = bus.Read16(Access(0x0100, AccessIntent.DataRead, BusAccessMode.Atomic, 16));
+        DWord atomic32 = bus.Read32(Access(0x0100, AccessIntent.DataRead, BusAccessMode.Atomic, 32));
+        bus.Write16(Access(0x0200, AccessIntent.DataWrite, BusAccessMode.Atomic, 16), 0xCAFE);
+        bus.Write32(Access(0x0300, AccessIntent.DataWrite, BusAccessMode.Atomic, 32), 0xDEADBEEF);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(atomic16, Is.EqualTo((Word)0x5678));
+            Assert.That(atomic32, Is.EqualTo(0x12345678u));
+            Assert.That(memory.AsSpan()[0x200], Is.EqualTo(0xFE));
+            Assert.That(memory.AsSpan()[0x201], Is.EqualTo(0xCA));
+            Assert.That(memory.AsSpan()[0x300], Is.EqualTo(0xEF));
+            Assert.That(memory.AsSpan()[0x301], Is.EqualTo(0xBE));
+            Assert.That(memory.AsSpan()[0x302], Is.EqualTo(0xAD));
+            Assert.That(memory.AsSpan()[0x303], Is.EqualTo(0xDE));
+            Assert.That(bus.Read8CallCount, Is.EqualTo(0));
+            Assert.That(bus.Write8CallCount, Is.EqualTo(0));
+            Assert.That(bus.TargetWideCallCount, Is.EqualTo(wideBefore));
+        });
+
+        AssertByteWise(bus, BusAccessMode.Decomposed, AccessFlags.None);
+        AssertByteWise(bus, BusAccessMode.Atomic, AccessFlags.Decompose);
+    }
+
+    /// <summary>
+    /// A decomposed-mode access that crosses 4 KB still uses <see cref="MainBus.Read8"/>
+    /// for the eligible side instead of indexing it.
+    /// </summary>
+    [Test]
+    public void DecomposedMode_Crossing_UsesRead8ForTheEligibleByte()
+    {
+        var memory = new PhysicalMemory(PageSize, "TestRAM");
+        memory.AsSpan()[0xFFF] = 0xCD;
+        var ram = new RamTarget(memory.Slice(0, PageSize));
+        var slow = new CountingWideTarget();
+        slow.Bytes[0] = 0xAB;
+        var bus = new MainBus();
+        bus.MapPage(0, new(1, RegionTag.Ram, PagePerms.All, ram.Capabilities, ram, 0));
+        bus.MapPage(1, new(2, RegionTag.Io, PagePerms.ReadWrite, TargetCaps.SupportsWide, slow, 0));
+
+        Word value = bus.Read16(Access(0x0FFF, AccessIntent.DataRead, BusAccessMode.Decomposed, 16));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(value, Is.EqualTo((Word)0xABCD));
+            Assert.That(bus.Read8CallCount, Is.EqualTo(2));
+            Assert.That(slow.Read8Count, Is.EqualTo(1));
+            Assert.That(slow.Read16Count, Is.EqualTo(0));
+            Assert.That(bus.TargetWideCallCount, Is.EqualTo(0));
+        });
+    }
+
+    private static void AssertByteWise(MainBus bus, BusAccessMode mode, AccessFlags flags)
+    {
+        int reads = bus.Read8CallCount;
+        int writes = bus.Write8CallCount;
+        int wide = bus.TargetWideCallCount;
+
+        Word read16 = bus.Read16(Access(0x0100, AccessIntent.DataRead, mode, 16, flags));
+        DWord read32 = bus.Read32(Access(0x0100, AccessIntent.DataRead, mode, 32, flags));
+        bus.Write16(Access(0x0200, AccessIntent.DataWrite, mode, 16, flags), 0xBEEF);
+        bus.Write32(Access(0x0300, AccessIntent.DataWrite, mode, 32, flags), 0x10203040);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(read16, Is.EqualTo((Word)0x5678), mode + " " + flags);
+            Assert.That(read32, Is.EqualTo(0x12345678u), mode + " " + flags);
+            Assert.That(bus.Read8CallCount, Is.EqualTo(reads + 2 + 4), mode + " " + flags);
+            Assert.That(bus.Write8CallCount, Is.EqualTo(writes + 2 + 4), mode + " " + flags);
+            Assert.That(bus.TargetWideCallCount, Is.EqualTo(wide), mode + " " + flags);
+        });
+    }
+
+    private static BusAccess Access(
+        Addr address,
+        AccessIntent intent,
+        BusAccessMode mode,
+        byte widthBits,
+        AccessFlags flags = AccessFlags.None)
     {
         return new(
             Address: address,
@@ -112,7 +211,7 @@ public class MainBusWideFastPathTests
             Intent: intent,
             SourceId: 0,
             Cycle: 0,
-            Flags: AccessFlags.None);
+            Flags: flags);
     }
 
     /// <summary>

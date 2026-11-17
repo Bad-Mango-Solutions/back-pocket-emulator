@@ -31,6 +31,16 @@ public sealed partial class MainBus
     private int targetWideCallCount;
 
     /// <summary>
+    /// Entries into <see cref="Read8"/>. The CPU fast path does not increment this.
+    /// </summary>
+    private int read8CallCount;
+
+    /// <summary>
+    /// Entries into <see cref="Write8"/>. The CPU fast path does not increment this.
+    /// </summary>
+    private int write8CallCount;
+
+    /// <summary>
     /// Gets how many times <see cref="TryRead8"/> has been entered on this bus.
     /// </summary>
     /// <remarks>
@@ -57,6 +67,24 @@ public sealed partial class MainBus
     /// do not increment it. The count is not architectural bus state.
     /// </remarks>
     internal int TargetWideCallCount => targetWideCallCount;
+
+    /// <summary>
+    /// Gets how many times <see cref="Read8"/> has been entered on this bus.
+    /// </summary>
+    /// <remarks>
+    /// Tests use the count to prove a decomposed wide access called <see cref="Read8"/>
+    /// instead of indexing <see cref="PageEntry.FastBacking"/>. The count is not architectural bus state.
+    /// </remarks>
+    internal int Read8CallCount => read8CallCount;
+
+    /// <summary>
+    /// Gets how many times <see cref="Write8"/> has been entered on this bus.
+    /// </summary>
+    /// <remarks>
+    /// Tests use the count to prove a decomposed wide store called <see cref="Write8"/>
+    /// instead of indexing <see cref="PageEntry.FastBacking"/>. The count is not architectural bus state.
+    /// </remarks>
+    internal int Write8CallCount => write8CallCount;
 
     /// <summary>
     /// Recomputes <see cref="PageEntry.FastBacking"/>, <see cref="PageEntry.FastBase"/>, and

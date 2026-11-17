@@ -15,209 +15,234 @@ public sealed partial class MainBus
 {
     /// <inheritdoc />
     /// <remarks>
-    /// A same-page access whose live slot publishes <see cref="FastPathOps.Read"/> is indexed
-    /// and does not call <see cref="IBusTarget.Read16"/>. An access that crosses a 4 KB page
-    /// is one byte at a time, and each byte indexes or uses <see cref="Read8"/>.
+    /// <see cref="AccessFlags.Decompose"/> and <see cref="BusAccessMode.Decomposed"/> force
+    /// byte-wise <see cref="Read8"/> calls, including on a page that publishes
+    /// <see cref="FastPathOps.Read"/>. <see cref="AccessFlags.Atomic"/> with
+    /// <see cref="TargetCaps.SupportsWide"/> is still honored before decomposed mode.
+    /// Otherwise a same-page slot that publishes <see cref="FastPathOps.Read"/> is indexed,
+    /// and a 4 KB crossing is one byte at a time.
     /// </remarks>
     public Word Read16(in BusAccess access)
     {
-        if (TryReadIndexedSpan(access.Address, 2, out uint indexed))
-        {
-            return (Word)indexed;
-        }
-
-        // A 4 KB crossing is one byte at a time. Each byte indexes or uses Read8.
-        if (CrossesPageBoundary(access.Address, 2))
-        {
-            return (Word)ReadIndexedSplit(access, 2);
-        }
-
-        // Decompose flag forces byte-wise
         if (access.IsDecomposeForced)
         {
             return DecomposeRead16(access);
         }
 
-        ref readonly var page = ref pageTable[access.Address >> PageShift];
-
-        // Atomic request + target supports it
-        if (access.IsAtomicRequested && page.SupportsWide)
+        bool crosses = CrossesPageBoundary(access.Address, 2);
+        if (!crosses)
         {
-            Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            return InvokeTargetRead16(page.Target!, physicalAddress, access);
+            ref readonly var page = ref pageTable[access.Address >> PageShift];
+
+            // Atomic request stays ahead of decomposed mode.
+            if (access.IsAtomicRequested && page.SupportsWide)
+            {
+                Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+                return InvokeTargetRead16(page.Target!, physicalAddress, access);
+            }
+
+            if (access.Mode == BusAccessMode.Decomposed)
+            {
+                return DecomposeRead16(access);
+            }
+
+            if (TryReadIndexedSpan(access.Address, 2, out uint indexed))
+            {
+                return (Word)indexed;
+            }
+
+            if (page.SupportsWide)
+            {
+                Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+                return InvokeTargetRead16(page.Target!, physicalAddress, access);
+            }
+
+            return DecomposeRead16(access);
         }
 
-        // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
         if (access.Mode == BusAccessMode.Decomposed)
         {
             return DecomposeRead16(access);
         }
 
-        // Atomic mode: use wide if available
-        if (page.SupportsWide)
-        {
-            Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            return InvokeTargetRead16(page.Target!, physicalAddress, access);
-        }
-
-        return DecomposeRead16(access);
+        return (Word)ReadIndexedSplit(access, 2);
     }
 
     /// <inheritdoc />
     /// <remarks>
-    /// A same-page access whose live slot publishes <see cref="FastPathOps.Write"/> is indexed
-    /// and does not call <see cref="IBusTarget.Write16"/>. A <see cref="RomTarget"/> never
-    /// publishes write. An access that crosses a 4 KB page is one byte at a time.
+    /// <see cref="AccessFlags.Decompose"/> and <see cref="BusAccessMode.Decomposed"/> force
+    /// byte-wise <see cref="Write8"/> calls, including on a page that publishes
+    /// <see cref="FastPathOps.Write"/>. A <see cref="RomTarget"/> never publishes write.
+    /// <see cref="AccessFlags.Atomic"/> with <see cref="TargetCaps.SupportsWide"/> is still
+    /// honored before decomposed mode. Otherwise a same-page slot that publishes
+    /// <see cref="FastPathOps.Write"/> is indexed, and a 4 KB crossing is one byte at a time.
     /// </remarks>
     public void Write16(in BusAccess access, Word value)
     {
-        if (TryWriteIndexedSpan(access.Address, value, 2))
-        {
-            return;
-        }
-
-        if (CrossesPageBoundary(access.Address, 2))
-        {
-            WriteIndexedSplit(access, value, 2);
-            return;
-        }
-
-        // Decompose flag forces byte-wise
         if (access.IsDecomposeForced)
         {
             DecomposeWrite16(access, value);
             return;
         }
 
-        ref readonly var page = ref pageTable[access.Address >> PageShift];
-
-        // Atomic request + target supports it
-        if (access.IsAtomicRequested && page.SupportsWide)
+        bool crosses = CrossesPageBoundary(access.Address, 2);
+        if (!crosses)
         {
-            Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            InvokeTargetWrite16(page.Target!, physicalAddress, value, access);
+            ref readonly var page = ref pageTable[access.Address >> PageShift];
+
+            // Atomic request stays ahead of decomposed mode.
+            if (access.IsAtomicRequested && page.SupportsWide)
+            {
+                Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+                InvokeTargetWrite16(page.Target!, physicalAddress, value, access);
+                return;
+            }
+
+            if (access.Mode == BusAccessMode.Decomposed)
+            {
+                DecomposeWrite16(access, value);
+                return;
+            }
+
+            if (TryWriteIndexedSpan(access.Address, value, 2))
+            {
+                return;
+            }
+
+            if (page.SupportsWide)
+            {
+                Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+                InvokeTargetWrite16(page.Target!, physicalAddress, value, access);
+                return;
+            }
+
+            DecomposeWrite16(access, value);
             return;
         }
 
-        // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
         if (access.Mode == BusAccessMode.Decomposed)
         {
             DecomposeWrite16(access, value);
             return;
         }
 
-        // Atomic mode: use wide if available
-        if (page.SupportsWide)
-        {
-            Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            InvokeTargetWrite16(page.Target!, physicalAddress, value, access);
-            return;
-        }
-
-        DecomposeWrite16(access, value);
+        WriteIndexedSplit(access, value, 2);
     }
 
     /// <inheritdoc />
     /// <remarks>
-    /// A same-page access whose live slot publishes <see cref="FastPathOps.Read"/> is indexed
-    /// and does not call <see cref="IBusTarget.Read32"/>. An access that crosses a 4 KB page
-    /// is one byte at a time.
+    /// <see cref="AccessFlags.Decompose"/> and <see cref="BusAccessMode.Decomposed"/> force
+    /// byte-wise <see cref="Read8"/> calls, including on a page that publishes
+    /// <see cref="FastPathOps.Read"/>. <see cref="AccessFlags.Atomic"/> with
+    /// <see cref="TargetCaps.SupportsWide"/> is still honored before decomposed mode.
+    /// Otherwise a same-page slot that publishes <see cref="FastPathOps.Read"/> is indexed,
+    /// and a 4 KB crossing is one byte at a time.
     /// </remarks>
     public DWord Read32(in BusAccess access)
     {
-        if (TryReadIndexedSpan(access.Address, 4, out uint indexed))
-        {
-            return indexed;
-        }
-
-        if (CrossesPageBoundary(access.Address, 4))
-        {
-            return ReadIndexedSplit(access, 4);
-        }
-
-        // Decompose flag forces byte-wise
         if (access.IsDecomposeForced)
         {
             return DecomposeRead32(access);
         }
 
-        ref readonly var page = ref pageTable[access.Address >> PageShift];
-
-        // Atomic request + target supports it
-        if (access.IsAtomicRequested && page.SupportsWide)
+        bool crosses = CrossesPageBoundary(access.Address, 4);
+        if (!crosses)
         {
-            Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            return InvokeTargetRead32(page.Target!, physicalAddress, access);
+            ref readonly var page = ref pageTable[access.Address >> PageShift];
+
+            // Atomic request stays ahead of decomposed mode.
+            if (access.IsAtomicRequested && page.SupportsWide)
+            {
+                Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+                return InvokeTargetRead32(page.Target!, physicalAddress, access);
+            }
+
+            if (access.Mode == BusAccessMode.Decomposed)
+            {
+                return DecomposeRead32(access);
+            }
+
+            if (TryReadIndexedSpan(access.Address, 4, out uint indexed))
+            {
+                return indexed;
+            }
+
+            if (page.SupportsWide)
+            {
+                Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+                return InvokeTargetRead32(page.Target!, physicalAddress, access);
+            }
+
+            return DecomposeRead32(access);
         }
 
-        // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
         if (access.Mode == BusAccessMode.Decomposed)
         {
             return DecomposeRead32(access);
         }
 
-        // Atomic mode: use wide if available
-        if (page.SupportsWide)
-        {
-            Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            return InvokeTargetRead32(page.Target!, physicalAddress, access);
-        }
-
-        return DecomposeRead32(access);
+        return ReadIndexedSplit(access, 4);
     }
 
     /// <inheritdoc />
     /// <remarks>
-    /// A same-page access whose live slot publishes <see cref="FastPathOps.Write"/> is indexed
-    /// and does not call <see cref="IBusTarget.Write32"/>. An access that crosses a 4 KB page
-    /// is one byte at a time.
+    /// <see cref="AccessFlags.Decompose"/> and <see cref="BusAccessMode.Decomposed"/> force
+    /// byte-wise <see cref="Write8"/> calls, including on a page that publishes
+    /// <see cref="FastPathOps.Write"/>. A <see cref="RomTarget"/> never publishes write.
+    /// <see cref="AccessFlags.Atomic"/> with <see cref="TargetCaps.SupportsWide"/> is still
+    /// honored before decomposed mode. Otherwise a same-page slot that publishes
+    /// <see cref="FastPathOps.Write"/> is indexed, and a 4 KB crossing is one byte at a time.
     /// </remarks>
     public void Write32(in BusAccess access, DWord value)
     {
-        if (TryWriteIndexedSpan(access.Address, value, 4))
-        {
-            return;
-        }
-
-        if (CrossesPageBoundary(access.Address, 4))
-        {
-            WriteIndexedSplit(access, value, 4);
-            return;
-        }
-
-        // Decompose flag forces byte-wise
         if (access.IsDecomposeForced)
         {
             DecomposeWrite32(access, value);
             return;
         }
 
-        ref readonly var page = ref pageTable[access.Address >> PageShift];
-
-        // Atomic request + target supports it
-        if (access.IsAtomicRequested && page.SupportsWide)
+        bool crosses = CrossesPageBoundary(access.Address, 4);
+        if (!crosses)
         {
-            Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            InvokeTargetWrite32(page.Target!, physicalAddress, value, access);
+            ref readonly var page = ref pageTable[access.Address >> PageShift];
+
+            // Atomic request stays ahead of decomposed mode.
+            if (access.IsAtomicRequested && page.SupportsWide)
+            {
+                Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+                InvokeTargetWrite32(page.Target!, physicalAddress, value, access);
+                return;
+            }
+
+            if (access.Mode == BusAccessMode.Decomposed)
+            {
+                DecomposeWrite32(access, value);
+                return;
+            }
+
+            if (TryWriteIndexedSpan(access.Address, value, 4))
+            {
+                return;
+            }
+
+            if (page.SupportsWide)
+            {
+                Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+                InvokeTargetWrite32(page.Target!, physicalAddress, value, access);
+                return;
+            }
+
+            DecomposeWrite32(access, value);
             return;
         }
 
-        // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
         if (access.Mode == BusAccessMode.Decomposed)
         {
             DecomposeWrite32(access, value);
             return;
         }
 
-        // Atomic mode: use wide if available
-        if (page.SupportsWide)
-        {
-            Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
-            InvokeTargetWrite32(page.Target!, physicalAddress, value, access);
-            return;
-        }
-
-        DecomposeWrite32(access, value);
+        WriteIndexedSplit(access, value, 4);
     }
 
     /// <inheritdoc />
