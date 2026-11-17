@@ -185,14 +185,14 @@ public class MainBusAbortSignalTests
     /// </summary>
     private sealed class RecordingSignalBus : ISignalBus
     {
-        public List<(SignalLine Line, int SourceId, ulong Cycle)> Asserts { get; } = [];
-
-        public List<(SignalLine Line, int SourceId, ulong Cycle)> Deasserts { get; } = [];
-
         private readonly HashSet<int> abortHeld = [];
 
         /// <inheritdoc/>
         public event Action<SignalLine, bool, int, Cycle>? SignalChanged;
+
+        public List<(SignalLine Line, int SourceId, ulong Cycle)> Asserts { get; } = [];
+
+        public List<(SignalLine Line, int SourceId, ulong Cycle)> Deasserts { get; } = [];
 
         /// <inheritdoc/>
         public void Assert(SignalLine line, int deviceId, Cycle cycle)
