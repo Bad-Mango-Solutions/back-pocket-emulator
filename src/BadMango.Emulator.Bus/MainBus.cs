@@ -268,6 +268,7 @@ public sealed partial class MainBus : IMemoryBus
     /// <inheritdoc />
     public BusResult<byte> TryRead8(in BusAccess access)
     {
+        tryRead8CallCount++;
         int pageIndex = (int)(access.Address >> PageShift);
         if (pageIndex >= pageTable.Length)
         {
@@ -332,6 +333,7 @@ public sealed partial class MainBus : IMemoryBus
     /// <inheritdoc />
     public BusResult TryWrite8(in BusAccess access, byte value)
     {
+        tryWrite8CallCount++;
         int pageIndex = (int)(access.Address >> PageShift);
         if (pageIndex >= pageTable.Length)
         {

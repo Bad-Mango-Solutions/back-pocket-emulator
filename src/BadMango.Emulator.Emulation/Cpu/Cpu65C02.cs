@@ -514,28 +514,11 @@ public sealed class Cpu65C02 : CpuBase
     /// <param name="address">The address to fetch from.</param>
     /// <returns>The byte value at the address.</returns>
     /// <remarks>
-    /// This method uses <see cref="AccessIntent.InstructionFetch"/> to allow the bus
-    /// to differentiate between data reads and instruction fetches. This enables
-    /// features like trap interception and NX (no-execute) enforcement.
+    /// The 65C02 treats a fetch as a read. It passes <see cref="FastPathOps.Read"/> and does not
+    /// consult <see cref="FastPathOps.Fetch"/>, so a missing execute permission does not raise
+    /// <see cref="FaultKind.Nx"/>. A miss still uses <see cref="AccessIntent.InstructionFetch"/>.
     /// </remarks>
-    private byte InstructionFetch8(Addr address)
-    {
-        var access = CreateInstructionFetchAccess(address, 8);
-        var result = Bus.TryRead8(access);
-
-        if (result.Failed)
-        {
-            // Handle bus fault - for now, return 0xFF (floating bus) and halt on unmapped
-            if (result.Fault.Kind == FaultKind.Unmapped)
-            {
-                HaltReason = HaltState.Stp;
-            }
-
-            return 0xFF;
-        }
-
-        return result.Value;
-    }
+    private byte InstructionFetch8(Addr address) => ReadInstructionByte(address, FastPathOps.Read);
 
     /// <summary>
     /// Checks for pending interrupts and processes them if applicable.
