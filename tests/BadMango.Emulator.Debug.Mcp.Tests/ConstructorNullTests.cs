@@ -23,6 +23,28 @@ public sealed class ConstructorNullTests
     }
 
     /// <summary>
+    /// A missing session fails before the inspection tools touch the context.
+    /// </summary>
+    [Test]
+    public void InspectionTools_NullSession_Throws()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new InspectionTools(null!, null!, null!));
+
+        Assert.That(exception!.ParamName, Is.EqualTo("session"));
+    }
+
+    /// <summary>
+    /// A missing session fails before the breakpoint tools touch the context.
+    /// </summary>
+    [Test]
+    public void BreakpointTools_NullSession_Throws()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new BreakpointTools(null!, null!, null!));
+
+        Assert.That(exception!.ParamName, Is.EqualTo("session"));
+    }
+
+    /// <summary>
     /// A missing debug context fails with <see cref="ArgumentNullException"/>.
     /// </summary>
     [Test]

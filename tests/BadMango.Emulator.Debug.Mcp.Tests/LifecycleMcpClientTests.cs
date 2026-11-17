@@ -42,7 +42,20 @@ public sealed class LifecycleMcpClientTests
 
             IList<McpClientTool> tools = await session.Client.ListToolsAsync();
             string[] names = tools.Select(static tool => tool.Name).Order(StringComparer.Ordinal).ToArray();
-            Assert.That(names, Is.EqualTo(new[] { "load_profile", "pause", "reset", "run_until", "step" }));
+            Assert.That(names, Is.EqualTo(new[]
+            {
+                "disassemble",
+                "get_registers",
+                "load_profile",
+                "pause",
+                "read_memory",
+                "reset",
+                "run_until",
+                "set_breakpoint",
+                "set_watchpoint",
+                "step",
+                "write_memory",
+            }));
             Assert.That(tools.All(static tool => !string.IsNullOrWhiteSpace(tool.Description)), Is.True);
 
             JsonElement loaded = await session.CallAsync("load_profile", new Dictionary<string, object?>
