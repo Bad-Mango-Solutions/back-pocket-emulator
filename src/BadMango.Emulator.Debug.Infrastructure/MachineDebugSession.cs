@@ -97,6 +97,29 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         this.defaultCycleBudget = defaultCycleBudget;
     }
 
+    /// <inheritdoc />
+    public AbortReaction AbortReaction
+    {
+        get => debugContext.Cpu is BadMango.Emulator.Emulation.Cpu.Cpu65C02 cpu
+            ? cpu.AbortReaction
+            : BadMango.Emulator.Core.Cpu.AbortReaction.NoOp;
+
+        set
+        {
+            if (debugContext.Cpu is BadMango.Emulator.Emulation.Cpu.Cpu65C02 cpu)
+            {
+                cpu.AbortReaction = value;
+                return;
+            }
+
+            if (value == BadMango.Emulator.Core.Cpu.AbortReaction.HostBreak)
+            {
+                throw new InvalidOperationException(
+                    "HostBreak is only valid when the attached CPU is a 65C02.");
+            }
+        }
+    }
+
     private IMachine Machine => debugContext.Machine ?? throw new InvalidOperationException(NoMachineMessage);
 
     /// <inheritdoc />

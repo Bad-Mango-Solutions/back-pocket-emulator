@@ -392,6 +392,21 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         output.WriteLine(text);
     }
 
+    /// <inheritdoc/>
+    public void WriteAbort(TextWriter output, AbortReceipt receipt, string text)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(receipt);
+        ArgumentNullException.ThrowIfNull(text);
+        if (this.JsonOutput)
+        {
+            this.WriteEnvelope(output, receipt, DebugSessionJsonContext.Default.DebugEnvelopeAbortReceipt);
+            return;
+        }
+
+        output.WriteLine(text);
+    }
+
     private void WriteEnvelope<T>(TextWriter output, T payload, JsonTypeInfo<DebugEnvelope<T>> typeInfo)
     {
         var envelope = new DebugEnvelope<T>(payload, this.clock(), null);

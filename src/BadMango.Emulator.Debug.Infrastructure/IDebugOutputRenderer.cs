@@ -107,4 +107,12 @@ public interface IDebugOutputRenderer
     /// <param name="receipt">The reset that finished.</param>
     /// <param name="text">The human-readable lines used when JSON is off.</param>
     void WriteReset(TextWriter output, ResetReceipt receipt, string text);
+
+    /// <summary>
+    /// Writes the current abort reaction.
+    /// </summary>
+    /// <param name="output">The writer that receives the result.</param>
+    /// <param name="receipt">The reaction now in effect.</param>
+    /// <param name="text">The human-readable line used when JSON is off.</param>
+    void WriteAbort(TextWriter output, AbortReceipt receipt, string text);
 }
