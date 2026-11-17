@@ -20,8 +20,9 @@ using Interfaces.Cpu;
 /// <para>
 /// Each slot is an <see cref="OpcodeEntry"/>. <see cref="Execute"/> always calls
 /// <see cref="OpcodeEntry.Fn"/> and passes that same entry by readonly reference.
-/// Every opcode shares <see cref="SharedLegacyTrampoline"/>, one static readonly delegate,
-/// which invokes <see cref="OpcodeEntry.Legacy"/>. Nothing is stored in a mutable
+/// Unconverted opcodes share <see cref="SharedLegacyTrampoline"/>, one static readonly delegate,
+/// which invokes <see cref="OpcodeEntry.Legacy"/>. A direct-dispatch opcode stores its own
+/// cached delegate and leaves <see cref="OpcodeEntry.Legacy"/> null. Nothing is stored in a mutable
 /// static field.
 /// </para>
 /// </remarks>
@@ -94,7 +95,10 @@ public class OpcodeTable
     /// Gets the handler for the specified opcode.
     /// </summary>
     /// <param name="opcode">The opcode to get the handler for (0x00-0xFF).</param>
-    /// <returns>The handler for the specified opcode.</returns>
+    /// <returns>
+    /// The legacy handler for the specified opcode, or <see langword="null"/> for a
+    /// direct-dispatch opcode that has no legacy delegate.
+    /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public OpcodeHandler? GetHandler(byte opcode)
     {

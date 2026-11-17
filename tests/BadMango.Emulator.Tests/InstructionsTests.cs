@@ -260,8 +260,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(p: (ProcessorStatusFlags)0xFF, cycles: 10); // All flags set
 
         // Act
-        var handler = Instructions.CLC(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x18);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagC, Is.EqualTo((ProcessorStatusFlags)0), "Carry flag should be clear");
@@ -279,8 +278,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(p: 0, cycles: 10); // All flags clear
 
         // Act
-        var handler = Instructions.SEC(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x38);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagC, Is.EqualTo(FlagC), "Carry flag should be set");
@@ -297,8 +295,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(p: (ProcessorStatusFlags)0xFF, cycles: 10); // All flags set
 
         // Act
-        var handler = Instructions.CLI(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x58);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagI, Is.EqualTo((ProcessorStatusFlags)0), "Interrupt disable flag should be clear");
@@ -316,8 +313,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(p: 0, cycles: 10); // All flags clear
 
         // Act
-        var handler = Instructions.SEI(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x78);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagI, Is.EqualTo(FlagI), "Interrupt disable flag should be set");
@@ -334,8 +330,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(p: (ProcessorStatusFlags)0xFF, cycles: 10); // All flags set
 
         // Act
-        var handler = Instructions.CLD(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xD8);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagD, Is.EqualTo((ProcessorStatusFlags)0), "Decimal mode flag should be clear");
@@ -353,8 +348,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(p: 0, cycles: 10); // All flags clear
 
         // Act
-        var handler = Instructions.SED(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xF8);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagD, Is.EqualTo(FlagD), "Decimal mode flag should be set");
@@ -371,8 +365,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(p: (ProcessorStatusFlags)0xFF, cycles: 10); // All flags set
 
         // Act
-        var handler = Instructions.CLV(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xB8);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagV, Is.EqualTo((ProcessorStatusFlags)0), "Overflow flag should be clear");
@@ -650,5 +643,15 @@ public class InstructionsTests : CpuTestBase
         Cpu.Registers.SP.SetByte(sp);
         Cpu.Registers.P = p;
         Cpu.SetCycles(cycles);
+    }
+
+    /// <summary>
+    /// Executes one opcode through the 65C02 opcode table.
+    /// A direct-dispatch opcode runs its cached delegate and has no legacy handler.
+    /// </summary>
+    /// <param name="opcode">The opcode byte.</param>
+    private void ExecuteOpcode(byte opcode)
+    {
+        Cpu65C02OpcodeTableBuilder.Build().Execute(opcode, Cpu);
     }
 }

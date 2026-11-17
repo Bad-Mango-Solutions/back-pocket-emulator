@@ -34,152 +34,19 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for CLV implied.</summary>
     internal static readonly OpcodeDispatch CLVImpliedDispatch = DispatchCLVImplied;
 
-    /// <summary>
-    /// CLC - Clear Carry Flag instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes CLC.</returns>
-    public static OpcodeHandler CLC(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.Registers.P &= ~ProcessorStatusFlags.C;
-            cpu.Registers.TCU += 1;
-        };
-    }
+    private static void DispatchCLCImplied(ICpu cpu, in OpcodeEntry entry) => OpCLC<ImpliedMode>(cpu);
 
-    /// <summary>
-    /// SEC - Set Carry Flag instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes SEC.</returns>
-    public static OpcodeHandler SEC(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.Registers.P |= ProcessorStatusFlags.C;
-            cpu.Registers.TCU += 1;
-        };
-    }
+    private static void DispatchSECImplied(ICpu cpu, in OpcodeEntry entry) => OpSEC<ImpliedMode>(cpu);
 
-    /// <summary>
-    /// CLI - Clear Interrupt Disable Flag instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes CLI.</returns>
-    public static OpcodeHandler CLI(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.Registers.P &= ~ProcessorStatusFlags.I;
-            cpu.Registers.TCU += 1;
-        };
-    }
+    private static void DispatchCLIImplied(ICpu cpu, in OpcodeEntry entry) => OpCLI<ImpliedMode>(cpu);
 
-    /// <summary>
-    /// SEI - Set Interrupt Disable Flag instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes SEI.</returns>
-    public static OpcodeHandler SEI(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.Registers.P |= ProcessorStatusFlags.I;
-            cpu.Registers.TCU += 1;
-        };
-    }
+    private static void DispatchSEIImplied(ICpu cpu, in OpcodeEntry entry) => OpSEI<ImpliedMode>(cpu);
 
-    /// <summary>
-    /// CLD - Clear Decimal Mode Flag instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes CLD.</returns>
-    public static OpcodeHandler CLD(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.Registers.P &= ~ProcessorStatusFlags.D;
-            cpu.Registers.TCU += 1;
-        };
-    }
+    private static void DispatchCLDImplied(ICpu cpu, in OpcodeEntry entry) => OpCLD<ImpliedMode>(cpu);
 
-    /// <summary>
-    /// SED - Set Decimal Mode Flag instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes SED.</returns>
-    public static OpcodeHandler SED(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.Registers.P |= ProcessorStatusFlags.D;
-            cpu.Registers.TCU += 1;
-        };
-    }
+    private static void DispatchSEDImplied(ICpu cpu, in OpcodeEntry entry) => OpSED<ImpliedMode>(cpu);
 
-    /// <summary>
-    /// CLV - Clear Overflow Flag instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes CLV.</returns>
-    public static OpcodeHandler CLV(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.Registers.P &= ~ProcessorStatusFlags.V;
-            cpu.Registers.TCU += 1;
-        };
-    }
-
-    private static void DispatchCLCImplied(ICpu cpu, in OpcodeEntry entry)
-    {
-        _ = entry;
-        OpCLC<ImpliedMode>(cpu);
-    }
-
-    private static void DispatchSECImplied(ICpu cpu, in OpcodeEntry entry)
-    {
-        _ = entry;
-        OpSEC<ImpliedMode>(cpu);
-    }
-
-    private static void DispatchCLIImplied(ICpu cpu, in OpcodeEntry entry)
-    {
-        _ = entry;
-        OpCLI<ImpliedMode>(cpu);
-    }
-
-    private static void DispatchSEIImplied(ICpu cpu, in OpcodeEntry entry)
-    {
-        _ = entry;
-        OpSEI<ImpliedMode>(cpu);
-    }
-
-    private static void DispatchCLDImplied(ICpu cpu, in OpcodeEntry entry)
-    {
-        _ = entry;
-        OpCLD<ImpliedMode>(cpu);
-    }
-
-    private static void DispatchSEDImplied(ICpu cpu, in OpcodeEntry entry)
-    {
-        _ = entry;
-        OpSED<ImpliedMode>(cpu);
-    }
-
-    private static void DispatchCLVImplied(ICpu cpu, in OpcodeEntry entry)
-    {
-        _ = entry;
-        OpCLV<ImpliedMode>(cpu);
-    }
+    private static void DispatchCLVImplied(ICpu cpu, in OpcodeEntry entry) => OpCLV<ImpliedMode>(cpu);
 
     private static void OpCLC<TMode>(ICpu cpu)
         where TMode : struct, IAddressingMode
