@@ -13,6 +13,8 @@ The debug host project is `src/BadMango.Emulator.Debug`. Its assembly name is `e
 
 The stdio MCP host is `src/BadMango.Emulator.Debug.Mcp`. Its assembly name is `emudbg-mcp`. stdout is the protocol. Serilog writes to stderr and `logs/debug-mcp-.log` under the application directory. Sandbox roots are the `DebugMcp:SandboxRoots` list of absolute directories. An empty list denies sandboxed file access. Part 3 uses that list for disk paths.
 
+Inspection tools are `get_registers`, `read_memory`, `write_memory`, and `disassemble`. Breakpoint tools are `set_breakpoint` and `set_watchpoint`. `read_memory` length is 1 through 4096 and defaults to 16. `write_memory` accepts at most 256 bytes. `disassemble` count is 1 through 256 and defaults to 16. Addresses accept `$` hex, `0x` hex, decimal, or a soft-switch name. Bus faults use the shared `FaultKind` formatter.
+
 ```json
 {
   "servers": {
