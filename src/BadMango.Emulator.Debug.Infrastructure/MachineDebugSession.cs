@@ -152,8 +152,11 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <inheritdoc />
     /// <remarks>
     /// Serialized with execution. Throws <see cref="InvalidOperationException"/> when a background run is active.
+    /// A bus fault throws <see cref="MemoryWriteException"/>, whose message uses
+    /// <see cref="DebugOutputRenderer.FormatFault"/>.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A background run is active.</exception>
+    /// <exception cref="MemoryWriteException">A byte could not be written.</exception>
     public void WriteMemory(uint address, ReadOnlySpan<byte> data)
     {
         EnterExecutionUnlessBackgroundRunActive();
@@ -166,7 +169,7 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
                 var write = Machine.Bus.TryWrite8(access, data[offset]);
                 if (write.Failed)
                 {
-                    throw new InvalidOperationException($"Failed to write memory at ${access.Address:X8}: {write.Fault.Kind}.");
+                    throw new MemoryWriteException(access.Address, write.Fault);
                 }
             }
         }
