@@ -19,12 +19,12 @@ namespace BadMango.Emulator.Bus;
 /// on NX pages are allowed unless other permissions forbid it.
 /// </para>
 /// </remarks>
-public enum FaultKind : byte
+public enum FaultKind : ushort
 {
     /// <summary>
     /// No fault occurred; the operation completed successfully.
     /// </summary>
-    None = 0,
+    None = 0x0000,
 
     /// <summary>
     /// The address has no page entry or maps to a memory hole.
@@ -33,7 +33,7 @@ public enum FaultKind : byte
     /// Corresponds to a "translation fault" or "bus error" in the CPU's
     /// exception model.
     /// </remarks>
-    Unmapped,
+    Unmapped = 0x0001,
 
     /// <summary>
     /// The requested operation violates page permissions (read/write not allowed).
@@ -41,7 +41,7 @@ public enum FaultKind : byte
     /// <remarks>
     /// Corresponds to a "data access fault" in the CPU's exception model.
     /// </remarks>
-    Permission,
+    Permission = 0x0002,
 
     /// <summary>
     /// Execute permission denied on instruction fetch.
@@ -60,7 +60,7 @@ public enum FaultKind : byte
     /// In Compat mode, NX enforcement is ignored per policy.
     /// </para>
     /// </remarks>
-    Nx,
+    Nx = 0x0004,
 
     /// <summary>
     /// The access violates alignment requirements for atomic wide operations.
@@ -69,7 +69,7 @@ public enum FaultKind : byte
     /// Applies only when Native mode enforces alignment rules for atomic
     /// 16-bit or 32-bit operations.
     /// </remarks>
-    Misaligned,
+    Misaligned = 0x0008,
 
     /// <summary>
     /// A device signaled a fault during the access.
@@ -79,5 +79,5 @@ public enum FaultKind : byte
     /// an error, such as accessing an unimplemented register or an illegal
     /// DMA operation.
     /// </remarks>
-    DeviceFault,
+    DeviceFault = 0x0010,
 }

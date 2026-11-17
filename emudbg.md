@@ -37,7 +37,7 @@ emudbg --headless --max-cycles 100000 --exec "run-until --until-cycles=1000;exit
 
 `regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, and `reset` call the process-wide `IDebugSession`. `disk-list --json` uses the same envelope. `run-until` accepts a PC (`$0801`), `bp`, `watch`, `mem <addr> <byte>`, and `--until-cycles=<n>`. A bad `run-until` argument is exit code 2.
 
-`mem` and `peek` keep going across bus faults. Text shows `??` for each unreadable byte. JSON adds a `faults` hex mask beside `data`: `00` means that data byte is valid, and any other byte is the fault kind (1 Unmapped, 2 Permission, 3 Nx, 4 Misaligned, 5 DeviceFault). A faulted data byte is 0 and is not memory contents. The mask is omitted when every byte was readable.
+`mem` and `peek` keep going across bus faults. Text shows `??` for each unreadable byte. JSON adds a `faults` hex mask beside `data`: `00` means that data byte is valid, and any non-zero byte is a bitmask of fault flags (`0x01` Unmapped, `0x02` Permission, `0x04` Nx, `0x08` Misaligned, `0x10` DeviceFault). A faulted data byte is 0 and is not memory contents. The mask is omitted when every byte was readable.
 
 JSON for those commands looks like:
 

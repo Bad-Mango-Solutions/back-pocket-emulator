@@ -91,15 +91,46 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         static bool Unreadable(MemoryBlock source, int index) =>
             source.Faults is not null && index < source.Faults.Count && source.Faults[index] != 0;
 
-        static string FaultText(byte kind) => kind switch
+        static string FaultText(byte mask)
         {
-            1 => "Unmapped - no memory or device at this address",
-            2 => "Permission denied",
-            3 => "No execute",
-            4 => "Misaligned access",
-            5 => "Device fault",
-            _ => string.Format(CultureInfo.InvariantCulture, "Fault kind {0}", kind),
-        };
+            if (mask == 0)
+            {
+                return "No fault";
+            }
+
+            var names = new List<string>();
+            if ((mask & 0x01) != 0)
+            {
+                names.Add("Unmapped - no memory or device at this address");
+            }
+
+            if ((mask & 0x02) != 0)
+            {
+                names.Add("Permission denied");
+            }
+
+            if ((mask & 0x04) != 0)
+            {
+                names.Add("No execute");
+            }
+
+            if ((mask & 0x08) != 0)
+            {
+                names.Add("Misaligned access");
+            }
+
+            if ((mask & 0x10) != 0)
+            {
+                names.Add("Device fault");
+            }
+
+            if (names.Count == 0)
+            {
+                return string.Format(CultureInfo.InvariantCulture, "Fault mask {0:X2}", mask);
+            }
+
+            return string.Join("; ", names);
+        }
 
         var ascii = new StringBuilder();
         var hex = new StringBuilder();

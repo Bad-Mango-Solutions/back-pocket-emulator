@@ -186,14 +186,32 @@ public sealed class ReadCommand : CommandHandlerBase, ICommandHelp
 
     private static string FormatFault(BusFault fault)
     {
-        return fault.Kind switch
+        var names = new List<string>();
+        if ((fault.Kind & FaultKind.Unmapped) != 0)
         {
-            FaultKind.Unmapped => "Unmapped - no memory or device at this address",
-            FaultKind.Permission => $"Permission denied - region {fault.RegionTag} does not allow read",
-            FaultKind.Nx => "No execute - attempted instruction fetch from non-executable region",
-            FaultKind.Misaligned => "Misaligned access",
-            FaultKind.DeviceFault => "Device fault - device rejected the access",
-            _ => $"Unknown fault kind: {fault.Kind}",
-        };
+            names.Add("Unmapped - no memory or device at this address");
+        }
+
+        if ((fault.Kind & FaultKind.Permission) != 0)
+        {
+            names.Add($"Permission denied - region {fault.RegionTag} does not allow read");
+        }
+
+        if ((fault.Kind & FaultKind.Nx) != 0)
+        {
+            names.Add("No execute - attempted instruction fetch from non-executable region");
+        }
+
+        if ((fault.Kind & FaultKind.Misaligned) != 0)
+        {
+            names.Add("Misaligned access");
+        }
+
+        if ((fault.Kind & FaultKind.DeviceFault) != 0)
+        {
+            names.Add("Device fault - device rejected the access");
+        }
+
+        return names.Count == 0 ? $"Unknown fault kind: {fault.Kind}" : string.Join("; ", names);
     }
 }

@@ -79,7 +79,7 @@ public class DebugAbstractionsJsonGoldenTests
     [Test]
     public void MemoryBlock_WithFaults_SerializesMask()
     {
-        var value = new MemoryBlock(0x7FFE, 4, [0x41, 0x42, 0x00, 0x00], Faults: [0x00, 0x00, 0x01, 0x01]);
+        var value = new MemoryBlock(0x7FFE, 4, [0x41, 0x42, 0x00, 0x00], Faults: [0x00, 0x00, (byte)FaultKind.Unmapped, (byte)FaultKind.Unmapped | (byte)FaultKind.Permission]);
 
         var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.MemoryBlock);
 
@@ -88,7 +88,7 @@ public class DebugAbstractionsJsonGoldenTests
   "address": 32766,
   "length": 4,
   "data": "41420000",
-  "faults": "00000101"
+  "faults": "00000301"
 }
 """));
     }

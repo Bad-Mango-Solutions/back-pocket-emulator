@@ -37,11 +37,21 @@ public class FaultKindTests
     }
 
     /// <summary>
-    /// Verifies the enum has exactly six values.
+    /// Verifies the enum has exactly six values and the documented mask bit values.
     /// </summary>
     [Test]
-    public void FaultKind_HasSixValues()
+    public void FaultKind_HasExpectedMaskValues()
     {
+        Assert.Multiple(() =>
+        {
+            Assert.That((ushort)FaultKind.None, Is.EqualTo(0x0000));
+            Assert.That((ushort)FaultKind.Unmapped, Is.EqualTo(0x0001));
+            Assert.That((ushort)FaultKind.Permission, Is.EqualTo(0x0002));
+            Assert.That((ushort)FaultKind.Nx, Is.EqualTo(0x0004));
+            Assert.That((ushort)FaultKind.Misaligned, Is.EqualTo(0x0008));
+            Assert.That((ushort)FaultKind.DeviceFault, Is.EqualTo(0x0010));
+        });
+
         var values = Enum.GetValues<FaultKind>();
         Assert.That(values, Has.Length.EqualTo(6));
     }

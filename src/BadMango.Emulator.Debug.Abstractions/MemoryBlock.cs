@@ -19,8 +19,9 @@ using System.Text.Json.Serialization;
 /// <param name="Faults">
 /// Parallel mask, one byte per <paramref name="Data"/> byte, serialized as an uppercase hex string
 /// of the same length. Omitted when every byte was readable.
-/// <c>00</c> means the data byte is valid. Any other value is the bus fault kind:
-/// 1 Unmapped, 2 Permission, 3 Nx, 4 Misaligned, 5 DeviceFault.
+/// <c>00</c> means the data byte is valid. Any non-zero value is a bus fault mask whose low byte uses
+/// bit flags: <c>0x0001</c> Unmapped, <c>0x0002</c> Permission, <c>0x0004</c> Nx,
+/// <c>0x0008</c> Misaligned, <c>0x0010</c> DeviceFault.
 /// The session fills this from the bus fault result and does not throw once per unreadable byte.
 /// </param>
 public sealed record MemoryBlock(
