@@ -228,8 +228,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.CMP(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xC9);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagC, Is.EqualTo(FlagC), "Carry should be set");
@@ -247,8 +246,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, p: FlagC, cycles: 10);
 
         // Act
-        var handler = Instructions.CMP(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xC9);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagC, Is.EqualTo((ProcessorStatusFlags)0), "Carry should be clear");
@@ -266,8 +264,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0x30, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.CPX(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xE0);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagC, Is.EqualTo(FlagC), "Carry should be set");
@@ -284,8 +281,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, y: 0x40, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.CPY(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xC0);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagC, Is.EqualTo(FlagC), "Carry should be set");
@@ -420,8 +416,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x10, p: FlagC, cycles: 10);
 
         // Act
-        var handler = Instructions.ADC(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0x69);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x53)); // 0x10 + 0x42 + 1
@@ -438,8 +433,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x01, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.ADC(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0x69);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x80));
@@ -457,8 +451,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x50, p: FlagC, cycles: 10);
 
         // Act
-        var handler = Instructions.SBC(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xE9);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x40)); // 0x50 - 0x10 - 0
@@ -474,8 +467,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0x42, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.INX(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xE8);
 
         // Assert
         Assert.That(Cpu.Registers.X.GetByte(), Is.EqualTo(0x43));
@@ -491,8 +483,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, y: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.INY(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xC8);
 
         // Assert
         Assert.That(Cpu.Registers.Y.GetByte(), Is.EqualTo(0x00));
@@ -509,8 +500,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0x01, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.DEX(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xCA);
 
         // Assert
         Assert.That(Cpu.Registers.X.GetByte(), Is.EqualTo(0x00));
@@ -529,8 +519,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.INC(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0xE6);
 
         // Assert
         Assert.That(Read(0x50), Is.EqualTo(0x43));
@@ -548,8 +537,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.DEC(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0xC6);
 
         // Assert
         Assert.That(Read(0x50), Is.EqualTo(0x00));
@@ -571,8 +559,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.AND(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0x29);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x0F));
@@ -589,8 +576,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0xF0, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.ORA(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0x09);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0xFF));
@@ -607,8 +593,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.EOR(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0x49);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x00));
@@ -627,8 +612,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.BIT(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x24);
 
         // Assert
         Assert.That(Cpu.Registers.P & FlagN, Is.EqualTo(FlagN), "Negative flag should be set from bit 7");
@@ -1058,8 +1042,7 @@ public class NewInstructionsTests : CpuTestBase
         Write(0x1000, 0x01);
         SetupCpu(pc: 0x1000, a: 0x09, p: FlagD, cycles: 0);
 
-        var handler = Instructions.ADC(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0x69);
 
         Assert.Multiple(() =>
         {
@@ -1080,8 +1063,7 @@ public class NewInstructionsTests : CpuTestBase
         Write(0x1000, 0x01);
         SetupCpu(pc: 0x1000, a: 0x99, p: FlagD, cycles: 0);
 
-        var handler = Instructions.ADC(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0x69);
 
         Assert.Multiple(() =>
         {
@@ -1100,16 +1082,14 @@ public class NewInstructionsTests : CpuTestBase
     {
         Write(0x1000, 0x01);
         SetupCpu(pc: 0x1000, a: 0x09, p: 0, cycles: 0);
-        var binHandler = Instructions.ADC(AddressingModes.Immediate);
         ulong binBefore = Cpu.Registers.TCU;
-        binHandler(Cpu);
+        ExecuteOpcode(0x69);
         ulong binDelta = Cpu.Registers.TCU - binBefore;
 
         Write(0x2000, 0x01);
         SetupCpu(pc: 0x2000, a: 0x09, p: FlagD, cycles: 0);
-        var decHandler = Instructions.ADC(AddressingModes.Immediate);
         ulong decBefore = Cpu.Registers.TCU;
-        decHandler(Cpu);
+        ExecuteOpcode(0x69);
         ulong decDelta = Cpu.Registers.TCU - decBefore;
 
         Assert.That(decDelta, Is.EqualTo(binDelta + 1UL), "Decimal-mode ADC should take 1 extra cycle on 65C02");
@@ -1124,8 +1104,7 @@ public class NewInstructionsTests : CpuTestBase
         Write(0x1000, 0x25);
         SetupCpu(pc: 0x1000, a: 0x50, p: FlagD | FlagC, cycles: 0);
 
-        var handler = Instructions.SBC(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xE9);
 
         Assert.Multiple(() =>
         {
@@ -1145,8 +1124,7 @@ public class NewInstructionsTests : CpuTestBase
         Write(0x1000, 0x01);
         SetupCpu(pc: 0x1000, a: 0x00, p: FlagD | FlagC, cycles: 0);
 
-        var handler = Instructions.SBC(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xE9);
 
         Assert.Multiple(() =>
         {
@@ -1164,16 +1142,14 @@ public class NewInstructionsTests : CpuTestBase
     {
         Write(0x1000, 0x01);
         SetupCpu(pc: 0x1000, a: 0x50, p: FlagC, cycles: 0);
-        var binHandler = Instructions.SBC(AddressingModes.Immediate);
         ulong binBefore = Cpu.Registers.TCU;
-        binHandler(Cpu);
+        ExecuteOpcode(0xE9);
         ulong binDelta = Cpu.Registers.TCU - binBefore;
 
         Write(0x2000, 0x01);
         SetupCpu(pc: 0x2000, a: 0x50, p: FlagD | FlagC, cycles: 0);
-        var decHandler = Instructions.SBC(AddressingModes.Immediate);
         ulong decBefore = Cpu.Registers.TCU;
-        decHandler(Cpu);
+        ExecuteOpcode(0xE9);
         ulong decDelta = Cpu.Registers.TCU - decBefore;
 
         Assert.That(decDelta, Is.EqualTo(binDelta + 1UL), "Decimal-mode SBC should take 1 extra cycle on 65C02");

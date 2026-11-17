@@ -182,6 +182,62 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
+    /// Logical, arithmetic, and compare opcodes use direct dispatch and leave the legacy slot null.
+    /// </summary>
+    [Test]
+    public void Build_LogicalArithmeticAndCompareOpcodes_UseDirectDispatchWithNullLegacyHandlers()
+    {
+        var table = Cpu65C02OpcodeTableBuilder.Build();
+        int converted = 0;
+
+        Assert.Multiple(() =>
+        {
+            for (int opcode = 0; opcode < 256; opcode++)
+            {
+                CpuInstructions instruction = table.GetMetadata((byte)opcode).Instruction;
+                if (!IsLogicalArithmeticOrCompare(instruction))
+                {
+                    continue;
+                }
+
+                converted++;
+                Assert.That(
+                    table.GetHandler((byte)opcode),
+                    Is.Null,
+                    $"${opcode:X2} {instruction} legacy handler");
+            }
+
+            Assert.That(converted, Is.EqualTo(79), "converted opcode count");
+        });
+    }
+
+    /// <summary>
+    /// Reports whether an instruction belongs to the logical, arithmetic, or compare families.
+    /// </summary>
+    /// <param name="instruction">The opcode mnemonic.</param>
+    /// <returns><see langword="true"/> when the mnemonic is AND, ORA, EOR, BIT, ADC, SBC, INC, DEC, INA, DEA, INX, INY, DEX, DEY, CMP, CPX, or CPY.</returns>
+    private static bool IsLogicalArithmeticOrCompare(CpuInstructions instruction)
+    {
+        return instruction is CpuInstructions.AND
+            or CpuInstructions.ORA
+            or CpuInstructions.EOR
+            or CpuInstructions.BIT
+            or CpuInstructions.ADC
+            or CpuInstructions.SBC
+            or CpuInstructions.INC
+            or CpuInstructions.DEC
+            or CpuInstructions.INA
+            or CpuInstructions.DEA
+            or CpuInstructions.INX
+            or CpuInstructions.INY
+            or CpuInstructions.DEX
+            or CpuInstructions.DEY
+            or CpuInstructions.CMP
+            or CpuInstructions.CPX
+            or CpuInstructions.CPY;
+    }
+
+    /// <summary>
     /// Builds a 64KB RAM machine with its own opcode table.
     /// </summary>
     /// <returns>A resettable 65C02 wired only to RAM.</returns>
