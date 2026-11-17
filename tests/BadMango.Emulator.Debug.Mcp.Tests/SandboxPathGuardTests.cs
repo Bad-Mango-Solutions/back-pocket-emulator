@@ -56,6 +56,31 @@ public sealed class SandboxPathGuardTests
     }
 
     /// <summary>
+    /// An absolute path outside the configured roots is rejected.
+    /// </summary>
+    [Test]
+    public void IsAllowed_AbsolutePathOutsideRoots_IsDenied()
+    {
+        string root = Directory.CreateTempSubdirectory("mcp-sandbox-").FullName;
+        try
+        {
+            SandboxPathGuard guard = Guard(root);
+            string absolute = Path.GetFullPath(Path.Join(Path.GetTempPath(), "mcp-rooted-outside.bin"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Path.IsPathRooted(absolute), Is.True);
+                Assert.That(guard.IsAllowed(absolute), Is.False);
+                Assert.That(() => guard.EnsureAllowed(absolute), Throws.InvalidOperationException);
+            });
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// EnsureAllowed rejects a path outside the roots.
     /// </summary>
     [Test]

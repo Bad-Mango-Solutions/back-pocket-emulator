@@ -12,7 +12,9 @@ using Microsoft.Extensions.Options;
 /// <remarks>
 /// Part 3 calls <see cref="EnsureAllowed"/> before mounting a disk or reading a file out of an image.
 /// An empty root list allows nothing. Symbolic links are resolved before the prefix check, including
-/// links in parent directories, so a link inside a root cannot point at a file outside it.
+/// links in every existing segment, so a link inside a root cannot point at a file outside it.
+/// Resolution uses <see cref="FileSystemInfo.ResolveLinkTarget(bool)"/>. A link that cannot be
+/// resolved is denied.
 /// </remarks>
 public sealed class SandboxPathGuard
 {
@@ -127,31 +129,32 @@ public sealed class SandboxPathGuard
         foreach (string segment in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
         {
             string next = Path.Join(current, segment);
-            string? link = TryReadLink(next);
+            FileSystemInfo? link = ResolveExistingLink(next);
             if (link is null)
             {
                 current = next;
                 continue;
             }
 
-            string target = Path.IsPathRooted(link)
-                ? Normalize(link)
-                : Normalize(Path.Join(current, link));
-            current = Follow(target, depth + 1);
+            current = Follow(Normalize(link.FullName), depth + 1);
         }
 
         return TrimTrailingSeparator(current);
     }
 
-    private static string? TryReadLink(string path)
+    private static FileSystemInfo? ResolveExistingLink(string path)
     {
-        string? fileTarget = new FileInfo(path).LinkTarget;
-        if (fileTarget is not null)
+        FileSystemInfo info = new FileInfo(path);
+        if (info.LinkTarget is null)
         {
-            return fileTarget;
+            info = new DirectoryInfo(path);
+            if (info.LinkTarget is null)
+            {
+                return null;
+            }
         }
 
-        return new DirectoryInfo(path).LinkTarget;
+        return info.ResolveLinkTarget(returnFinalTarget: true);
     }
 
     private static string TrimTrailingSeparator(string full)
