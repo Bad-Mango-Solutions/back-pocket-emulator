@@ -14,6 +14,34 @@ using Interfaces;
 public sealed partial class MainBus
 {
     /// <summary>
+    /// Entries into <see cref="TryRead8"/>. The CPU fast path does not increment this.
+    /// </summary>
+    private int tryRead8CallCount;
+
+    /// <summary>
+    /// Entries into <see cref="TryWrite8"/>. The CPU fast path does not increment this.
+    /// </summary>
+    private int tryWrite8CallCount;
+
+    /// <summary>
+    /// Gets how many times <see cref="TryRead8"/> has been entered on this bus.
+    /// </summary>
+    /// <remarks>
+    /// Tests use the count to prove a RAM byte access indexed <see cref="PageEntry.FastBacking"/>
+    /// instead of calling the checked path. The count is not architectural bus state.
+    /// </remarks>
+    internal int TryRead8CallCount => tryRead8CallCount;
+
+    /// <summary>
+    /// Gets how many times <see cref="TryWrite8"/> has been entered on this bus.
+    /// </summary>
+    /// <remarks>
+    /// Tests use the count to prove a RAM byte store indexed <see cref="PageEntry.FastBacking"/>
+    /// instead of calling the checked path. The count is not architectural bus state.
+    /// </remarks>
+    internal int TryWrite8CallCount => tryWrite8CallCount;
+
+    /// <summary>
     /// Recomputes <see cref="PageEntry.FastBacking"/>, <see cref="PageEntry.FastBase"/>, and
     /// <see cref="PageEntry.FastOps"/> from the entry's target, window, permissions, and privilege.
     /// </summary>

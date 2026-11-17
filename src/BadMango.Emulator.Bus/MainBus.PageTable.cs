@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Bus;
 
+using System.Runtime.CompilerServices;
+
 using Interfaces;
 
 /// <content>
@@ -40,6 +42,22 @@ public sealed partial class MainBus
 
         return ref pageTable[pageIndex];
     }
+
+    /// <summary>
+    /// Returns the live page-table slot at <paramref name="pageIndex"/>.
+    /// </summary>
+    /// <param name="pageIndex">
+    /// The page index. The caller has already checked it against <see cref="PageCount"/>.
+    /// </param>
+    /// <returns>The slot stored in the page table, not a copy.</returns>
+    /// <remarks>
+    /// The CPU indexes this slot on every byte. A copied <see cref="PageEntry"/> would freeze
+    /// <see cref="PageEntry.FastBase"/> and <see cref="PageEntry.PhysicalBase"/> across a remap
+    /// that happens inside a slow-path access. This method does not validate the index and does
+    /// not take a lock.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ref readonly PageEntry GetLivePage(int pageIndex) => ref pageTable[pageIndex];
 
     /// <inheritdoc />
     public void MapPage(int pageIndex, PageEntry entry)

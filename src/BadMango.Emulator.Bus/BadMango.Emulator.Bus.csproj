@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="BadMango.Emulator.Bus.Tests" />
+    <InternalsVisibleTo Include="BadMango.Emulator.Tests" />
   </ItemGroup>
 
   <ItemGroup>

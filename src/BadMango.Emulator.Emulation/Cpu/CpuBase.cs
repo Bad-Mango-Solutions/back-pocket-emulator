@@ -4,6 +4,9 @@
 
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Interfaces.Signaling;
@@ -48,6 +51,12 @@ public abstract class CpuBase : ICpu
     private readonly IMemoryBus bus;
 
     /// <summary>
+    /// The same bus when it is a <see cref="MainBus"/>, so a byte access can index the live page
+    /// slot without a type test. <see langword="null"/> for every other <see cref="IMemoryBus"/>.
+    /// </summary>
+    private readonly MainBus? mainBus;
+
+    /// <summary>
     /// The signal bus for interrupt handling.
     /// </summary>
     private readonly ISignalBus signals;
@@ -87,6 +96,7 @@ public abstract class CpuBase : ICpu
         ArgumentNullException.ThrowIfNull(context, nameof(context));
         this.context = context;
         bus = context.Bus;
+        mainBus = context.Bus as MainBus;
         signals = context.Signals;
     }
 
@@ -262,8 +272,17 @@ public abstract class CpuBase : ICpu
     // ─── Memory Access Methods (Bus-based) ──────────────────────────────
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A <see cref="MainBus"/> page that publishes <see cref="FastPathOps.Read"/> is indexed.
+    /// Every other read calls <see cref="IMemoryBus.TryRead8"/>.
+    /// </remarks>
     public virtual byte Read8(Addr address)
     {
+        if (TryReadFastByte(address, FastPathOps.Read, out byte fastValue))
+        {
+            return fastValue;
+        }
+
         var access = CreateReadAccess(address, 8);
         var result = bus.TryRead8(access);
 
@@ -282,8 +301,18 @@ public abstract class CpuBase : ICpu
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A <see cref="MainBus"/> page that publishes <see cref="FastPathOps.Write"/> is indexed.
+    /// A <see cref="RomTarget"/> never publishes write, so a ROM store stays on
+    /// <see cref="IMemoryBus.TryWrite8"/>.
+    /// </remarks>
     public virtual void Write8(Addr address, byte value)
     {
+        if (TryWriteFastByte(address, value))
+        {
+            return;
+        }
+
         var access = CreateWriteAccess(address, 8);
         var result = bus.TryWrite8(access, value);
 
@@ -295,8 +324,17 @@ public abstract class CpuBase : ICpu
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A debug read indexes a page that publishes <see cref="FastPathOps.Read"/>, because that
+    /// page has no side effects. Every other debug read calls <see cref="IMemoryBus.TryRead8"/>.
+    /// </remarks>
     public virtual byte Peek8(Addr address)
     {
+        if (TryReadFastByte(address, FastPathOps.Read, out byte fastValue))
+        {
+            return fastValue;
+        }
+
         var access = CreateDebugReadAccess(address);
         var result = bus.TryRead8(access);
 
@@ -311,8 +349,18 @@ public abstract class CpuBase : ICpu
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A debug write indexes a page only when it publishes <see cref="FastPathOps.Write"/>.
+    /// A ROM poke, and every poke of a page that is not eligible, calls
+    /// <see cref="IMemoryBus.TryWrite8"/> so <see cref="RomTarget.Write8"/> keeps the debug-write rule.
+    /// </remarks>
     public virtual void Poke8(Addr address, byte value)
     {
+        if (TryWriteFastByte(address, value))
+        {
+            return;
+        }
+
         var access = CreateDebugWriteAccess(address);
         bus.TryWrite8(access, value);
 
@@ -408,6 +456,53 @@ public abstract class CpuBase : ICpu
     }
 
     // ─── Protected Helper Methods ───────────────────────────────────────
+
+    /// <summary>
+    /// Reads one instruction byte, indexing a <see cref="MainBus"/> page when
+    /// <paramref name="fetchOperation"/> is published for it.
+    /// </summary>
+    /// <param name="address">The address to fetch from.</param>
+    /// <param name="fetchOperation">
+    /// The fast-path operation this fetch may use. The 65C02 passes <see cref="FastPathOps.Read"/>
+    /// and does not consult <see cref="FastPathOps.Fetch"/>. A native CPU passes
+    /// <see cref="FastPathOps.Fetch"/> when the emulation flag is clear.
+    /// </param>
+    /// <returns>The byte at <paramref name="address"/>, or <c>0xFF</c> when the checked read faults.</returns>
+    /// <remarks>
+    /// <para>
+    /// A hit does not build a <see cref="BusAccess"/>, does not call <see cref="GetEmulationFlag"/>,
+    /// does not read <see cref="IEventContext.Now"/>, and does not change <see cref="HaltReason"/>.
+    /// A miss calls <see cref="IMemoryBus.TryRead8"/> with <see cref="AccessIntent.InstructionFetch"/>.
+    /// An unmapped miss sets <see cref="HaltState.Stp"/> and returns <c>0xFF</c>. Any other fault
+    /// returns <c>0xFF</c> without setting <see cref="HaltState.Stp"/>.
+    /// </para>
+    /// <para>
+    /// The method does not add to <see cref="Registers.TCU"/>. <c>FetchByte</c> still adds the
+    /// instruction-fetch cycle.
+    /// </para>
+    /// </remarks>
+    protected byte ReadInstructionByte(Addr address, FastPathOps fetchOperation)
+    {
+        if (TryReadFastByte(address, fetchOperation, out byte fastValue))
+        {
+            return fastValue;
+        }
+
+        var access = CreateInstructionFetchAccess(address, 8);
+        var result = bus.TryRead8(access);
+
+        if (result.Failed)
+        {
+            if (result.Fault.Kind == FaultKind.Unmapped)
+            {
+                haltReason = HaltState.Stp;
+            }
+
+            return 0xFF;
+        }
+
+        return result.Value;
+    }
 
     /// <summary>
     /// Reads a 32-bit value from memory.
@@ -567,4 +662,99 @@ public abstract class CpuBase : ICpu
     /// return the appropriate value based on their current mode.
     /// </remarks>
     protected virtual bool GetEmulationFlag() => true;
+
+    /// <summary>
+    /// Indexes the live page slot when <paramref name="operation"/> is published for <paramref name="address"/>.
+    /// </summary>
+    /// <param name="address">The CPU address.</param>
+    /// <param name="operation">The single fast-path operation this access requires.</param>
+    /// <param name="value">The indexed byte when this method returns <see langword="true"/>.</param>
+    /// <returns>
+    /// <see langword="true"/> when the page index is in range and <see cref="PageEntry.FastOps"/>
+    /// contains <paramref name="operation"/>; otherwise <see langword="false"/>.
+    /// </returns>
+    /// <remarks>
+    /// Eligibility is <see cref="PageEntry.FastOps"/>, not a null backing array. An eligible page
+    /// that grants no operation keeps the array and stays on the checked path. The index is
+    /// <c>FastBase + PhysicalBase + (address &amp; page mask)</c> into the live slot. This method
+    /// takes no lock and does not read a mapping-trace flag.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryReadFastByte(Addr address, FastPathOps operation, out byte value)
+    {
+        if (!TryGetFastIndex(address, operation, out byte[]? backing, out int index))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = backing[index];
+        return true;
+    }
+
+    /// <summary>
+    /// Stores one byte when the live page publishes <see cref="FastPathOps.Write"/>.
+    /// </summary>
+    /// <param name="address">The CPU address.</param>
+    /// <param name="value">The byte to store.</param>
+    /// <returns>
+    /// <see langword="true"/> when the store was an array index; otherwise <see langword="false"/>
+    /// and the caller uses <see cref="IMemoryBus.TryWrite8"/>.
+    /// </returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryWriteFastByte(Addr address, byte value)
+    {
+        if (!TryGetFastIndex(address, FastPathOps.Write, out byte[]? backing, out int index))
+        {
+            return false;
+        }
+
+        backing[index] = value;
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves the live backing array and index for one fast-path byte.
+    /// </summary>
+    /// <param name="address">The CPU address.</param>
+    /// <param name="operation">The operation that must be published on the page.</param>
+    /// <param name="backing">The page array when this method returns <see langword="true"/>.</param>
+    /// <param name="index">The index of <paramref name="address"/> in <paramref name="backing"/>.</param>
+    /// <returns>
+    /// <see langword="true"/> when the page can be indexed for <paramref name="operation"/>.
+    /// </returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetFastIndex(
+        Addr address,
+        FastPathOps operation,
+        [NotNullWhen(true)] out byte[]? backing,
+        out int index)
+    {
+        backing = null;
+        index = 0;
+
+        MainBus? fastBus = mainBus;
+        if (fastBus is null)
+        {
+            return false;
+        }
+
+        int pageIndex = (int)(address >> fastBus.PageShift);
+        if ((uint)pageIndex >= (uint)fastBus.PageCount)
+        {
+            return false;
+        }
+
+        // Read the live slot. A copied PageEntry would freeze FastBase and PhysicalBase.
+        ref readonly PageEntry page = ref fastBus.GetLivePage(pageIndex);
+        byte[]? slot = page.FastBacking;
+        if ((page.FastOps & operation) == 0 || slot is null)
+        {
+            return false;
+        }
+
+        backing = slot;
+        index = page.FastBase + (int)page.PhysicalBase + (int)(address & fastBus.PageMask);
+        return true;
+    }
 }
