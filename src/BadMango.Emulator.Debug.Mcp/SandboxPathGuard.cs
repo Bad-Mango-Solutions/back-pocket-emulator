@@ -11,10 +11,13 @@ using Microsoft.Extensions.Options;
 /// </summary>
 /// <remarks>
 /// Part 3 calls <see cref="EnsureAllowed"/> before mounting a disk or reading a file out of an image.
-/// An empty root list allows nothing.
+/// An empty root list allows nothing. Symbolic links are resolved before the prefix check, including
+/// links in parent directories, so a link inside a root cannot point at a file outside it.
 /// </remarks>
 public sealed class SandboxPathGuard
 {
+    private const int MaxLinkDepth = 40;
+
     private readonly IReadOnlyList<string> roots;
 
     /// <summary>
@@ -24,15 +27,16 @@ public sealed class SandboxPathGuard
     public SandboxPathGuard(IOptions<DebugMcpOptions> options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        this.roots = options.Value.SandboxRoots
+        ArgumentNullException.ThrowIfNull(options.Value);
+        this.roots = (options.Value.SandboxRoots ?? [])
             .Where(static root => !string.IsNullOrWhiteSpace(root))
-            .Select(Normalize)
+            .Select(Canonicalize)
             .Distinct(PathComparer())
             .ToArray();
     }
 
     /// <summary>
-    /// Gets the normalized sandbox roots.
+    /// Gets the sandbox roots with symbolic links resolved.
     /// </summary>
     public IReadOnlyList<string> Roots => this.roots;
 
@@ -44,14 +48,7 @@ public sealed class SandboxPathGuard
     public static string Normalize(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        string full = Path.GetFullPath(path);
-        string? root = Path.GetPathRoot(full);
-        if (!string.Equals(full, root, PathComparison()) && full.Length > 0 && full[^1] is '/' or '\\')
-        {
-            full = full.TrimEnd('/', '\\');
-        }
-
-        return full;
+        return TrimTrailingSeparator(Path.GetFullPath(path));
     }
 
     /// <summary>
@@ -69,9 +66,14 @@ public sealed class SandboxPathGuard
         string full;
         try
         {
-            full = Path.GetFullPath(path);
+            full = Canonicalize(path);
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        catch (Exception ex) when (ex is ArgumentException
+            or NotSupportedException
+            or PathTooLongException
+            or IOException
+            or UnauthorizedAccessException
+            or InvalidOperationException)
         {
             return false;
         }
@@ -100,6 +102,67 @@ public sealed class SandboxPathGuard
         {
             throw new InvalidOperationException($"Path is outside the configured sandbox roots: {path}");
         }
+    }
+
+    private static string Canonicalize(string path)
+    {
+        return Follow(Normalize(path), 0);
+    }
+
+    private static string Follow(string full, int depth)
+    {
+        if (depth > MaxLinkDepth)
+        {
+            throw new InvalidOperationException("Symbolic link chain is too deep.");
+        }
+
+        string? root = Path.GetPathRoot(full);
+        if (string.IsNullOrEmpty(root))
+        {
+            return full;
+        }
+
+        string current = root;
+        string relative = full[root.Length..];
+        foreach (string segment in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string next = Path.Join(current, segment);
+            string? link = TryReadLink(next);
+            if (link is null)
+            {
+                current = next;
+                continue;
+            }
+
+            string target = Path.IsPathRooted(link)
+                ? Normalize(link)
+                : Normalize(Path.Join(current, link));
+            current = Follow(target, depth + 1);
+        }
+
+        return TrimTrailingSeparator(current);
+    }
+
+    private static string? TryReadLink(string path)
+    {
+        string? fileTarget = new FileInfo(path).LinkTarget;
+        if (fileTarget is not null)
+        {
+            return fileTarget;
+        }
+
+        return new DirectoryInfo(path).LinkTarget;
+    }
+
+    private static string TrimTrailingSeparator(string full)
+    {
+        string? root = Path.GetPathRoot(full);
+        if (!string.Equals(full, root, PathComparison()) && full.Length > 0 && full[^1] is '/' or '\\')
+        {
+            return full.TrimEnd('/', '\\');
+        }
+
+        return full;
     }
 
     private static bool IsUnderRoot(string fullPath, string root)

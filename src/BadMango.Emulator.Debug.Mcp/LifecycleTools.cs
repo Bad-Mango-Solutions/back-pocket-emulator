@@ -44,6 +44,11 @@ public sealed class LifecycleTools
         DebugMcpRunTracker runs,
         ILogger logger)
     {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(profiles);
+        ArgumentNullException.ThrowIfNull(runs);
+        ArgumentNullException.ThrowIfNull(logger);
         this.session = session;
         this.context = context;
         this.profiles = profiles;

@@ -36,6 +36,10 @@ public sealed class DebugMcpProfileLoader
         IMachineProfileLoader loader,
         SandboxPathGuard sandbox)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(loader);
+        ArgumentNullException.ThrowIfNull(sandbox);
         this.context = context;
         this.session = session;
         this.loader = loader;
