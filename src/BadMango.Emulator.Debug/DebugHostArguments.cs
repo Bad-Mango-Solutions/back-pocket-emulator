@@ -4,13 +4,23 @@
 
 namespace BadMango.Emulator.Debug;
 
+using BadMango.Emulator.Debug.Infrastructure;
+
 /// <summary>
 /// Host flags consumed before the generic host and the REPL see the command line.
 /// </summary>
 /// <remarks>
-/// <see cref="HeadlessOption"/> is removed so later configuration parsing does not treat it as a
-/// key or bind the following argument as its value. <see cref="DumpAssembliesOption"/> is a
-/// diagnostic used by the headless smoke test.
+/// <para>
+/// Emudbg options are removed so later configuration parsing does not treat them as keys or bind
+/// the following argument as a value. <see cref="HeadlessOption"/> and <see cref="DumpAssembliesOption"/>
+/// are host flags. <see cref="DumpAssembliesOption"/> is a diagnostic used by the headless smoke test:
+/// it writes one loaded-assembly line after the REPL exits, which is how the test proves Avalonia
+/// stayed unloaded.
+/// </para>
+/// <para>
+/// The names come from <see cref="EmudbgOptionTable"/> and use that table's case-insensitive comparison,
+/// the same comparison <see cref="EmudbgOptions"/> uses.
+/// </para>
 /// </remarks>
 internal static class DebugHostArguments
 {
@@ -33,24 +43,47 @@ internal static class DebugHostArguments
     /// Returns a value indicating whether <paramref name="args"/> contains <paramref name="option"/>.
     /// </summary>
     /// <param name="args">The process arguments.</param>
-    /// <param name="option">The flag to look for, compared case-insensitively.</param>
+    /// <param name="option">The flag to look for, compared with <see cref="EmudbgOptionTable.Comparison"/>.</param>
     /// <returns><see langword="true"/> when the flag is present.</returns>
     public static bool Has(string[] args, string option)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrEmpty(option);
-        return args.Any(arg => arg.Equals(option, StringComparison.OrdinalIgnoreCase));
+        return args.Any(arg => arg.Equals(option, EmudbgOptionTable.Comparison));
     }
 
     /// <summary>
-    /// Returns <paramref name="args"/> with host flags removed, preserving every other argument.
+    /// Returns <paramref name="args"/> with emudbg host options removed.
     /// </summary>
     /// <param name="args">The process arguments.</param>
     /// <returns>The arguments the generic host should see.</returns>
     public static string[] WithoutHostOptions(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        return args.Where(static arg => !IsHostOption(arg)).ToArray();
+
+        var filtered = new List<string>(args.Length);
+        for (int i = 0; i < args.Length; i++)
+        {
+            string arg = args[i];
+            if (EmudbgOptionTable.TryMatchValueOption(arg, out _, out string? inline))
+            {
+                if (inline is null && i + 1 < args.Length)
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            if (EmudbgOptionTable.IsFlag(arg))
+            {
+                continue;
+            }
+
+            filtered.Add(arg);
+        }
+
+        return [.. filtered];
     }
 
     /// <summary>
@@ -63,8 +96,4 @@ internal static class DebugHostArguments
             Console.WriteLine(LoadedAssemblyPrefix + assembly.GetName().Name);
         }
     }
-
-    private static bool IsHostOption(string arg) =>
-        arg.Equals(HeadlessOption, StringComparison.OrdinalIgnoreCase)
-        || arg.Equals(DumpAssembliesOption, StringComparison.OrdinalIgnoreCase);
 }

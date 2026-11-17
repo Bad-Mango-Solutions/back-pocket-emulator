@@ -6,7 +6,7 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using System.Globalization;
 
-using BadMango.Emulator.Core;
+using BadMango.Emulator.Debug.Abstractions;
 
 /// <summary>
 /// Disassembles memory contents into assembly instructions.
@@ -24,12 +24,27 @@ public sealed class DasmCommand : CommandHandlerBase, ICommandHelp
 {
     private const int DefaultInstructionCount = 16;
 
+    private readonly IDebugSession? session;
+    private readonly IDebugOutputRenderer renderer;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="DasmCommand"/> class.
     /// </summary>
     public DasmCommand()
+        : this(null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DasmCommand"/> class that reads the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    public DasmCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
         : base("dasm", "Disassemble memory contents")
     {
+        this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -81,54 +96,30 @@ public sealed class DasmCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error("Debug context required for this command.");
         }
 
-        if (debugContext.Disassembler is null)
-        {
-            return CommandResult.Error("No disassembler attached to debug context.");
-        }
-
-        // Parse options
         var options = ParseOptions(debugContext, args);
-
         if (!options.Success)
         {
             return CommandResult.Error(options.ErrorMessage ?? "Invalid arguments.");
         }
 
+        int count = options.UseInstructionCount
+            ? options.InstructionCount
+            : Math.Max(1, options.UseRange ? (int)(options.EndAddress - options.StartAddress) : options.ByteCount);
+
         try
         {
-            IReadOnlyList<DisassembledInstruction> instructions;
-
-            if (options.UseRange)
-            {
-                instructions = debugContext.Disassembler.DisassembleRange(options.StartAddress, options.EndAddress);
-            }
-            else if (options.UseInstructionCount)
-            {
-                instructions = debugContext.Disassembler.DisassembleInstructions(options.StartAddress, options.InstructionCount);
-            }
-            else
-            {
-                instructions = debugContext.Disassembler.Disassemble(options.StartAddress, options.ByteCount);
-            }
-
-            FormatDisassembly(debugContext.Output, instructions);
-
+            IReadOnlyList<DisassemblyLine> lines = DebugSessions.Require(this.session, debugContext)
+                .Disassemble(options.StartAddress, count);
+            this.renderer.WriteDisassembly(debugContext.Output, lines);
             return CommandResult.Ok();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return CommandResult.Error(ex.Message);
         }
         catch (ArgumentException ex)
         {
             return CommandResult.Error($"Disassembly error: {ex.Message}");
-        }
-    }
-
-    private static void FormatDisassembly(TextWriter output, IReadOnlyList<DisassembledInstruction> instructions)
-    {
-        output.WriteLine($"Disassembly: {instructions.Count} instruction(s)");
-        output.WriteLine();
-
-        foreach (var instruction in instructions)
-        {
-            output.WriteLine($"${instruction.Address:X4}:  {instruction.FormatBytes(),-12} {instruction.FormatInstruction()}");
         }
     }
 

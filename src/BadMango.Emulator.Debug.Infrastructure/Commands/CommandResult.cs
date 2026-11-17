@@ -19,11 +19,13 @@ public sealed class CommandResult
     /// <param name="success">Indicates whether the command succeeded.</param>
     /// <param name="message">An optional message describing the result.</param>
     /// <param name="shouldExit">Indicates whether the REPL should exit.</param>
-    private CommandResult(bool success, string? message, bool shouldExit)
+    /// <param name="failureExitCode">The process exit code used when <paramref name="success"/> is false.</param>
+    private CommandResult(bool success, string? message, bool shouldExit, int failureExitCode = 1)
     {
         this.Success = success;
         this.Message = message;
         this.ShouldExit = shouldExit;
+        this.ExitCode = success ? 0 : failureExitCode;
     }
 
     /// <summary>
@@ -40,6 +42,11 @@ public sealed class CommandResult
     /// Gets a value indicating whether the REPL should exit after this command.
     /// </summary>
     public bool ShouldExit { get; }
+
+    /// <summary>
+    /// Gets the process exit code for this result. Success is 0, a usage error is 2, and any other failure is 1.
+    /// </summary>
+    public int ExitCode { get; }
 
     /// <summary>
     /// Creates a successful result with no message.
@@ -60,6 +67,13 @@ public sealed class CommandResult
     /// <param name="message">The error message to display.</param>
     /// <returns>A failed <see cref="CommandResult"/>.</returns>
     public static CommandResult Error(string message) => new(false, message, false);
+
+    /// <summary>
+    /// Creates a usage-error result. The process should exit with code 2.
+    /// </summary>
+    /// <param name="message">The usage error to display.</param>
+    /// <returns>A failed <see cref="CommandResult"/> with exit code 2.</returns>
+    public static CommandResult UsageError(string message) => new(false, message, false, 2);
 
     /// <summary>
     /// Creates a result that signals the REPL to exit.

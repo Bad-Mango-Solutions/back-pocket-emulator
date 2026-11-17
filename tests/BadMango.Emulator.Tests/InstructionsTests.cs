@@ -45,8 +45,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.LDA(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xA9);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x00));
@@ -65,8 +64,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x00, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.LDA(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xA9);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x80));
@@ -85,8 +83,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x00, p: FlagZ | FlagN, cycles: 10);
 
         // Act
-        var handler = Instructions.LDA(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xA9);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x42));
@@ -109,8 +106,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.LDX(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xA2);
 
         // Assert
         Assert.That(Cpu.Registers.X.GetByte(), Is.EqualTo(0x00));
@@ -129,8 +125,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0x00, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.LDX(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xA2);
 
         // Assert
         Assert.That(Cpu.Registers.X.GetByte(), Is.EqualTo(0x90));
@@ -152,8 +147,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, y: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.LDY(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xA0);
 
         // Assert
         Assert.That(Cpu.Registers.Y.GetByte(), Is.EqualTo(0x00));
@@ -171,8 +165,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, y: 0x00, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.LDY(AddressingModes.Immediate);
-        handler(Cpu);
+        ExecuteOpcode(0xA0);
 
         // Assert
         Assert.That(Cpu.Registers.Y.GetByte(), Is.EqualTo(0xA0));
@@ -194,8 +187,7 @@ public class InstructionsTests : CpuTestBase
         Write(0x1000, 0x50); // ZP address
 
         // Act
-        var handler = Instructions.STA(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x85);
 
         // Assert
         Assert.That(Read(0x0050), Is.EqualTo(0x42));
@@ -212,8 +204,7 @@ public class InstructionsTests : CpuTestBase
         Write(0x1000, 0x60); // ZP address
 
         // Act
-        var handler = Instructions.STA(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x85);
 
         // Assert
         Assert.That(Cpu.Registers.P, Is.EqualTo(FlagZ | FlagN), "Flags should not be modified");

@@ -73,6 +73,27 @@ public class DebugAbstractionsJsonGoldenTests
     }
 
     /// <summary>
+    /// Confirms a parallel fault mask is emitted and readable bytes stay in <c>data</c>.
+    /// Kind 1 is Unmapped. Faulted data bytes are the placeholder 0.
+    /// </summary>
+    [Test]
+    public void MemoryBlock_WithFaults_SerializesMask()
+    {
+        var value = new MemoryBlock(0x7FFE, 4, [0x41, 0x42, 0x00, 0x00], Faults: [0x00, 0x00, 0x01, 0x01]);
+
+        var json = JsonSerializer.Serialize(value, DebugSessionJsonContext.Default.MemoryBlock);
+
+        Assert.That(json, Is.EqualTo("""
+{
+  "address": 32766,
+  "length": 4,
+  "data": "41420000",
+  "faults": "00000101"
+}
+"""));
+    }
+
+    /// <summary>
     /// Confirms the disassembly line records render a compact instruction summary.
     /// </summary>
     [Test]

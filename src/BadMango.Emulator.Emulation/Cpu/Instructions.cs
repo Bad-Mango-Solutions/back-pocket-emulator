@@ -7,6 +7,7 @@ namespace BadMango.Emulator.Emulation.Cpu;
 
 using Core;
 using Core.Cpu;
+using Core.Interfaces.Cpu;
 
 /// <summary>
 /// Provides instruction implementations that compose with addressing modes.
@@ -20,7 +21,7 @@ using Core.Cpu;
 /// <para>
 /// This partial class is split across multiple files by instruction category:
 /// <list type="bullet">
-/// <item><description><c>Instructions.cs</c> - Load/Store, NOP, BRK</description></item>
+/// <item><description><c>Instructions.cs</c> - Load/Store direct dispatch (LDA, LDX, LDY, STA, STX, STY, STZ), NOP, BRK</description></item>
 /// <item><description><c>Instructions.Flags.cs</c> - Flag manipulation (CLC, SEC, CLI, SEI, CLD, SED, CLV)</description></item>
 /// <item><description><c>Instructions.Transfer.cs</c> - Register transfers (TAX, TAY, TXA, TYA, TXS, TSX)</description></item>
 /// <item><description><c>Instructions.Stack.cs</c> - Stack operations (PHA, PHP, PLA, PLP, PHX, PLX, PHY, PLY)</description></item>
@@ -30,158 +31,122 @@ using Core.Cpu;
 /// <item><description><c>Instructions.Logical.cs</c> - Logical operations (AND, ORA, EOR, BIT)</description></item>
 /// <item><description><c>Instructions.Shift.cs</c> - Shifts and rotates (ASL, LSR, ROL, ROR)</description></item>
 /// <item><description><c>Instructions.Compare.cs</c> - Comparisons (CMP, CPX, CPY)</description></item>
-/// <item><description><c>Instructions.65C02.cs</c> - 65C02-specific (STZ, TSB, TRB, WAI, STP)</description></item>
+/// <item><description><c>Instructions.65C02.cs</c> - 65C02-specific (TSB, TRB, WAI, STP). STZ lives with the other stores.</description></item>
 /// </list>
 /// </para>
 /// </remarks>
 public static partial class Instructions
 {
-    /// <summary>
-    /// LDA - Load Accumulator instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes LDA with the given addressing mode.</returns>
-    public static OpcodeHandler LDA(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            byte opCycles = 0;
-            Addr address = addressingMode(cpu);
-            byte size = cpu.Registers.GetAccumulatorSize();
-            var value = cpu.ReadValue(address, size);
-            opCycles++; // Memory read cycle
+    /// <summary>Cached direct-dispatch delegate for LDA immediate.</summary>
+    internal static readonly OpcodeDispatch LDAImmediateDispatch = DispatchLDAImmediate;
 
-            if (cpu.Trace.AddressingMode == CpuAddressingModes.Immediate)
-            {
-                var operands = cpu.Trace.Operands;
-                operands[0] = (byte)(value & 0xff);
-                cpu.Trace = cpu.Trace with
-                {
-                    OperandSize = (byte)(size / 8),
-                    Operands = operands,
-                };
-            }
+    /// <summary>Cached direct-dispatch delegate for LDA zero page.</summary>
+    internal static readonly OpcodeDispatch LDAZeroPageDispatch = DispatchLDAZeroPage;
 
-            cpu.Registers.TCU += opCycles;
-            cpu.Registers.P.SetZeroAndNegative(value, size);
-            cpu.Registers.A.SetValue(value, size);
-        };
-    }
+    /// <summary>Cached direct-dispatch delegate for LDA zero page,X.</summary>
+    internal static readonly OpcodeDispatch LDAZeroPageXDispatch = DispatchLDAZeroPageX;
 
-    /// <summary>
-    /// LDX - Load X Register instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes LDX with the given addressing mode.</returns>
-    public static OpcodeHandler LDX(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            byte opCycles = 0;
-            Addr address = addressingMode(cpu);
-            byte size = cpu.Registers.GetIndexSize();
-            var value = cpu.ReadValue(address, size);
-            opCycles++; // Memory read cycle
+    /// <summary>Cached direct-dispatch delegate for LDA absolute.</summary>
+    internal static readonly OpcodeDispatch LDAAbsoluteDispatch = DispatchLDAAbsolute;
 
-            if (cpu.Trace.AddressingMode == CpuAddressingModes.Immediate)
-            {
-                var operands = cpu.Trace.Operands;
-                operands[0] = (byte)(value & 0xff);
-                cpu.Trace = cpu.Trace with
-                {
-                    OperandSize = (byte)(size / 8),
-                    Operands = operands,
-                };
-            }
+    /// <summary>Cached direct-dispatch delegate for LDA absolute,X.</summary>
+    internal static readonly OpcodeDispatch LDAAbsoluteXDispatch = DispatchLDAAbsoluteX;
 
-            cpu.Registers.TCU += opCycles;
-            cpu.Registers.P.SetZeroAndNegative(value, size);
-            cpu.Registers.X.SetValue(value, size);
-        };
-    }
+    /// <summary>Cached direct-dispatch delegate for LDA absolute,Y.</summary>
+    internal static readonly OpcodeDispatch LDAAbsoluteYDispatch = DispatchLDAAbsoluteY;
 
-    /// <summary>
-    /// LDY - Load Y Register instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes LDY with the given addressing mode.</returns>
-    public static OpcodeHandler LDY(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            byte opCycles = 0;
-            Addr address = addressingMode(cpu);
-            byte size = cpu.Registers.GetIndexSize();
-            var value = cpu.ReadValue(address, size);
-            opCycles++; // Memory read cycle
+    /// <summary>Cached direct-dispatch delegate for LDA (zero page,X).</summary>
+    internal static readonly OpcodeDispatch LDAIndirectXDispatch = DispatchLDAIndirectX;
 
-            if (cpu.Trace.AddressingMode == CpuAddressingModes.Immediate)
-            {
-                var operands = cpu.Trace.Operands;
-                operands[0] = (byte)(value & 0xff);
-                cpu.Trace = cpu.Trace with
-                {
-                    OperandSize = (byte)(size / 8),
-                    Operands = operands,
-                };
-            }
+    /// <summary>Cached direct-dispatch delegate for LDA (zero page),Y.</summary>
+    internal static readonly OpcodeDispatch LDAIndirectYDispatch = DispatchLDAIndirectY;
 
-            cpu.Registers.TCU += opCycles;
-            cpu.Registers.P.SetZeroAndNegative(value, size);
-            cpu.Registers.Y.SetValue(value, size);
-        };
-    }
+    /// <summary>Cached direct-dispatch delegate for LDA (zero page).</summary>
+    internal static readonly OpcodeDispatch LDAZeroPageIndirectDispatch = DispatchLDAZeroPageIndirect;
 
-    /// <summary>
-    /// STA - Store Accumulator instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes STA with the given addressing mode.</returns>
-    public static OpcodeHandler STA(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            Addr address = addressingMode(cpu);
-            byte size = cpu.Registers.GetAccumulatorSize();
-            cpu.WriteValue(address, cpu.Registers.A.GetValue(size), size);
+    /// <summary>Cached direct-dispatch delegate for LDX immediate.</summary>
+    internal static readonly OpcodeDispatch LDXImmediateDispatch = DispatchLDXImmediate;
 
-            cpu.Registers.TCU += 1; // Memory write cycle
-        };
-    }
+    /// <summary>Cached direct-dispatch delegate for LDX zero page.</summary>
+    internal static readonly OpcodeDispatch LDXZeroPageDispatch = DispatchLDXZeroPage;
 
-    /// <summary>
-    /// STX - Store X Register instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes STX with the given addressing mode.</returns>
-    public static OpcodeHandler STX(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            Addr address = addressingMode(cpu);
-            byte size = cpu.Registers.GetIndexSize();
-            cpu.WriteValue(address, cpu.Registers.X.GetValue(size), size);
+    /// <summary>Cached direct-dispatch delegate for LDX zero page,Y.</summary>
+    internal static readonly OpcodeDispatch LDXZeroPageYDispatch = DispatchLDXZeroPageY;
 
-            cpu.Registers.TCU += 1; // Memory write cycle
-        };
-    }
+    /// <summary>Cached direct-dispatch delegate for LDX absolute.</summary>
+    internal static readonly OpcodeDispatch LDXAbsoluteDispatch = DispatchLDXAbsolute;
 
-    /// <summary>
-    /// STY - Store Y Register instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes STY with the given addressing mode.</returns>
-    public static OpcodeHandler STY(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            Addr address = addressingMode(cpu);
-            byte size = cpu.Registers.GetIndexSize();
-            cpu.WriteValue(address, cpu.Registers.Y.GetValue(size), size);
+    /// <summary>Cached direct-dispatch delegate for LDX absolute,Y.</summary>
+    internal static readonly OpcodeDispatch LDXAbsoluteYDispatch = DispatchLDXAbsoluteY;
 
-            cpu.Registers.TCU += 1; // Memory write cycle
-        };
-    }
+    /// <summary>Cached direct-dispatch delegate for LDY immediate.</summary>
+    internal static readonly OpcodeDispatch LDYImmediateDispatch = DispatchLDYImmediate;
+
+    /// <summary>Cached direct-dispatch delegate for LDY zero page.</summary>
+    internal static readonly OpcodeDispatch LDYZeroPageDispatch = DispatchLDYZeroPage;
+
+    /// <summary>Cached direct-dispatch delegate for LDY zero page,X.</summary>
+    internal static readonly OpcodeDispatch LDYZeroPageXDispatch = DispatchLDYZeroPageX;
+
+    /// <summary>Cached direct-dispatch delegate for LDY absolute.</summary>
+    internal static readonly OpcodeDispatch LDYAbsoluteDispatch = DispatchLDYAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for LDY absolute,X.</summary>
+    internal static readonly OpcodeDispatch LDYAbsoluteXDispatch = DispatchLDYAbsoluteX;
+
+    /// <summary>Cached direct-dispatch delegate for STA zero page.</summary>
+    internal static readonly OpcodeDispatch STAZeroPageDispatch = DispatchSTAZeroPage;
+
+    /// <summary>Cached direct-dispatch delegate for STA zero page,X.</summary>
+    internal static readonly OpcodeDispatch STAZeroPageXDispatch = DispatchSTAZeroPageX;
+
+    /// <summary>Cached direct-dispatch delegate for STA absolute.</summary>
+    internal static readonly OpcodeDispatch STAAbsoluteDispatch = DispatchSTAAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for STA absolute,X.</summary>
+    internal static readonly OpcodeDispatch STAAbsoluteXDispatch = DispatchSTAAbsoluteX;
+
+    /// <summary>Cached direct-dispatch delegate for STA absolute,Y.</summary>
+    internal static readonly OpcodeDispatch STAAbsoluteYDispatch = DispatchSTAAbsoluteY;
+
+    /// <summary>Cached direct-dispatch delegate for STA (zero page,X).</summary>
+    internal static readonly OpcodeDispatch STAIndirectXDispatch = DispatchSTAIndirectX;
+
+    /// <summary>Cached direct-dispatch delegate for STA (zero page),Y.</summary>
+    internal static readonly OpcodeDispatch STAIndirectYDispatch = DispatchSTAIndirectY;
+
+    /// <summary>Cached direct-dispatch delegate for STA (zero page).</summary>
+    internal static readonly OpcodeDispatch STAZeroPageIndirectDispatch = DispatchSTAZeroPageIndirect;
+
+    /// <summary>Cached direct-dispatch delegate for STX zero page.</summary>
+    internal static readonly OpcodeDispatch STXZeroPageDispatch = DispatchSTXZeroPage;
+
+    /// <summary>Cached direct-dispatch delegate for STX zero page,Y.</summary>
+    internal static readonly OpcodeDispatch STXZeroPageYDispatch = DispatchSTXZeroPageY;
+
+    /// <summary>Cached direct-dispatch delegate for STX absolute.</summary>
+    internal static readonly OpcodeDispatch STXAbsoluteDispatch = DispatchSTXAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for STY zero page.</summary>
+    internal static readonly OpcodeDispatch STYZeroPageDispatch = DispatchSTYZeroPage;
+
+    /// <summary>Cached direct-dispatch delegate for STY zero page,X.</summary>
+    internal static readonly OpcodeDispatch STYZeroPageXDispatch = DispatchSTYZeroPageX;
+
+    /// <summary>Cached direct-dispatch delegate for STY absolute.</summary>
+    internal static readonly OpcodeDispatch STYAbsoluteDispatch = DispatchSTYAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for STZ zero page.</summary>
+    internal static readonly OpcodeDispatch STZZeroPageDispatch = DispatchSTZZeroPage;
+
+    /// <summary>Cached direct-dispatch delegate for STZ zero page,X.</summary>
+    internal static readonly OpcodeDispatch STZZeroPageXDispatch = DispatchSTZZeroPageX;
+
+    /// <summary>Cached direct-dispatch delegate for STZ absolute.</summary>
+    internal static readonly OpcodeDispatch STZAbsoluteDispatch = DispatchSTZAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for STZ absolute,X.</summary>
+    internal static readonly OpcodeDispatch STZAbsoluteXDispatch = DispatchSTZAbsoluteX;
 
     /// <summary>
     /// NOP - No Operation instruction.
@@ -251,5 +216,193 @@ public static partial class Instructions
 
             cpu.Registers.TCU += opCycles;
         };
+    }
+
+    private static void DispatchLDAImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDA<ImmediateMode>(cpu);
+
+    private static void DispatchLDAZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDA<ZeroPageMode>(cpu);
+
+    private static void DispatchLDAZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpLDA<ZeroPageXMode>(cpu);
+
+    private static void DispatchLDAAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDA<AbsoluteMode>(cpu);
+
+    private static void DispatchLDAAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpLDA<AbsoluteXMode>(cpu);
+
+    private static void DispatchLDAAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpLDA<AbsoluteYMode>(cpu);
+
+    private static void DispatchLDAIndirectX(ICpu cpu, in OpcodeEntry entry) => OpLDA<IndirectXMode>(cpu);
+
+    private static void DispatchLDAIndirectY(ICpu cpu, in OpcodeEntry entry) => OpLDA<IndirectYMode>(cpu);
+
+    private static void DispatchLDAZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpLDA<ZeroPageIndirectMode>(cpu);
+
+    private static void DispatchLDXImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDX<ImmediateMode>(cpu);
+
+    private static void DispatchLDXZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDX<ZeroPageMode>(cpu);
+
+    private static void DispatchLDXZeroPageY(ICpu cpu, in OpcodeEntry entry) => OpLDX<ZeroPageYMode>(cpu);
+
+    private static void DispatchLDXAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDX<AbsoluteMode>(cpu);
+
+    private static void DispatchLDXAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpLDX<AbsoluteYMode>(cpu);
+
+    private static void DispatchLDYImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDY<ImmediateMode>(cpu);
+
+    private static void DispatchLDYZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDY<ZeroPageMode>(cpu);
+
+    private static void DispatchLDYZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpLDY<ZeroPageXMode>(cpu);
+
+    private static void DispatchLDYAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDY<AbsoluteMode>(cpu);
+
+    private static void DispatchLDYAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpLDY<AbsoluteXMode>(cpu);
+
+    private static void DispatchSTAZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTA<ZeroPageMode>(cpu);
+
+    private static void DispatchSTAZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTA<ZeroPageXMode>(cpu);
+
+    private static void DispatchSTAAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTA<AbsoluteMode>(cpu);
+
+    private static void DispatchSTAAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpSTA<AbsoluteXWriteMode>(cpu);
+
+    private static void DispatchSTAAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpSTA<AbsoluteYWriteMode>(cpu);
+
+    private static void DispatchSTAIndirectX(ICpu cpu, in OpcodeEntry entry) => OpSTA<IndirectXMode>(cpu);
+
+    private static void DispatchSTAIndirectY(ICpu cpu, in OpcodeEntry entry) => OpSTA<IndirectYWriteMode>(cpu);
+
+    private static void DispatchSTAZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpSTA<ZeroPageIndirectMode>(cpu);
+
+    private static void DispatchSTXZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTX<ZeroPageMode>(cpu);
+
+    private static void DispatchSTXZeroPageY(ICpu cpu, in OpcodeEntry entry) => OpSTX<ZeroPageYMode>(cpu);
+
+    private static void DispatchSTXAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTX<AbsoluteMode>(cpu);
+
+    private static void DispatchSTYZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTY<ZeroPageMode>(cpu);
+
+    private static void DispatchSTYZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTY<ZeroPageXMode>(cpu);
+
+    private static void DispatchSTYAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTY<AbsoluteMode>(cpu);
+
+    private static void DispatchSTZZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTZ<ZeroPageMode>(cpu);
+
+    private static void DispatchSTZZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTZ<ZeroPageXMode>(cpu);
+
+    private static void DispatchSTZAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTZ<AbsoluteMode>(cpu);
+
+    private static void DispatchSTZAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpSTZ<AbsoluteXWriteMode>(cpu);
+
+    private static void OpLDA<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        byte opCycles = 0;
+        Addr address = TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetAccumulatorSize();
+        var value = cpu.ReadValue(address, size);
+        opCycles++; // Memory read cycle
+
+        if (cpu.Trace.AddressingMode == CpuAddressingModes.Immediate)
+        {
+            var operands = cpu.Trace.Operands;
+            operands[0] = (byte)(value & 0xff);
+            cpu.Trace = cpu.Trace with
+            {
+                OperandSize = (byte)(size / 8),
+                Operands = operands,
+            };
+        }
+
+        cpu.Registers.TCU += opCycles;
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.A.SetValue(value, size);
+    }
+
+    private static void OpLDX<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        byte opCycles = 0;
+        Addr address = TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        var value = cpu.ReadValue(address, size);
+        opCycles++; // Memory read cycle
+
+        if (cpu.Trace.AddressingMode == CpuAddressingModes.Immediate)
+        {
+            var operands = cpu.Trace.Operands;
+            operands[0] = (byte)(value & 0xff);
+            cpu.Trace = cpu.Trace with
+            {
+                OperandSize = (byte)(size / 8),
+                Operands = operands,
+            };
+        }
+
+        cpu.Registers.TCU += opCycles;
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.X.SetValue(value, size);
+    }
+
+    private static void OpLDY<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        byte opCycles = 0;
+        Addr address = TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        var value = cpu.ReadValue(address, size);
+        opCycles++; // Memory read cycle
+
+        if (cpu.Trace.AddressingMode == CpuAddressingModes.Immediate)
+        {
+            var operands = cpu.Trace.Operands;
+            operands[0] = (byte)(value & 0xff);
+            cpu.Trace = cpu.Trace with
+            {
+                OperandSize = (byte)(size / 8),
+                Operands = operands,
+            };
+        }
+
+        cpu.Registers.TCU += opCycles;
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.Y.SetValue(value, size);
+    }
+
+    private static void OpSTA<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        Addr address = TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetAccumulatorSize();
+        cpu.WriteValue(address, cpu.Registers.A.GetValue(size), size);
+
+        cpu.Registers.TCU += 1; // Memory write cycle
+    }
+
+    private static void OpSTX<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        Addr address = TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        cpu.WriteValue(address, cpu.Registers.X.GetValue(size), size);
+
+        cpu.Registers.TCU += 1; // Memory write cycle
+    }
+
+    private static void OpSTY<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        Addr address = TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        cpu.WriteValue(address, cpu.Registers.Y.GetValue(size), size);
+
+        cpu.Registers.TCU += 1; // Memory write cycle
+    }
+
+    private static void OpSTZ<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        Addr address = TMode.Resolve(cpu);
+        cpu.Write8(address, 0x00);
+
+        cpu.Registers.TCU += 1; // Memory write
     }
 }

@@ -8,26 +8,10 @@ namespace BadMango.Emulator.Emulation.Cpu;
 using Core.Cpu;
 
 /// <content>
-/// 65C02-specific instructions (STZ, TSB, TRB, WAI, STP).
+/// 65C02-specific instructions (TSB, TRB, WAI, STP). STZ is dispatched with the other stores.
 /// </content>
 public static partial class Instructions
 {
-    /// <summary>
-    /// STZ - Store Zero instruction (65C02 specific).
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes STZ with the given addressing mode.</returns>
-    public static OpcodeHandler STZ(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            Addr address = addressingMode(cpu);
-            cpu.Write8(address, 0x00);
-
-            cpu.Registers.TCU += 1; // Memory write
-        };
-    }
-
     /// <summary>
     /// TSB - Test and Set Bits instruction (65C02 specific).
     /// </summary>

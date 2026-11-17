@@ -831,8 +831,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0x42, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.STX(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x86);
 
         // Assert
         Assert.That(Read(0x50), Is.EqualTo(0x42));
@@ -849,8 +848,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, y: 0x55, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.STY(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x84);
 
         // Assert
         Assert.That(Read(0x50), Is.EqualTo(0x55));
@@ -872,8 +870,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.STZ(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x64);
 
         // Assert
         Assert.That(Read(0x50), Is.EqualTo(0x00));
