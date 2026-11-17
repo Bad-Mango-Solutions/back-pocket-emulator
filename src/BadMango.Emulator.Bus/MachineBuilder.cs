@@ -900,15 +900,16 @@ public sealed partial class MachineBuilder
     /// </remarks>
     public IMachine Build()
     {
-        // Create infrastructure
+        // Create infrastructure. The signal bus is constructed immediately before the
+        // memory bus so a latched fault can assert SignalLine.Abort on that instance.
         var scheduler = new Scheduler();
-        var signals = new SignalBus();
         var devices = new DeviceRegistry();
 
         // Wire up the bus fault ring + logger so the bus can record and
         // describe faults instead of silently returning floating-bus values.
         var faultRing = new BusFaultRing(faultRingCapacity);
-        var bus = new MainBus(addressSpaceBits, logger, faultRing);
+        var signals = new SignalBus();
+        var bus = new MainBus(addressSpaceBits, logger, faultRing, signals);
 
         // Apply memory configurations (base RAM mappings, device layer setup)
         foreach (var configure in memoryConfigurations)

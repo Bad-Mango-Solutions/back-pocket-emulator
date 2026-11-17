@@ -64,4 +64,20 @@ public enum SignalLine : byte
     /// cycle and wait for the DMA transfer to complete.
     /// </remarks>
     DmaReq,
+
+    /// <summary>
+    /// Abort signal, asserted while a non-debug bus fault is latched.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The memory bus asserts this line when fault status transitions from zero to
+    /// nonzero, and deasserts it when status returns to zero. A second fault while
+    /// status is already latched does not assert again.
+    /// </para>
+    /// <para>
+    /// On the 65C02 the line is level-sensitive attention, not a vector. The default
+    /// reaction ignores it. A 65816 uses the bank-0 abort vectors instead.
+    /// </para>
+    /// </remarks>
+    Abort,
 }

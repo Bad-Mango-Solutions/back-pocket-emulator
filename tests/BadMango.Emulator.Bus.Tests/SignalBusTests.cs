@@ -28,6 +28,8 @@ public class SignalBusTests
             Assert.That(bus.IsAsserted(SignalLine.NMI), Is.False);
             Assert.That(bus.IsAsserted(SignalLine.RDY), Is.False);
             Assert.That(bus.IsAsserted(SignalLine.DmaReq), Is.False);
+            Assert.That(bus.IsAsserted(SignalLine.Abort), Is.False);
+            Assert.That(bus.AttentionPending, Is.False);
         });
     }
 
@@ -210,6 +212,7 @@ public class SignalBusTests
         bus.Assert(SignalLine.NMI, deviceId: 2, cycle: Cycle.Zero);
         bus.Assert(SignalLine.RDY, deviceId: 3, cycle: Cycle.Zero);
         bus.Assert(SignalLine.DmaReq, deviceId: 4, cycle: Cycle.Zero);
+        bus.Assert(SignalLine.Abort, deviceId: 5, cycle: Cycle.Zero);
 
         bus.Reset();
 
@@ -219,6 +222,8 @@ public class SignalBusTests
             Assert.That(bus.IsAsserted(SignalLine.NMI), Is.False);
             Assert.That(bus.IsAsserted(SignalLine.RDY), Is.False);
             Assert.That(bus.IsAsserted(SignalLine.DmaReq), Is.False);
+            Assert.That(bus.IsAsserted(SignalLine.Abort), Is.False);
+            Assert.That(bus.AttentionPending, Is.False);
         });
     }
 

@@ -7,6 +7,8 @@ namespace BadMango.Emulator.Bus;
 using System.Runtime.CompilerServices;
 
 using BadMango.Emulator.Core;
+using BadMango.Emulator.Core.Interfaces.Signaling;
+using BadMango.Emulator.Core.Signaling;
 
 /// <content>
 /// Fault-status and fault-address registers, and the private latch shared by every failing <c>Try*</c> path.
@@ -17,6 +19,11 @@ public sealed partial class MainBus
     /// Low byte of <see cref="FaultKind"/>. A 65C02 latch never stores the high byte.
     /// </summary>
     private const FaultKind LowByteMask = (FaultKind)0x00FF;
+
+    /// <summary>
+    /// Signal bus the machine gave this bus. <see langword="null"/> when a test omitted it.
+    /// </summary>
+    private readonly ISignalBus? signals;
 
     /// <summary>
     /// Latched fault status. Zero means no fault is latched.
@@ -63,6 +70,17 @@ public sealed partial class MainBus
     /// </summary>
     private ulong latchedCycle;
 
+    /// <summary>
+    /// <see langword="true"/> while this bus holds <see cref="SignalLine.Abort"/> asserted.
+    /// </summary>
+    private bool abortAsserted;
+
+    /// <summary>
+    /// <see cref="BusAccess.SourceId"/> used for the current abort assertion.
+    /// Deassert must use the same id or the line stays held.
+    /// </summary>
+    private int abortSourceId;
+
     /// <inheritdoc />
     public FaultKind FaultStatus => faultStatus;
 
@@ -98,13 +116,13 @@ public sealed partial class MainBus
     /// <inheritdoc />
     public void ClearFaultStatus()
     {
-        ClearFaultRegisters();
+        ClearFaultRegisters(latchedCycle);
     }
 
     /// <inheritdoc />
     public void OnResetAsserted(Cycle cycle)
     {
-        ClearFaultRegisters();
+        ClearFaultRegisters(cycle);
     }
 
     /// <inheritdoc />
@@ -114,18 +132,21 @@ public sealed partial class MainBus
     /// </remarks>
     public void OnResetReleased(Cycle cycle)
     {
-        ClearFaultRegisters();
+        ClearFaultRegisters(cycle);
     }
 
     /// <summary>
-    /// Zeroes the status, the address, and the private latch.
+    /// Zeroes the status, the address, and the private latch, and deasserts ABORT.
     /// </summary>
+    /// <param name="cycle">The cycle reported with the deassert. Host clear uses the latched cycle.</param>
     /// <remarks>
     /// Host clear and both edges of machine reset share this method. A successful access
-    /// and the CPU fast path do not call it.
+    /// and the CPU fast path do not call it. Clearing status to zero releases the assertion
+    /// this bus made. A bus with no signal bus only clears the registers.
     /// </remarks>
-    private void ClearFaultRegisters()
+    private void ClearFaultRegisters(ulong cycle)
     {
+        DeassertAbort(cycle);
         faultStatus = FaultKind.None;
         faultAddress = 0;
         latchedWidthBits = 0;
@@ -177,6 +198,44 @@ public sealed partial class MainBus
         latchedDeviceId = fault.DeviceId;
         latchedRegionTag = fault.RegionTag;
         latchedCycle = fault.Cycle;
+        AssertAbort(in access);
+    }
+
+    /// <summary>
+    /// Asserts <see cref="SignalLine.Abort"/> once for a newly latched fault.
+    /// </summary>
+    /// <param name="access">The access that latched. Its source id and cycle drive the line.</param>
+    /// <remarks>
+    /// Called only from <see cref="LatchFault"/> after status moves from zero to nonzero.
+    /// A second fault returns before this method. A null signal bus latches and does not throw.
+    /// </remarks>
+    private void AssertAbort(in BusAccess access)
+    {
+        if (signals is null || abortAsserted)
+        {
+            return;
+        }
+
+        abortSourceId = access.SourceId;
+        abortAsserted = true;
+        signals.Assert(SignalLine.Abort, access.SourceId, access.Cycle);
+    }
+
+    /// <summary>
+    /// Releases the abort assertion this bus holds, if any.
+    /// </summary>
+    /// <param name="cycle">The cycle passed to <see cref="ISignalBus.Deassert"/>.</param>
+    private void DeassertAbort(ulong cycle)
+    {
+        if (signals is null || !abortAsserted)
+        {
+            return;
+        }
+
+        int sourceId = abortSourceId;
+        abortAsserted = false;
+        abortSourceId = 0;
+        signals.Deassert(SignalLine.Abort, sourceId, cycle);
     }
 
     /// <summary>

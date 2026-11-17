@@ -45,7 +45,7 @@ using BadMango.Emulator.Core.Interfaces.Signaling;
 public sealed class SignalBus : ISignalBus
 {
     /// <summary>
-    /// <see cref="attention"/> bit set while an interrupt, RESET hold or RESET release edge is pending.
+    /// <see cref="attention"/> bit set while an interrupt, RESET hold, RESET release edge, or ABORT is pending.
     /// Only written on the machine thread.
     /// </summary>
     private const int SignalAttentionBit = 1;
@@ -63,9 +63,10 @@ public sealed class SignalBus : ISignalBus
     /// <summary>
     /// Cached attention word read by the CPU once per instruction. Bit
     /// <see cref="SignalAttentionBit"/> is <c>nmiEdgePending || IRQ asserted || RESET asserted ||
-    /// resetReleaseEdgePending</c>, maintained on every state change; bit <see cref="ServiceAttentionBit"/>
-    /// is set by <see cref="RequestService"/>. Both bits are updated atomically so a service request
-    /// posted from another thread is never lost when the machine thread updates the signal bit.
+    /// resetReleaseEdgePending || ABORT asserted</c>, maintained on every state change; bit
+    /// <see cref="ServiceAttentionBit"/> is set by <see cref="RequestService"/>. Both bits are updated
+    /// atomically so a service request posted from another thread is never lost when the machine thread
+    /// updates the signal bit.
     /// </summary>
     private int attention;
 
@@ -109,7 +110,7 @@ public sealed class SignalBus : ISignalBus
     /// <summary>
     /// Gets a value indicating whether the CPU has anything to service at the next instruction
     /// boundary: a pending interrupt (as <see cref="AnyInterruptPending"/>), an asserted RESET line,
-    /// an unconsumed RESET release edge, or a pending service request.
+    /// an unconsumed RESET release edge, an asserted ABORT line, or a pending service request.
     /// </summary>
     /// <remarks>
     /// This is the CPU's single per-instruction fast-path check. When it is <see langword="false"/>
@@ -270,7 +271,8 @@ public sealed class SignalBus : ISignalBus
         bool pending = nmiEdgePending
             || resetReleaseEdgePending
             || asserters[(int)SignalLine.IRQ].Count > 0
-            || asserters[(int)SignalLine.Reset].Count > 0;
+            || asserters[(int)SignalLine.Reset].Count > 0
+            || asserters[(int)SignalLine.Abort].Count > 0;
         bool current = (Volatile.Read(ref attention) & SignalAttentionBit) != 0;
         if (pending == current)
         {
