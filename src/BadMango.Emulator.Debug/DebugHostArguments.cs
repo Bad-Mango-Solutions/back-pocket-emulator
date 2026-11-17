@@ -7,11 +7,6 @@ namespace BadMango.Emulator.Debug;
 /// <summary>
 /// Host flags consumed before the generic host and the REPL see the command line.
 /// </summary>
-/// <remarks>
-/// <see cref="HeadlessOption"/> is removed so later configuration parsing does not treat it as a
-/// key or bind the following argument as its value. <see cref="DumpAssembliesOption"/> is a
-/// diagnostic used by the headless smoke test.
-/// </remarks>
 internal static class DebugHostArguments
 {
     /// <summary>
@@ -43,14 +38,52 @@ internal static class DebugHostArguments
     }
 
     /// <summary>
-    /// Returns <paramref name="args"/> with host flags removed, preserving every other argument.
+    /// Returns <paramref name="args"/> with emudbg host options removed.
     /// </summary>
     /// <param name="args">The process arguments.</param>
     /// <returns>The arguments the generic host should see.</returns>
     public static string[] WithoutHostOptions(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        return args.Where(static arg => !IsHostOption(arg)).ToArray();
+
+        var filtered = new List<string>(args.Length);
+        for (int i = 0; i < args.Length; i++)
+        {
+            string arg = args[i];
+
+            if (IsValueOption(arg, "--profile", "-p") ||
+                IsValueOption(arg, "--exec", "-e") ||
+                IsValueOption(arg, "--file", "-f") ||
+                IsValueOption(arg, "--max-cycles", null) ||
+                IsValueOption(arg, "--seed", null))
+            {
+                if (NeedsSeparateValue(arg) && i + 1 < args.Length)
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            if (IsFlagOption(arg, "--no-banner") ||
+                IsFlagOption(arg, "--json") ||
+                IsFlagOption(arg, "-j") ||
+                IsFlagOption(arg, "--agent") ||
+                IsFlagOption(arg, "--agent-mode") ||
+                IsFlagOption(arg, "--help") ||
+                IsFlagOption(arg, "-h") ||
+                IsFlagOption(arg, "-?") ||
+                IsFlagOption(arg, "/?") ||
+                IsFlagOption(arg, HeadlessOption) ||
+                IsFlagOption(arg, DumpAssembliesOption))
+            {
+                continue;
+            }
+
+            filtered.Add(arg);
+        }
+
+        return [.. filtered];
     }
 
     /// <summary>
@@ -64,7 +97,29 @@ internal static class DebugHostArguments
         }
     }
 
-    private static bool IsHostOption(string arg) =>
-        arg.Equals(HeadlessOption, StringComparison.OrdinalIgnoreCase)
-        || arg.Equals(DumpAssembliesOption, StringComparison.OrdinalIgnoreCase);
+    private static bool IsFlagOption(string arg, string option)
+        => arg.Equals(option, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsValueOption(string arg, string longName, string? shortName)
+    {
+        if (arg.Equals(longName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrEmpty(shortName) && arg.Equals(shortName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (arg.StartsWith(longName + "=", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrEmpty(shortName) && arg.StartsWith(shortName + "=", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool NeedsSeparateValue(string arg)
+        => !arg.Contains('=', StringComparison.Ordinal);
 }

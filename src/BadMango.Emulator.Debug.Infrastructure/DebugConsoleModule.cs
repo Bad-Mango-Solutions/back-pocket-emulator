@@ -69,6 +69,10 @@ public class DebugConsoleModule : Module
             .As<ICommandHandler>()
             .SingleInstance();
 
+        builder.RegisterType<RunUntilCommand>()
+            .As<ICommandHandler>()
+            .SingleInstance();
+
         builder.RegisterType<StopCommand>()
             .As<ICommandHandler>()
             .SingleInstance();
@@ -235,7 +239,10 @@ public class DebugConsoleModule : Module
         builder.Register(ctx =>
         {
             var loader = ctx.Resolve<IMachineProfileLoader>();
-            string profileName = GetUserDefaultProfileName();
+            var options = ctx.ResolveOptional<EmudbgOptions>();
+            string profileName = string.IsNullOrWhiteSpace(options?.Profile)
+                ? GetUserDefaultProfileName()
+                : options.Profile!;
 
             // Try to load the user's chosen default profile
             var profile = loader.LoadProfile(profileName);

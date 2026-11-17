@@ -49,6 +49,26 @@ public sealed class DebugRepl
     public bool ShowBanner { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether the REPL should display the prompt.
+    /// </summary>
+    public bool ShowPrompt { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether exit messages should be printed.
+    /// </summary>
+    public bool PrintExitMessage { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether this REPL should be treated as interactive.
+    /// </summary>
+    public bool? IsInteractive { get; set; }
+
+    /// <summary>
+    /// Gets the most recent command result processed by this REPL.
+    /// </summary>
+    public CommandResult LastCommandResult { get; private set; } = CommandResult.Ok();
+
+    /// <summary>
     /// Creates a REPL with standard console I/O and default built-in commands.
     /// </summary>
     /// <param name="windowManager">
@@ -77,14 +97,22 @@ public sealed class DebugRepl
     /// </summary>
     public void Run()
     {
-        if (this.ShowBanner)
+        bool isInteractiveInput = this.IsInteractive ?? true;
+        bool effectiveShowBanner = this.ShowBanner && isInteractiveInput;
+        bool effectiveShowPrompt = this.ShowPrompt && isInteractiveInput;
+        bool effectivePrintExit = this.PrintExitMessage && isInteractiveInput;
+
+        if (effectiveShowBanner)
         {
             this.DisplayBanner();
         }
 
         while (true)
         {
-            this.context.Output.Write(this.prompt);
+            if (effectiveShowPrompt)
+            {
+                this.context.Output.Write(this.prompt);
+            }
 
             var line = this.input.ReadLine();
             if (line is null)
@@ -96,7 +124,7 @@ public sealed class DebugRepl
             var result = this.ProcessLine(line);
             if (result.ShouldExit)
             {
-                if (!string.IsNullOrEmpty(result.Message))
+                if (!string.IsNullOrEmpty(result.Message) && effectivePrintExit)
                 {
                     this.context.Output.WriteLine(result.Message);
                 }
@@ -104,6 +132,34 @@ public sealed class DebugRepl
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// Executes a sequence of command lines.
+    /// </summary>
+    /// <param name="commands">The command lines to execute.</param>
+    /// <returns>The final command result.</returns>
+    public CommandResult ExecuteBatch(IEnumerable<string> commands)
+    {
+        ArgumentNullException.ThrowIfNull(commands);
+
+        CommandResult last = CommandResult.Ok();
+        foreach (string raw in commands)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                continue;
+            }
+
+            last = this.ProcessLine(raw);
+            if (last.ShouldExit)
+            {
+                break;
+            }
+        }
+
+        this.LastCommandResult = last;
+        return last;
     }
 
     /// <summary>
@@ -120,6 +176,7 @@ public sealed class DebugRepl
         }
 
         var result = this.dispatcher.Dispatch(this.context, trimmed);
+        this.LastCommandResult = result;
 
         if (!string.IsNullOrEmpty(result.Message) && !result.ShouldExit)
         {

@@ -7,6 +7,7 @@ using Autofac.Extensions.DependencyInjection;
 
 using BadMango.Emulator.Debug;
 using BadMango.Emulator.Debug.Infrastructure;
+using BadMango.Emulator.Debug.Infrastructure.Commands;
 using BadMango.Emulator.Devices;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -21,11 +22,13 @@ using Serilog.Sinks.File;
 // .MinimumLevel.Override("BadMango.Emulator.Devices", LogEventLevel.Verbose)
 var debugLogEventStream = new DebugLogEventStream();
 
-// Host flags are consumed here. Passing them through to the generic host would let
-// configuration binding treat "--headless" as a key and the following token as its value.
-bool headless = DebugHostArguments.Has(args, DebugHostArguments.HeadlessOption);
+var options = EmudbgOptions.Parse(args);
 bool dumpAssemblies = DebugHostArguments.Has(args, DebugHostArguments.DumpAssembliesOption);
-string[] hostArgs = DebugHostArguments.WithoutHostOptions(args);
+
+if (options.AgentMode)
+{
+    options = options with { Headless = true, JsonOutput = true, NoBanner = true };
+}
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()
@@ -49,9 +52,29 @@ DeviceFactoryRegistry.LoggerFactory = deviceType => Log.Logger.ForContext(device
 
 try
 {
-    Log.Information(headless
+    if (options.ShowHelp)
+    {
+        PrintUsage();
+        return 0;
+    }
+
+    if (!string.IsNullOrWhiteSpace(options.ScriptFile) && !File.Exists(options.ScriptFile))
+    {
+        Console.WriteLine($"Error: Script file not found: {options.ScriptFile}");
+        return 1;
+    }
+
+    bool nonInteractive = options.IsNonInteractive || Console.IsInputRedirected;
+    if (nonInteractive)
+    {
+        options = options with { Headless = true, NoBanner = true };
+    }
+
+    Log.Information(options.Headless
         ? "Starting Emulator Debug Console (headless)"
         : "Starting Emulator Debug Console");
+
+    string[] hostArgs = DebugHostArguments.WithoutHostOptions(args);
 
     // Build the host. The headless branch never calls InteractiveUiRegistration.Register,
     // and that method is not inlined, so Avalonia and the debug UI assembly stay unloaded.
@@ -59,8 +82,9 @@ try
         .UseServiceProviderFactory(new AutofacServiceProviderFactory())
         .ConfigureContainer<ContainerBuilder>(builder =>
         {
+            builder.RegisterInstance(options).AsSelf().SingleInstance();
             builder.RegisterModule<DebugConsoleModule>();
-            if (!headless)
+            if (!options.Headless)
             {
                 InteractiveUiRegistration.Register(builder);
             }
@@ -76,11 +100,39 @@ try
     var repl = scope.ServiceProvider.GetRequiredService<DebugRepl>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger>();
 
+    repl.ShowBanner = !options.NoBanner;
+    if (nonInteractive || options.JsonOutput)
+    {
+        repl.ShowBanner = false;
+        repl.ShowPrompt = false;
+        repl.PrintExitMessage = false;
+        repl.IsInteractive = false;
+    }
+
     logger.Information("Debug console initialized");
-    repl.Run();
+
+    CommandResult lastResult;
+    if (!string.IsNullOrWhiteSpace(options.ExecCommands))
+    {
+        lastResult = repl.ExecuteBatch(options.GetExecCommandLines());
+    }
+    else if (!string.IsNullOrWhiteSpace(options.ScriptFile))
+    {
+        string[] commandLines = File.ReadAllLines(options.ScriptFile)
+            .Select(static line => line.Trim())
+            .Where(static line => !string.IsNullOrWhiteSpace(line) && !line.StartsWith('#'))
+            .ToArray();
+
+        lastResult = repl.ExecuteBatch(commandLines);
+    }
+    else
+    {
+        repl.Run();
+        lastResult = repl.LastCommandResult;
+    }
 
     logger.Information("Debug console exited normally");
-    return 0;
+    return lastResult.Success ? 0 : 1;
 }
 catch (Exception ex)
 {
@@ -96,4 +148,32 @@ finally
     }
 
     await Log.CloseAndFlushAsync();
+}
+
+static void PrintUsage()
+{
+    Console.WriteLine("""
+        emudbg - Emulator Debug Console
+
+        Usage:
+          emudbg [options]
+
+        Options:
+          -p, --profile <name>      Load the specified machine profile on startup
+          -e, --exec <commands>     Execute commands (semicolon/newline separated) and exit
+          -f, --file <path>         Execute commands from a script file and exit
+          --no-banner               Suppress the startup banner
+          --json, -j                Enable JSON output mode
+          --agent                   Agent mode (headless + json + non-interactive)
+          --headless                Disable interactive UI loading
+          --max-cycles <n>          Optional script cycle budget hint
+          --seed <n>                Optional deterministic seed for scripts
+          -h, --help                Show this help and exit
+
+        Examples:
+          emudbg --profile pocket2e-lite
+          emudbg --exec "boot;regs;step 20;regs;exit"
+          emudbg --file script.emudbg --no-banner
+          emudbg --agent --exec "switches;regions;exit"
+        """);
 }
