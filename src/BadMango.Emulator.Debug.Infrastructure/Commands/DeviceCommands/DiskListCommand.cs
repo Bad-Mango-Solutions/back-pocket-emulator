@@ -5,7 +5,7 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 
 using System.Globalization;
-using System.Text.Json;
+using System.Text;
 
 using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Devices;
@@ -17,7 +17,8 @@ using BadMango.Emulator.Devices;
 /// <para>
 /// Reads the live listing from <see cref="IMachineIoSession.ListDisks"/> so the console and the
 /// session API share one snapshot. One unreadable drive is reported on that drive's row and does
-/// not fail the rest of the command. JSON is written with <see cref="DebugSessionJsonContext"/>.
+/// not fail the rest of the command. JSON is an <c>emudbg/v1</c> envelope from
+/// <see cref="IDebugOutputRenderer"/>.
 /// </para>
 /// <para>
 /// Reports image paths exactly as the controller records them — typically the absolute resolved
@@ -28,12 +29,13 @@ using BadMango.Emulator.Devices;
 public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
 {
     private readonly IMachineIoSession? session;
+    private readonly IDebugOutputRenderer renderer;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DiskListCommand"/> class.
     /// </summary>
     public DiskListCommand()
-        : this(null)
+        : this(null, null)
     {
     }
 
@@ -43,9 +45,21 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
     /// </summary>
     /// <param name="session">The session to query, or <see langword="null"/> to open one from the command context.</param>
     public DiskListCommand(IMachineIoSession? session)
+        : this(session, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DiskListCommand"/> class that lists disks
+    /// through an existing session and renderer.
+    /// </summary>
+    /// <param name="session">The session to query, or <see langword="null"/> to open one from the command context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text unless <c>--json</c> is passed.</param>
+    public DiskListCommand(IMachineIoSession? session, IDebugOutputRenderer? renderer)
         : base("disk-list", "List installed disk controllers and per-drive mount state")
     {
         this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -117,24 +131,15 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
                 ? shared
                 : throw new InvalidOperationException("No machine I/O session is available."));
         IReadOnlyList<DiskControllerSnapshot> controllers = io.ListDisks();
-        if (emitJson)
-        {
-            string json = JsonSerializer.Serialize(
-                controllers,
-                DebugSessionJsonContext.Default.IReadOnlyListDiskControllerSnapshot);
-            context.Output.WriteLine(json);
-            return CommandResult.Ok();
-        }
-
-        var output = context.Output;
-        output.WriteLine();
-        output.WriteLine("Disk controllers:");
+        var text = new StringBuilder();
+        text.AppendLine();
+        text.AppendLine("Disk controllers:");
 
         for (int i = 0; i < controllers.Count; i++)
         {
             DiskControllerSnapshot controller = controllers[i];
-            output.WriteLine();
-            output.WriteLine(string.Format(
+            text.AppendLine();
+            text.AppendLine(string.Format(
                 CultureInfo.InvariantCulture,
                 "  Slot {0}: {1} ({2} drive{3})",
                 controller.Slot,
@@ -147,7 +152,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
                 DiskDriveSnapshot snap = controller.Drives[d];
                 if (snap.Error is not null)
                 {
-                    output.WriteLine(string.Format(
+                    text.AppendLine(string.Format(
                         CultureInfo.InvariantCulture,
                         "    Drive {0}: unreadable ({1})",
                         snap.Drive,
@@ -157,7 +162,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
 
                 if (!snap.HasMedia)
                 {
-                    output.WriteLine(string.Format(
+                    text.AppendLine(string.Format(
                         CultureInfo.InvariantCulture,
                         "    Drive {0}: empty (selected={1}, motor={2}, quarter-track={3})",
                         snap.Drive,
@@ -167,12 +172,12 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
                     continue;
                 }
 
-                output.WriteLine(string.Format(
+                text.AppendLine(string.Format(
                     CultureInfo.InvariantCulture,
                     "    Drive {0}: mounted '{1}'",
                     snap.Drive,
                     snap.MountedImagePath ?? "<unknown>"));
-                output.WriteLine(string.Format(
+                text.AppendLine(string.Format(
                     CultureInfo.InvariantCulture,
                     "      write-protect={0} selected={1} motor={2} quarter-track={3}",
                     YesNo(snap.WriteProtect),
@@ -181,7 +186,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
                     snap.QuarterTrack));
                 if (snap.Geometry is { } geom)
                 {
-                    output.WriteLine(string.Format(
+                    text.AppendLine(string.Format(
                         CultureInfo.InvariantCulture,
                         "      geometry: {0} tracks × {1} sectors × {2} bytes ({3}, {4} bytes total)",
                         geom.TrackCount,
@@ -195,11 +200,12 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
 
         if (controllers.Count == 0)
         {
-            output.WriteLine();
-            output.WriteLine("  No disk controllers installed.");
+            text.AppendLine();
+            text.AppendLine("  No disk controllers installed.");
         }
 
-        output.WriteLine();
+        text.AppendLine();
+        this.renderer.WriteDiskControllers(context.Output, controllers, text.ToString(), emitJson || this.renderer.JsonOutput);
         return CommandResult.Ok();
     }
 

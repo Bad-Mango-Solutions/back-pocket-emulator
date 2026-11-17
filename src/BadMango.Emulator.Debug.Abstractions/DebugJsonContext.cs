@@ -55,6 +55,7 @@ using System.Text.Json.Serialization;
 [JsonSerializable(typeof(DebugEnvelope<VideoStateSnapshot>))]
 [JsonSerializable(typeof(DebugEnvelope<TypeKeysReceipt>))]
 [JsonSerializable(typeof(DebugEnvelope<DiskControllerSnapshot>))]
+[JsonSerializable(typeof(DebugEnvelope<IReadOnlyList<DiskControllerSnapshot>>))]
 public partial class DebugSessionJsonContext : JsonSerializerContext
 {
 }

@@ -120,24 +120,33 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Each byte is a <c>TryRead8</c> debug read. A fault is stored in <see cref="MemoryBlock.Faults"/>
+    /// and the read continues. The bus reports the fault as a result, so a large unmapped span does
+    /// not throw once per byte.
+    /// </remarks>
     public MemoryBlock ReadMemory(uint address, int length)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
         var bus = this.RequireBus();
         byte[] data = new byte[length];
+        byte[] faults = new byte[length];
+        bool anyFault = false;
         for (int offset = 0; offset < length; offset++)
         {
             var access = CreateDebugReadAccess(address + (uint)offset);
             var read = bus.TryRead8(access);
             if (read.Failed)
             {
-                throw new InvalidOperationException($"Failed to read memory at ${access.Address:X8}: {read.Fault.Kind}.");
+                faults[offset] = (byte)read.Fault.Kind;
+                anyFault = true;
+                continue;
             }
 
             data[offset] = read.Value;
         }
 
-        return new(address, length, data);
+        return new(address, length, data, Faults: anyFault ? faults : null);
     }
 
     /// <inheritdoc />

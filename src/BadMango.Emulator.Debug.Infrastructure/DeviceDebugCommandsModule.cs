@@ -107,18 +107,32 @@ public class DeviceDebugCommandsModule : AutofacModule
     /// </summary>
     /// <param name="type">The type to check.</param>
     /// <returns>
-    /// <see langword="true"/> if the type has a constructor with a single
-    /// <see cref="IMachineIoSession"/> parameter; otherwise, <see langword="false"/>.
+    /// <see langword="true"/> if the type has a constructor whose first parameter is
+    /// <see cref="IMachineIoSession"/>; otherwise, <see langword="false"/>.
+    /// An optional <see cref="IDebugOutputRenderer"/> parameter may follow.
     /// </returns>
     private static bool HasSessionConstructor(Type type)
     {
-        return type.GetConstructors()
-            .Any(ctor =>
+        return type.GetConstructors().Any(IsSessionConstructor);
+    }
+
+    private static bool IsSessionConstructor(ConstructorInfo ctor)
+    {
+        var parameters = ctor.GetParameters();
+        if (parameters.Length == 0 || parameters[0].ParameterType != typeof(IMachineIoSession))
+        {
+            return false;
+        }
+
+        for (int i = 1; i < parameters.Length; i++)
+        {
+            if (parameters[i].ParameterType != typeof(IDebugOutputRenderer))
             {
-                var parameters = ctor.GetParameters();
-                return parameters.Length == 1 &&
-                       parameters[0].ParameterType == typeof(IMachineIoSession);
-            });
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -150,15 +164,19 @@ public class DeviceDebugCommandsModule : AutofacModule
         builder.Register(ctx =>
         {
             var session = ctx.ResolveOptional<IMachineIoSession>();
+            var renderer = ctx.ResolveOptional<IDebugOutputRenderer>();
             var constructor = commandType.GetConstructors()
-                .First(ctor =>
-                {
-                    var parameters = ctor.GetParameters();
-                    return parameters.Length == 1 &&
-                           parameters[0].ParameterType == typeof(IMachineIoSession);
-                });
+                .Where(IsSessionConstructor)
+                .OrderByDescending(ctor => ctor.GetParameters().Length)
+                .First();
+            object?[] arguments = new object?[constructor.GetParameters().Length];
+            var parameters = constructor.GetParameters();
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                arguments[i] = parameters[i].ParameterType == typeof(IDebugOutputRenderer) ? renderer : session;
+            }
 
-            return (ICommandHandler)constructor.Invoke([session]);
+            return (ICommandHandler)constructor.Invoke(arguments);
         })
         .As<ICommandHandler>()
         .SingleInstance();

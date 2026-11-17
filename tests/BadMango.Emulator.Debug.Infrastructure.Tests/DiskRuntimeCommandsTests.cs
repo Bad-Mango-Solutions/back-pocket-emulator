@@ -152,11 +152,13 @@ public sealed class DiskRuntimeCommandsTests
         JsonElement root = json.RootElement;
         Assert.Multiple(() =>
         {
-            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(root.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(root[0].GetProperty("slot").GetInt32(), Is.EqualTo(6));
-            Assert.That(root[0].GetProperty("drives")[0].GetProperty("mountedImagePath").GetString(), Is.EqualTo("/tmp/json.dsk"));
-            Assert.That(root[0].GetProperty("drives")[0].GetProperty("geometry").GetProperty("trackCount").GetInt32(), Is.EqualTo(35));
+            Assert.That(root.GetProperty("schema").GetString(), Is.EqualTo("emudbg/v1"));
+            JsonElement payload = root.GetProperty("payload");
+            Assert.That(payload.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(payload.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(payload[0].GetProperty("slot").GetInt32(), Is.EqualTo(6));
+            Assert.That(payload[0].GetProperty("drives")[0].GetProperty("mountedImagePath").GetString(), Is.EqualTo("/tmp/json.dsk"));
+            Assert.That(payload[0].GetProperty("drives")[0].GetProperty("geometry").GetProperty("trackCount").GetInt32(), Is.EqualTo(35));
         });
     }
 
@@ -183,7 +185,7 @@ public sealed class DiskRuntimeCommandsTests
         Assert.That(result.Success, Is.True, result.Message);
 
         using JsonDocument json = JsonDocument.Parse(this.outputWriter.ToString());
-        JsonElement drives = json.RootElement[0].GetProperty("drives");
+        JsonElement drives = json.RootElement.GetProperty("payload")[0].GetProperty("drives");
         Assert.Multiple(() =>
         {
             Assert.That(drives.GetArrayLength(), Is.EqualTo(2));
@@ -191,6 +193,62 @@ public sealed class DiskRuntimeCommandsTests
             Assert.That(drives[1].GetProperty("error").GetString(), Is.EqualTo("drive 2 is unreadable"));
             Assert.That(drives[0].TryGetProperty("error", out _), Is.False);
         });
+    }
+
+    /// <summary><c>disk list --json</c> is an emudbg/v1 envelope.</summary>
+    [Test]
+    public void DiskList_Json_MatchesGoldenEnvelope()
+    {
+        var (card, ctl) = MakeMockController(slot: 6, driveCount: 1);
+        this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
+        ctl.Setup(c => c.GetDriveSnapshot(0)).Returns(new DriveSnapshot(
+            Selected: true,
+            MotorOn: true,
+            PhaseLatch: 1,
+            QuarterTrack: 16,
+            WriteProtect: false,
+            HasMedia: true,
+            MountedImagePath: "/tmp/json.dsk",
+            Geometry: DiskGeometry.Standard525Dos));
+
+        var renderer = new DebugOutputRenderer(
+            new EmudbgOptions(JsonOutput: true),
+            () => new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var result = new DiskListCommand(null, renderer).Execute(this.debugContext, ["--json"]);
+
+        Assert.That(result.Success, Is.True, result.Message);
+        Assert.That(this.outputWriter.ToString().Trim(), Is.EqualTo("""
+{
+  "schema": "emudbg/v1",
+  "payload": [
+    {
+      "slot": 6,
+      "name": "Disk II Controller",
+      "driveCount": 1,
+      "drives": [
+        {
+          "drive": 1,
+          "selected": true,
+          "motorOn": true,
+          "phaseLatch": 1,
+          "quarterTrack": 16,
+          "writeProtect": false,
+          "hasMedia": true,
+          "mountedImagePath": "/tmp/json.dsk",
+          "geometry": {
+            "trackCount": 35,
+            "sectorsPerTrack": 16,
+            "bytesPerSector": 256,
+            "sectorOrder": "Dos33",
+            "totalBytes": 143360
+          }
+        }
+      ]
+    }
+  ],
+  "timestamp": "2020-01-01T00:00:00+00:00"
+}
+""".Trim()));
     }
 
     /// <summary><c>disk list</c> rejects unknown options.</summary>

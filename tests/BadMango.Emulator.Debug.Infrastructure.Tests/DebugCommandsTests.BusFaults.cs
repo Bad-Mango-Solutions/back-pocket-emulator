@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Tests;
 
+using System.Text.Json;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
 
@@ -43,8 +45,10 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.False);
-            Assert.That(result.Message, Does.Contain("Unmapped"));
+            Assert.That(result.Success, Is.True);
+            Assert.That(outputWriter.ToString(), Does.Contain("??"), "Should show ?? for unmapped bytes");
+            Assert.That(outputWriter.ToString(), Does.Contain("Bus faults encountered"), "Should report faults");
+            Assert.That(outputWriter.ToString(), Does.Contain("Unmapped"), "Should identify fault kind");
         });
     }
 
@@ -75,8 +79,10 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.False);
-            Assert.That(result.Message, Does.Contain("Unmapped"));
+            Assert.That(result.Success, Is.True);
+            Assert.That(outputWriter.ToString(), Does.Contain("??"), "Should show ?? for unmapped address");
+            Assert.That(outputWriter.ToString(), Does.Contain("Bus faults encountered"), "Should report fault");
+            Assert.That(outputWriter.ToString(), Does.Contain("Unmapped"), "Should identify fault kind");
         });
     }
 
@@ -107,8 +113,9 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.False);
-            Assert.That(result.Message, Does.Contain("Unmapped"));
+            Assert.That(result.Success, Is.True);
+            Assert.That(outputWriter.ToString(), Does.Contain("?? ?? ?? ??"), "Should show ?? for all unmapped bytes");
+            Assert.That(outputWriter.ToString(), Does.Contain("Bus faults encountered (4)"), "Should report 4 faults");
         });
     }
 
@@ -322,8 +329,8 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.False);
-            Assert.That(result.Message, Does.Contain("Unmapped"));
+            Assert.That(result.Success, Is.True);
+            Assert.That(outputWriter.ToString(), Does.Contain("|????????????????|"), "Should show ? in ASCII column for faulted bytes");
         });
     }
 
@@ -354,8 +361,74 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.False);
-            Assert.That(result.Message, Does.Contain("8000"));
+            Assert.That(result.Success, Is.True);
+            Assert.That(outputWriter.ToString(), Does.Contain("$8000:"), "Should report the fault address");
+        });
+    }
+
+    /// <summary>
+    /// A dump that starts in mapped RAM and crosses into a hole keeps the readable bytes and marks the rest.
+    /// </summary>
+    [Test]
+    public void MemCommand_SpanMappedAndUnmapped_ShowsBoth()
+    {
+        var partialBus = PartialBus();
+        WriteByte(partialBus, 0x7FFE, 0x41);
+        WriteByte(partialBus, 0x7FFF, 0x42);
+        var context = new DebugContext(dispatcher, outputWriter, errorWriter, cpu, partialBus, disassembler);
+
+        var result = new MemCommand().Execute(context, ["$7FFE", "4"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(outputWriter.ToString(), Does.Contain("41 42 ?? ??"));
+            Assert.That(outputWriter.ToString(), Does.Contain("Unmapped"));
+            Assert.That(outputWriter.ToString(), Does.Contain("Bus faults encountered (2)"));
+        });
+    }
+
+    /// <summary>
+    /// JSON for a spanning dump keeps readable bytes and a parallel fault mask.
+    /// </summary>
+    [Test]
+    public void MemCommand_SpanMappedAndUnmapped_JsonMask()
+    {
+        var partialBus = PartialBus();
+        WriteByte(partialBus, 0x7FFE, 0x41);
+        WriteByte(partialBus, 0x7FFF, 0x42);
+        var context = new DebugContext(dispatcher, outputWriter, errorWriter, cpu, partialBus, disassembler);
+
+        var result = new MemCommand(null, JsonRenderer()).Execute(context, ["$7FFE", "4"]);
+
+        Assert.That(result.Success, Is.True, result.Message);
+        using JsonDocument json = JsonDocument.Parse(outputWriter.ToString());
+        JsonElement payload = json.RootElement.GetProperty("payload");
+        Assert.Multiple(() =>
+        {
+            Assert.That(json.RootElement.GetProperty("schema").GetString(), Is.EqualTo("emudbg/v1"));
+            Assert.That(payload.GetProperty("data").GetString(), Is.EqualTo("41420000"));
+            Assert.That(payload.GetProperty("faults").GetString(), Is.EqualTo("00000101"));
+        });
+    }
+
+    /// <summary>
+    /// Peek across the same boundary marks only the unmapped bytes.
+    /// </summary>
+    [Test]
+    public void PeekCommand_SpanMappedAndUnmapped_ShowsBoth()
+    {
+        var partialBus = PartialBus();
+        WriteByte(partialBus, 0x7FFF, 0xAB);
+        var context = new DebugContext(dispatcher, outputWriter, errorWriter, cpu, partialBus, disassembler);
+
+        var result = new PeekCommand().Execute(context, ["$7FFF", "2"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(outputWriter.ToString(), Does.Contain("AB ??"));
+            Assert.That(outputWriter.ToString(), Does.Contain("Unmapped"));
         });
     }
 
@@ -492,5 +565,22 @@ public partial class DebugCommandsTests
             Assert.That(outputWriter.ToString(), Does.Contain("Fault at $8001"), "Should report fault at second address");
             Assert.That(outputWriter.ToString(), Does.Contain("Unmapped"), "Should identify fault kind");
         });
+    }
+
+    private static MainBus PartialBus()
+    {
+        var partialBus = new MainBus(16);
+        var physical = new PhysicalMemory(0x8000, "partial-ram");
+        var target = new RamTarget(physical.Slice(0, 0x8000));
+        partialBus.MapPageRange(
+            startPage: 0,
+            pageCount: 8,
+            deviceId: 0,
+            regionTag: RegionTag.Ram,
+            perms: PagePerms.All,
+            caps: target.Capabilities,
+            target: target,
+            physicalBase: 0);
+        return partialBus;
     }
 }

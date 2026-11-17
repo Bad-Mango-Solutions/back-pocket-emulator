@@ -87,20 +87,30 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
             "Memory dump: ${0:X4} ({1} bytes)",
             block.Address,
             block.Length));
+
+        static bool Unreadable(MemoryBlock source, int index) =>
+            source.Faults is not null && index < source.Faults.Count && source.Faults[index] != 0;
+
+        static string FaultText(byte kind) => kind switch
+        {
+            1 => "Unmapped - no memory or device at this address",
+            2 => "Permission denied",
+            3 => "No execute",
+            4 => "Misaligned access",
+            5 => "Device fault",
+            _ => string.Format(CultureInfo.InvariantCulture, "Fault kind {0}", kind),
+        };
+
         var ascii = new StringBuilder();
         var hex = new StringBuilder();
+        int faultCount = 0;
         for (int i = 0; i < block.Data.Count; i++)
         {
             if (i % 16 == 0)
             {
                 if (i > 0)
                 {
-                    output.WriteLine(string.Format(
-                        CultureInfo.InvariantCulture,
-                        "${0:X4}: {1} |{2}|",
-                        block.Address + (uint)(i - 16),
-                        hex,
-                        ascii));
+                    output.WriteLine(string.Format(CultureInfo.InvariantCulture, "${0:X4}: {1} |{2}|", block.Address + (uint)(i - 16), hex, ascii));
                     hex.Clear();
                     ascii.Clear();
                 }
@@ -110,20 +120,45 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
                 hex.Append(' ');
             }
 
-            byte value = block.Data[i];
-            hex.Append(value.ToString("X2", CultureInfo.InvariantCulture));
-            ascii.Append(value is >= 0x20 and < 0x7F ? (char)value : '.');
+            if (Unreadable(block, i))
+            {
+                faultCount++;
+                hex.Append("??");
+                ascii.Append('?');
+            }
+            else
+            {
+                byte value = block.Data[i];
+                hex.Append(value.ToString("X2", CultureInfo.InvariantCulture));
+                ascii.Append(value is >= 0x20 and < 0x7F ? (char)value : '.');
+            }
         }
 
         if (hex.Length > 0)
         {
-            uint lineAddress = block.Address + (uint)(block.Data.Count - (block.Data.Count % 16 == 0 ? 16 : block.Data.Count % 16));
-            output.WriteLine(string.Format(
-                CultureInfo.InvariantCulture,
-                "${0:X4}: {1} |{2}|",
-                lineAddress,
-                hex,
-                ascii));
+            int remainder = block.Data.Count % 16;
+            int lineStart = remainder == 0 ? block.Data.Count - 16 : block.Data.Count - remainder;
+            output.WriteLine(string.Format(CultureInfo.InvariantCulture, "${0:X4}: {1} |{2}|", block.Address + (uint)lineStart, hex, ascii));
+        }
+
+        if (faultCount > 0 && block.Faults is not null)
+        {
+            output.WriteLine();
+            output.WriteLine(string.Format(CultureInfo.InvariantCulture, "Bus faults encountered ({0}):", faultCount));
+            for (int i = 0; i < block.Faults.Count; i++)
+            {
+                byte kind = block.Faults[i];
+                if (kind == 0)
+                {
+                    continue;
+                }
+
+                output.WriteLine(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "  ${0:X4}: {1}",
+                    block.Address + (uint)i,
+                    FaultText(kind)));
+            }
         }
     }
 
@@ -250,6 +285,21 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         }
 
         output.WriteLine(text);
+    }
+
+    /// <inheritdoc/>
+    public void WriteDiskControllers(TextWriter output, IReadOnlyList<DiskControllerSnapshot> controllers, string text, bool forceJson = false)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(controllers);
+        ArgumentNullException.ThrowIfNull(text);
+        if (forceJson || this.JsonOutput)
+        {
+            this.WriteEnvelope(output, controllers, DebugSessionJsonContext.Default.DebugEnvelopeIReadOnlyListDiskControllerSnapshot);
+            return;
+        }
+
+        output.Write(text);
     }
 
     /// <inheritdoc/>

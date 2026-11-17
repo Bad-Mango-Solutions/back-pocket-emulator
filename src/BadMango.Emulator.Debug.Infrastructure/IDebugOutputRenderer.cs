@@ -89,6 +89,18 @@ public interface IDebugOutputRenderer
     void WriteWatchpoint(TextWriter output, Watchpoint watchpoint, string text);
 
     /// <summary>
+    /// Writes a disk-controller listing.
+    /// </summary>
+    /// <param name="output">The writer that receives the result.</param>
+    /// <param name="controllers">The controllers to write.</param>
+    /// <param name="text">The human-readable listing used when JSON is off.</param>
+    /// <param name="forceJson">
+    /// When <see langword="true"/>, write the envelope even if <see cref="JsonOutput"/> is false.
+    /// <c>disk-list --json</c> uses this.
+    /// </param>
+    void WriteDiskControllers(TextWriter output, IReadOnlyList<DiskControllerSnapshot> controllers, string text, bool forceJson = false);
+
+    /// <summary>
     /// Writes a reset receipt.
     /// </summary>
     /// <param name="output">The writer that receives the result.</param>
