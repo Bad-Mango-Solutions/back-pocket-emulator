@@ -83,7 +83,7 @@ public static class DebugMcpHost
 
     private static Serilog.ILogger CreateLogger()
     {
-        string logDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
+        string logDirectory = Path.Join(AppContext.BaseDirectory, "logs");
         return new LoggerConfiguration()
             .MinimumLevel.Information()
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
@@ -93,7 +93,7 @@ public static class DebugMcpHost
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
                 standardErrorFromLevel: LogEventLevel.Verbose)
             .WriteTo.File(
-                Path.Combine(logDirectory, "debug-mcp-.log"),
+                Path.Join(logDirectory, "debug-mcp-.log"),
                 rollingInterval: RollingInterval.Day,
                 shared: true,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")

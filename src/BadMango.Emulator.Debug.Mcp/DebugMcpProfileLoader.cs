@@ -82,7 +82,19 @@ public sealed class DebugMcpProfileLoader
     private static string LibraryRoot()
     {
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".backpocket");
+        string folderName = ".backpocket".TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return Path.Join(home, folderName);
+    }
+
+    private static string ProfileJsonFileName(string name)
+    {
+        string fileName = Path.GetFileName(name + ".json");
+        if (string.IsNullOrEmpty(fileName) || Path.IsPathRooted(fileName))
+        {
+            throw new ArgumentException($"Invalid profile name '{name}'.");
+        }
+
+        return fileName;
     }
 
     private static bool IsProfileName(string name)
@@ -106,7 +118,8 @@ public sealed class DebugMcpProfileLoader
             throw new ArgumentException($"Invalid profile name '{name}'.");
         }
 
-        string builtIn = Path.Combine(AppContext.BaseDirectory, "profiles", name + ".json");
+        string fileName = ProfileJsonFileName(name);
+        string builtIn = Path.Join(AppContext.BaseDirectory, "profiles", fileName);
         if (File.Exists(builtIn))
         {
             sandboxed = false;
@@ -115,14 +128,14 @@ public sealed class DebugMcpProfileLoader
 
         foreach (string root in this.sandbox.Roots)
         {
-            string direct = Path.Combine(root, name + ".json");
+            string direct = Path.Join(root, fileName);
             if (File.Exists(direct))
             {
                 sandboxed = true;
                 return Path.GetFullPath(direct);
             }
 
-            string nested = Path.Combine(root, "profiles", name + ".json");
+            string nested = Path.Join(root, "profiles", fileName);
             if (File.Exists(nested))
             {
                 sandboxed = true;

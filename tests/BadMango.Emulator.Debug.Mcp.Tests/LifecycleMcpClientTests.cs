@@ -167,13 +167,14 @@ public sealed class LifecycleMcpClientTests
         string outside = Directory.CreateTempSubdirectory("mcp-outside-").FullName;
         try
         {
-            File.WriteAllText(Path.Combine(outside, "foreign.json"), "{}");
+            string foreignProfile = Path.Join(outside, "foreign.json");
+            File.WriteAllText(foreignProfile, "{}");
             await using McpSession session = await McpSession.StartAsync(sandbox);
             CallToolResult result = await session.Client.CallToolAsync(
                 "load_profile",
                 new Dictionary<string, object?>
                 {
-                    ["name"] = Path.Combine(outside, "foreign.json"),
+                    ["name"] = foreignProfile,
                 });
 
             Assert.That(result.IsError, Is.True);
@@ -193,9 +194,15 @@ public sealed class LifecycleMcpClientTests
         rom[2] = third;
         rom[0x3FFC] = 0x00;
         rom[0x3FFD] = 0xC0;
-        File.WriteAllBytes(Path.Combine(directory, "monitor.bin"), rom);
+        if (Path.IsPathRooted(profileFileName))
+        {
+            throw new ArgumentException($"Profile file name must be relative: '{profileFileName}'.", nameof(profileFileName));
+        }
+
+        File.WriteAllBytes(Path.Join(directory, "monitor.bin"), rom);
+        string profilePath = Path.Join(directory, profileFileName);
         File.WriteAllText(
-            Path.Combine(directory, profileFileName),
+            profilePath,
             """
             {
               "name": "PROFILE_NAME",

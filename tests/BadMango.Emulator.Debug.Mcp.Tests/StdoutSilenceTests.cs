@@ -25,14 +25,9 @@ public sealed class StdoutSilenceTests
         string configuration = typeof(StdoutSilenceTests).Assembly
             .GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Debug";
         string repo = FindRepoRoot();
-        string output = Path.Combine(
-            repo,
-            "src",
-            "BadMango.Emulator.Debug.Mcp",
-            "bin",
-            configuration,
-            "net10.0");
-        string dll = Path.Combine(output, "emudbg-mcp.dll");
+        string[] segments = [repo, "src", "BadMango.Emulator.Debug.Mcp", "bin", configuration, "net10.0"];
+        string output = Path.Join(segments);
+        string dll = Path.Join(output, "emudbg-mcp.dll");
         Assert.That(File.Exists(dll), Is.True, $"Build the host before this test. Missing {dll}");
 
         using var process = new Process();
@@ -106,7 +101,7 @@ public sealed class StdoutSilenceTests
         DirectoryInfo? directory = new FileInfo(sourceFile).Directory;
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "BackPocketEmulator.slnx")))
+            if (File.Exists(Path.Join(directory.FullName, "BackPocketEmulator.slnx")))
             {
                 return directory.FullName;
             }

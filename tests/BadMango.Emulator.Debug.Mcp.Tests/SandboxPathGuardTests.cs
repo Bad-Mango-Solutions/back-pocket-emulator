@@ -27,7 +27,7 @@ public sealed class SandboxPathGuardTests
                 SandboxRoots = [root],
             }));
 
-            string inside = Path.Combine(root, "disk.dsk");
+            string inside = Path.Join(root, "disk.dsk");
             string sibling = root.TrimEnd(Path.DirectorySeparatorChar) + "-other";
 
             Assert.Multiple(() =>
@@ -70,7 +70,7 @@ public sealed class SandboxPathGuardTests
             }));
 
             Assert.That(
-                () => guard.EnsureAllowed(Path.Combine(Path.GetTempPath(), "outside.bin")),
+                () => guard.EnsureAllowed(Path.Join(Path.GetTempPath(), "outside.bin")),
                 Throws.InvalidOperationException);
         }
         finally
