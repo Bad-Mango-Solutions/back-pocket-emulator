@@ -199,7 +199,7 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 
     /// <inheritdoc />
     /// <exception cref="InvalidOperationException">A background run is active, or the attached machine was replaced.</exception>
-    public ulong Step(int count = 1, CancellationToken cancellationToken = default)
+    public ulong Step(int count = 1, CancellationToken cancellationToken = default, ulong? maxCycles = null)
     {
         if (count <= 0)
         {
@@ -209,7 +209,7 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         ThrowIfBackgroundRunActive();
         if (debugContext.Machine is not IMachine bound)
         {
-            return this.StepCpu(count, cancellationToken);
+            return this.StepCpu(count, cancellationToken, maxCycles);
         }
 
         ulong executed = 0;
@@ -221,7 +221,7 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 EnsureStillAttached(bound);
-                if (this.CycleBudgetExhausted(cycles) || this.StopForHalt(bound.Cpu))
+                if (this.CycleBudgetExhausted(cycles, maxCycles) || this.StopForHalt(bound.Cpu))
                 {
                     break;
                 }
@@ -1258,13 +1258,16 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         throw new InvalidOperationException(NoMachineMessage);
     }
 
-    private bool CycleBudgetExhausted(ulong cycles) =>
-        this.defaultCycleBudget is ulong budget && cycles >= budget;
+    private bool CycleBudgetExhausted(ulong cycles, ulong? maxCycles = null)
+    {
+        ulong? budget = maxCycles ?? this.defaultCycleBudget;
+        return budget is ulong limit && cycles >= limit;
+    }
 
     private bool StopForHalt(ICpu cpu) =>
         cpu.Halted && !cpu.IsWaitingForInterrupt;
 
-    private ulong StepCpu(int count, CancellationToken cancellationToken)
+    private ulong StepCpu(int count, CancellationToken cancellationToken, ulong? maxCycles = null)
     {
         var cpu = this.RequireCpu();
         ulong executed = 0;
@@ -1274,7 +1277,7 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             for (int i = 0; i < count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (this.CycleBudgetExhausted(cycles) || this.StopForHalt(cpu))
+                if (this.CycleBudgetExhausted(cycles, maxCycles) || this.StopForHalt(cpu))
                 {
                     break;
                 }

@@ -1,7 +1,8 @@
 # Third-Party Notices
 
 BackPocket Emulator is licensed under the [MIT License](LICENSE). The applications built from this
-repository (`emudbg` from `src/BadMango.Emulator.Debug` and the desktop UI from
+repository (`emudbg` from `src/BadMango.Emulator.Debug`, `emudbg-mcp` from
+`src/BadMango.Emulator.Debug.Mcp`, and the desktop UI from
 `src/BadMango.Emulator.UI`) redistribute the third-party components listed below. Each component
 remains under its own license; the license identifiers below are taken from each package's NuGet
 metadata (`.nuspec`).
@@ -63,6 +64,7 @@ and is in addition to the upstream source link above.
 | AvaloniaEdit.TextMate | 12.0.0 | MIT | <https://github.com/AvaloniaUI/AvaloniaEdit> |
 | CommunityToolkit.Mvvm | 8.4.2 | MIT | <https://github.com/CommunityToolkit/dotnet> |
 | Microsoft.Extensions.Hosting, Configuration, and Logging.Abstractions packages | 10.0.7 | MIT | <https://dot.net/> |
+| ModelContextProtocol | 2.4.0 | Apache-2.0 | <https://github.com/modelcontextprotocol/csharp-sdk> |
 
 This table lists the packages referenced directly by the shipped projects. Their transitive
 dependencies (for example SkiaSharp and HarfBuzzSharp, pulled in by Avalonia) are distributed under
