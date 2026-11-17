@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
+using BadMango.Emulator.Bus;
 using BadMango.Emulator.Debug.Abstractions;
 
 /// <summary>
@@ -20,6 +21,30 @@ using BadMango.Emulator.Debug.Abstractions;
 /// </remarks>
 public sealed class DebugOutputRenderer : IDebugOutputRenderer
 {
+    private static readonly (FaultKind Mask, string Name)[] KnownFaultNames =
+    [
+        (FaultKind.Unmapped, nameof(FaultKind.Unmapped)),
+        (FaultKind.Permission, nameof(FaultKind.Permission)),
+        (FaultKind.Nx, nameof(FaultKind.Nx)),
+        (FaultKind.Misaligned, nameof(FaultKind.Misaligned)),
+        (FaultKind.DeviceFault, nameof(FaultKind.DeviceFault)),
+        (FaultKind.Write, nameof(FaultKind.Write)),
+        (FaultKind.Fetch, nameof(FaultKind.Fetch)),
+        (FaultKind.BankCrossing, nameof(FaultKind.BankCrossing)),
+        (FaultKind.Privilege, nameof(FaultKind.Privilege)),
+    ];
+
+    private static readonly ushort KnownFaultMask = (ushort)(
+        FaultKind.Unmapped |
+        FaultKind.Permission |
+        FaultKind.Nx |
+        FaultKind.Misaligned |
+        FaultKind.DeviceFault |
+        FaultKind.Write |
+        FaultKind.Fetch |
+        FaultKind.BankCrossing |
+        FaultKind.Privilege);
+
     private readonly Func<DateTimeOffset> clock;
 
     /// <summary>
@@ -44,6 +69,46 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
 
     /// <inheritdoc/>
     public ulong? DefaultMaxCycles { get; }
+
+    /// <summary>
+    /// Formats a bus fault kind as the named low-byte bitmask, preserving unknown bits.
+    /// </summary>
+    /// <param name="fault">The bus fault to format.</param>
+    /// <returns>A pipe-delimited list of known fault names and any remaining unknown mask bits.</returns>
+    public static string FormatFault(BusFault fault)
+    {
+        return FormatFaultBits((ushort)fault.Kind);
+    }
+
+    /// <summary>
+    /// Formats a raw fault mask as the named low-byte bitmask, preserving unknown bits.
+    /// </summary>
+    /// <param name="mask">The raw fault mask.</param>
+    /// <returns>A pipe-delimited list of known fault names and any remaining unknown mask bits.</returns>
+    public static string FormatFaultBits(ushort mask)
+    {
+        var names = new List<string>();
+        foreach ((FaultKind kind, string name) in KnownFaultNames)
+        {
+            if ((mask & (ushort)kind) != 0)
+            {
+                names.Add(name);
+            }
+        }
+
+        ushort unknownBits = (ushort)(mask & ~KnownFaultMask);
+        if (unknownBits != 0)
+        {
+            names.Add($"unknown 0x{unknownBits:X4}");
+        }
+
+        if (names.Count == 0)
+        {
+            return "No fault";
+        }
+
+        return string.Join("|", names);
+    }
 
     /// <inheritdoc/>
     public void WriteRegisters(TextWriter output, RegisterSnapshot snapshot)
@@ -91,15 +156,21 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         static bool Unreadable(MemoryBlock source, int index) =>
             source.Faults is not null && index < source.Faults.Count && source.Faults[index] != 0;
 
-        static string FaultText(byte kind) => kind switch
+        static string FaultText(byte mask)
         {
-            1 => "Unmapped - no memory or device at this address",
-            2 => "Permission denied",
-            3 => "No execute",
-            4 => "Misaligned access",
-            5 => "Device fault",
-            _ => string.Format(CultureInfo.InvariantCulture, "Fault kind {0}", kind),
-        };
+            if (mask == 0)
+            {
+                return "No fault";
+            }
+
+            string formatted = FormatFaultBits(mask);
+            if (formatted == "No fault")
+            {
+                return string.Format(CultureInfo.InvariantCulture, "Fault mask {0:X2}", mask);
+            }
+
+            return formatted;
+        }
 
         var ascii = new StringBuilder();
         var hex = new StringBuilder();
@@ -162,7 +233,11 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Writes a disassembly listing.
+    /// </summary>
+    /// <param name="output">Output writer.</param>
+    /// <param name="lines">Disassembly lines to emit.</param>
     public void WriteDisassembly(TextWriter output, IReadOnlyList<DisassemblyLine> lines)
     {
         ArgumentNullException.ThrowIfNull(output);

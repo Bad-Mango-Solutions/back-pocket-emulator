@@ -611,15 +611,7 @@ public sealed class PokeCommand : CommandHandlerBase, ICommandHelp
 
     private static string FormatFault(BusFault fault)
     {
-        return fault.Kind switch
-        {
-            FaultKind.Unmapped => "Unmapped - no memory or device at this address",
-            FaultKind.Permission => $"Permission denied - region {fault.RegionTag} does not allow write",
-            FaultKind.Nx => "No execute - this fault should not occur for writes",
-            FaultKind.Misaligned => "Misaligned access",
-            FaultKind.DeviceFault => "Device fault - device rejected the write",
-            _ => $"Unknown fault kind: {fault.Kind}",
-        };
+        return DebugOutputRenderer.FormatFault(fault);
     }
 
     /// <summary>
