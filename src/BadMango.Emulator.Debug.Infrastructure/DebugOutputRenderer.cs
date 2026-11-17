@@ -163,7 +163,13 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
                 return "No fault";
             }
 
-            return FormatFaultKind(mask, isMasked: true, defaultName: "Fault mask");
+            string formatted = FormatFaultBits(mask);
+            if (formatted == "No fault")
+            {
+                return string.Format(CultureInfo.InvariantCulture, "Fault mask {0:X2}", mask);
+            }
+
+            return formatted;
         }
 
         var ascii = new StringBuilder();
@@ -384,39 +390,6 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         }
 
         output.WriteLine(text);
-    }
-
-    /// <summary>
-    /// Formats a raw fault mask as the named bitmask, preserving unknown bits.
-    /// </summary>
-    /// <param name="mask">The raw fault mask.</param>
-    /// <param name="isMasked">Whether the mask is a byte-level mask value.</param>
-    /// <param name="defaultName">Default label to use if no named bits are present.</param>
-    /// <returns>A pipe-delimited list of known fault names and remaining unknown bits.</returns>
-    private static string FormatFaultKind(byte mask, bool isMasked, string defaultName)
-    {
-        ushort combinedMask = mask;
-        var names = new List<string>();
-        foreach ((FaultKind kind, string name) in KnownFaultNames)
-        {
-            if ((combinedMask & (ushort)kind) != 0)
-            {
-                names.Add(name);
-            }
-        }
-
-        ushort unknownBits = (ushort)(combinedMask & ~KnownFaultMask);
-        if (unknownBits != 0)
-        {
-            names.Add($"unknown 0x{unknownBits:X4}");
-        }
-
-        if (names.Count == 0)
-        {
-            return isMasked ? $"{defaultName} {mask:X2}" : $"{defaultName} {combinedMask:X4}";
-        }
-
-        return string.Join("|", names);
     }
 
     private void WriteEnvelope<T>(TextWriter output, T payload, JsonTypeInfo<DebugEnvelope<T>> typeInfo)

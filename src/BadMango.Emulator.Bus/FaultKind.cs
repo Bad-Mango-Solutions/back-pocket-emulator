@@ -93,12 +93,18 @@ public enum FaultKind : ushort
     Fetch = 0x0200,
 
     /// <summary>
-    /// The bus fault was raised when crossing a page bank boundary.
+    /// The faulting byte sits in a different 64 KB bank from the access's starting address.
     /// </summary>
+    /// <remarks>
+    /// It is detail, not a cause of a fault on its own, and is not set by a 65C02 latch.
+    /// </remarks>
     BankCrossing = 0x0400,
 
     /// <summary>
-    /// The bus fault was raised because the current privilege level was insufficient.
+    /// Reserved for a ring or privilege check failure that does not exist yet.
     /// </summary>
+    /// <remarks>
+    /// It is not set by this epic or by a 65C02 latch.
+    /// </remarks>
     Privilege = 0x0800,
 }
