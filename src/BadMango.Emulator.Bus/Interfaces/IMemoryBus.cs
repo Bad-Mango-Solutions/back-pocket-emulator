@@ -88,6 +88,49 @@ public interface IMemoryBus
     bool FaultRecordingEnabled { get; set; }
 
     /// <summary>
+    /// Gets the latched fault status.
+    /// </summary>
+    /// <value>
+    /// <see cref="FaultKind.None"/> when no fault is latched. A non-debug <c>Try*</c> failure
+    /// stores the low byte of its <see cref="FaultKind"/> and leaves that value until
+    /// <see cref="ClearFaultStatus"/> or a machine reset.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// The register is host-visible. No 65C02, 65816, or 65832 instruction reads or writes it.
+    /// A successful access, a fast-path index, a debug access, and a composite-page hole do not change it.
+    /// The first fault wins: a later fault does not replace a nonzero status, its address, or the private latch.
+    /// </para>
+    /// <para>
+    /// A 65C02 latch never sets the high byte (<see cref="FaultKind.Write"/>, <see cref="FaultKind.Fetch"/>,
+    /// <see cref="FaultKind.BankCrossing"/>, or <see cref="FaultKind.Privilege"/>).
+    /// </para>
+    /// </remarks>
+    FaultKind FaultStatus { get; }
+
+    /// <summary>
+    /// Gets the address of the byte that raised <see cref="FaultStatus"/>.
+    /// </summary>
+    /// <value>
+    /// The faulting byte, or zero when <see cref="FaultStatus"/> is <see cref="FaultKind.None"/>.
+    /// </value>
+    /// <remarks>
+    /// This is the byte that faulted, not the base of a wide access whose later byte faulted.
+    /// <see cref="ClearFaultStatus"/> and a machine reset write zero here together with the status.
+    /// </remarks>
+    Addr FaultAddress { get; }
+
+    /// <summary>
+    /// Writes <see cref="FaultKind.None"/> into <see cref="FaultStatus"/>.
+    /// </summary>
+    /// <remarks>
+    /// The write also zeroes <see cref="FaultAddress"/> and the private latch, so the next
+    /// non-debug <c>Try*</c> fault can latch. No emulated instruction calls this method.
+    /// A fast-path access does not clear the registers.
+    /// </remarks>
+    void ClearFaultStatus();
+
+    /// <summary>
     /// Reads a single byte from the specified address.
     /// </summary>
     /// <param name="access">The access context describing the operation.</param>
@@ -136,11 +179,12 @@ public interface IMemoryBus
     /// The bus determines whether to use atomic or decomposed access based on:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>The <see cref="AccessFlags.Decompose"/> flag (forces byte-wise cycles)</description></item>
-    /// <item><description>Whether the access crosses a page boundary (always one byte at a time)</description></item>
+    /// <item><description>The <see cref="AccessFlags.Decompose"/> flag forces byte-wise <see cref="Read8"/> cycles, including on an eligible fast page</description></item>
+    /// <item><description><see cref="AccessFlags.Atomic"/> with <see cref="TargetCaps.SupportsWide"/>, checked before decomposed mode</description></item>
+    /// <item><description><see cref="BusAccessMode.Decomposed"/> forces byte-wise <see cref="Read8"/> cycles, including on an eligible fast page</description></item>
     /// <item><description>A same-page slot that publishes <see cref="FastPathOps.Read"/>, which is indexed instead of calling <see cref="IBusTarget.Read16"/></description></item>
-    /// <item><description>The target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
-    /// <item><description>The <see cref="AccessFlags.Atomic"/> flag and CPU mode defaults</description></item>
+    /// <item><description>Whether the access crosses a 4 KB page (one byte at a time after the decompose checks)</description></item>
+    /// <item><description>Otherwise the target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
     /// </list>
     /// <para>
     /// For safe access with fault detection, use <see cref="TryRead16"/> instead.
@@ -163,11 +207,12 @@ public interface IMemoryBus
     /// The bus determines whether to use atomic or decomposed access based on:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>The <see cref="AccessFlags.Decompose"/> flag (forces byte-wise cycles)</description></item>
-    /// <item><description>Whether the access crosses a page boundary (always one byte at a time)</description></item>
+    /// <item><description>The <see cref="AccessFlags.Decompose"/> flag forces byte-wise <see cref="Write8"/> cycles, including on an eligible fast page</description></item>
+    /// <item><description><see cref="AccessFlags.Atomic"/> with <see cref="TargetCaps.SupportsWide"/>, checked before decomposed mode</description></item>
+    /// <item><description><see cref="BusAccessMode.Decomposed"/> forces byte-wise <see cref="Write8"/> cycles, including on an eligible fast page</description></item>
     /// <item><description>A same-page slot that publishes <see cref="FastPathOps.Write"/>, which is indexed instead of calling <see cref="IBusTarget.Write16"/></description></item>
-    /// <item><description>The target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
-    /// <item><description>The <see cref="AccessFlags.Atomic"/> flag and CPU mode defaults</description></item>
+    /// <item><description>Whether the access crosses a 4 KB page (one byte at a time after the decompose checks)</description></item>
+    /// <item><description>Otherwise the target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
     /// </list>
     /// <para>
     /// For safe access with fault detection, use <see cref="TryWrite16"/> instead.
@@ -190,11 +235,12 @@ public interface IMemoryBus
     /// The bus determines whether to use atomic or decomposed access based on:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>The <see cref="AccessFlags.Decompose"/> flag (forces byte-wise cycles)</description></item>
-    /// <item><description>Whether the access crosses a page boundary (always one byte at a time)</description></item>
+    /// <item><description>The <see cref="AccessFlags.Decompose"/> flag forces byte-wise <see cref="Read8"/> cycles, including on an eligible fast page</description></item>
+    /// <item><description><see cref="AccessFlags.Atomic"/> with <see cref="TargetCaps.SupportsWide"/>, checked before decomposed mode</description></item>
+    /// <item><description><see cref="BusAccessMode.Decomposed"/> forces byte-wise <see cref="Read8"/> cycles, including on an eligible fast page</description></item>
     /// <item><description>A same-page slot that publishes <see cref="FastPathOps.Read"/>, which is indexed instead of calling <see cref="IBusTarget.Read32"/></description></item>
-    /// <item><description>The target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
-    /// <item><description>The <see cref="AccessFlags.Atomic"/> flag and CPU mode defaults</description></item>
+    /// <item><description>Whether the access crosses a 4 KB page (one byte at a time after the decompose checks)</description></item>
+    /// <item><description>Otherwise the target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
     /// </list>
     /// <para>
     /// For safe access with fault detection, use <see cref="TryRead32"/> instead.
@@ -217,11 +263,12 @@ public interface IMemoryBus
     /// The bus determines whether to use atomic or decomposed access based on:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>The <see cref="AccessFlags.Decompose"/> flag (forces byte-wise cycles)</description></item>
-    /// <item><description>Whether the access crosses a page boundary (always one byte at a time)</description></item>
+    /// <item><description>The <see cref="AccessFlags.Decompose"/> flag forces byte-wise <see cref="Write8"/> cycles, including on an eligible fast page</description></item>
+    /// <item><description><see cref="AccessFlags.Atomic"/> with <see cref="TargetCaps.SupportsWide"/>, checked before decomposed mode</description></item>
+    /// <item><description><see cref="BusAccessMode.Decomposed"/> forces byte-wise <see cref="Write8"/> cycles, including on an eligible fast page</description></item>
     /// <item><description>A same-page slot that publishes <see cref="FastPathOps.Write"/>, which is indexed instead of calling <see cref="IBusTarget.Write32"/></description></item>
-    /// <item><description>The target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
-    /// <item><description>The <see cref="AccessFlags.Atomic"/> flag and CPU mode defaults</description></item>
+    /// <item><description>Whether the access crosses a 4 KB page (one byte at a time after the decompose checks)</description></item>
+    /// <item><description>Otherwise the target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
     /// </list>
     /// <para>
     /// For safe access with fault detection, use <see cref="TryWrite32"/> instead.
