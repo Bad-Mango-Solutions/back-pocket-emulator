@@ -75,6 +75,7 @@ public static class DebugMcpHost
             container.RegisterType<DebugMcpRunTracker>().AsSelf().SingleInstance();
             container.RegisterType<DebugMcpProfileLoader>().AsSelf().SingleInstance();
             container.RegisterModule<DebugConsoleModule>();
+            container.RegisterBuildCallback(scope => scope.Resolve<DebugMcpProfileLoader>());
         });
 
         logger.Information("Debug MCP host starting.");

@@ -38,10 +38,6 @@ public sealed class BreakpointTools
         this.session = session;
         this.context = context;
         this.logger = logger.ForContext<BreakpointTools>();
-
-        // Watchpoint hit lines follow the debug context output, which is stdout on a console context.
-        // The MCP protocol owns stdout, so hits log to stderr instead.
-        this.context.Watchpoints.SetLogOutput(Console.Error);
     }
 
     /// <summary>

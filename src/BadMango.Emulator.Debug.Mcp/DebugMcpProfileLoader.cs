@@ -44,6 +44,11 @@ public sealed class DebugMcpProfileLoader
         this.session = session;
         this.loader = loader;
         this.sandbox = sandbox;
+        if (context is DebugContext debugContext)
+        {
+            // AttachMachine sends watchpoint lines to Output. Stdout is the MCP protocol.
+            debugContext.RedirectOutput(Console.Error);
+        }
     }
 
     /// <summary>
@@ -80,7 +85,6 @@ public sealed class DebugMcpProfileLoader
         var tracingListener = new TracingDebugListener();
         machine.Cpu.AttachDebugger(tracingListener);
         debugContext.AttachMachine(machine, disassembler, info, tracingListener);
-        debugContext.Watchpoints.SetLogOutput(Console.Error);
         return this.session.GetMachineInfo();
     }
 

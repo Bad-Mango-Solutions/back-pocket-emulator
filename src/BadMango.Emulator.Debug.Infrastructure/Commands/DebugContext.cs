@@ -86,7 +86,7 @@ public sealed class DebugContext : IDebugContext, IDisposable
     public ICommandDispatcher Dispatcher { get; }
 
     /// <inheritdoc/>
-    public TextWriter Output { get; }
+    public TextWriter Output { get; private set; }
 
     /// <inheritdoc/>
     public TextWriter Error { get; }
@@ -147,6 +147,21 @@ public sealed class DebugContext : IDebugContext, IDisposable
         context.AttachPathResolver(new DebugPathResolver());
         context.AttachDiskImageFactory(new DiskImageFactory());
         return context;
+    }
+
+    /// <summary>
+    /// Sends command output, and watchpoint hit lines, to <paramref name="output"/>.
+    /// </summary>
+    /// <param name="output">The writer that should receive command and watchpoint text.</param>
+    /// <remarks>
+    /// Attaching a machine sends watchpoint lines to <see cref="Output"/>. Replacing the writer
+    /// here keeps the current machine and later rebuilds on the same stream.
+    /// </remarks>
+    public void RedirectOutput(TextWriter output)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        this.Output = output;
+        this.Watchpoints.SetLogOutput(output);
     }
 
     /// <summary>
