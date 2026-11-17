@@ -159,14 +159,15 @@ public static class CharacterRenderer
     /// <returns>A string describing the character and its display mode.</returns>
     public static string GetCharacterDisplayString(int charCode)
     {
+        char glyph = TextScreen.GlyphFor(charCode);
         return charCode switch
         {
-            < 0x20 => $"'{(char)(charCode + 0x40)}' Inverse",
-            < 0x40 => $"'{(char)charCode}' Inverse",
-            < 0x60 => $"'{(char)charCode}' Flashing",
-            < 0x80 => $"'{(char)(charCode - 0x40)}' Flashing",
-            < 0xA0 => $"Control-'{(char)(charCode - 0x40)}'",
-            _ => $"'{(char)(charCode - 0x80)}'",
+            < 0x20 => $"'{glyph}' Inverse",
+            < 0x40 => $"'{glyph}' Inverse",
+            < 0x60 => $"'{glyph}' Flashing",
+            < 0x80 => $"'{glyph}' Flashing",
+            < 0xA0 => $"Control-'{glyph}'",
+            _ => $"'{glyph}'",
         };
     }
 }

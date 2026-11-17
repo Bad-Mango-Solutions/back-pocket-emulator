@@ -27,16 +27,6 @@ using BadMango.Emulator.Devices;
 public sealed class Pocket2VideoRenderer : IVideoRenderer
 {
     /// <summary>
-    /// Text page 1 base address.
-    /// </summary>
-    private const ushort TextPage1Base = 0x0400;
-
-    /// <summary>
-    /// Text page 2 base address.
-    /// </summary>
-    private const ushort TextPage2Base = 0x0800;
-
-    /// <summary>
     /// Hi-res page 1 base address.
     /// </summary>
     private const ushort HiResPage1Base = 0x2000;
@@ -85,9 +75,6 @@ public sealed class Pocket2VideoRenderer : IVideoRenderer
     /// Number of lo-res rows (48 rows, 2 per text byte).
     /// </summary>
     private const int LoResRows = 48;
-
-    // Pre-computed text row base addresses for both pages
-    private static readonly ushort[] TextRowAddresses = ComputeTextRowAddresses();
 
     // Pre-computed hi-res row base addresses
     private static readonly ushort[] HiResRowAddresses = ComputeHiResRowAddresses();
@@ -165,23 +152,6 @@ public sealed class Pocket2VideoRenderer : IVideoRenderer
     }
 
     /// <summary>
-    /// Computes the text row base addresses for page 1.
-    /// </summary>
-    private static ushort[] ComputeTextRowAddresses()
-    {
-        var addresses = new ushort[TextRows];
-
-        for (int row = 0; row < TextRows; row++)
-        {
-            int group = row / 8;       // 0, 1, or 2
-            int offset = row % 8;      // 0-7
-            addresses[row] = (ushort)(TextPage1Base + (offset * 128) + (group * 40));
-        }
-
-        return addresses;
-    }
-
-    /// <summary>
     /// Computes the hi-res row base addresses for page 1.
     /// </summary>
     private static ushort[] ComputeHiResRowAddresses()
@@ -215,7 +185,7 @@ public sealed class Pocket2VideoRenderer : IVideoRenderer
     {
         for (int row = 0; row < TextRows; row++)
         {
-            ushort rowAddr = (ushort)(TextRowAddresses[row] + (isPage2 ? 0x0400 : 0));
+            ushort rowAddr = (ushort)(TextScreen.Page1RowAddress(row) + (isPage2 ? 0x0400 : 0));
 
             for (int col = 0; col < Text40Columns; col++)
             {
@@ -365,7 +335,7 @@ public sealed class Pocket2VideoRenderer : IVideoRenderer
         {
             // In 80-column mode, always use text page 1 addresses ($0400-$07FF).
             // PAGE2 is repurposed for aux memory bank selection, not display paging.
-            ushort rowAddr = TextRowAddresses[row];
+            ushort rowAddr = TextScreen.Page1RowAddress(row);
 
             for (int col80 = 0; col80 < Text80Columns; col80++)
             {
@@ -482,7 +452,7 @@ public sealed class Pocket2VideoRenderer : IVideoRenderer
 
         for (int textRow = 0; textRow < maxTextRows; textRow++)
         {
-            ushort rowAddr = (ushort)(TextRowAddresses[textRow] + (isPage2 ? 0x0400 : 0));
+            ushort rowAddr = (ushort)(TextScreen.Page1RowAddress(textRow) + (isPage2 ? 0x0400 : 0));
 
             for (int col = 0; col < Text40Columns; col++)
             {
@@ -621,7 +591,7 @@ public sealed class Pocket2VideoRenderer : IVideoRenderer
         // Mixed mode: text rows 20-23 (bottom 4 lines)
         for (int row = 20; row < TextRows; row++)
         {
-            ushort rowAddr = (ushort)(TextRowAddresses[row] + (isPage2 ? 0x0400 : 0));
+            ushort rowAddr = (ushort)(TextScreen.Page1RowAddress(row) + (isPage2 ? 0x0400 : 0));
 
             for (int col = 0; col < Text40Columns; col++)
             {

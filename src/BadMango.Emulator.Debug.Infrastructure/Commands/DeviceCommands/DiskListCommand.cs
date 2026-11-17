@@ -5,48 +5,54 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 
 using System.Globalization;
+using System.Text.Json;
 
-using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Devices;
-using BadMango.Emulator.Storage.Media;
 
 /// <summary>
 /// Lists every installed disk controller and its drives' mount state (PRD §6.5 FR-DC3).
 /// </summary>
 /// <remarks>
 /// <para>
-/// Resolves the live <see cref="ISlotManager"/> from the attached
-/// <see cref="IDebugContext.Machine"/>, walks slots 1..7 looking for cards that implement
-/// <see cref="IDiskController"/>, and prints one row per drive showing slot, drive number,
-/// mount state, write-protect, image path, motor / quarter-track and (where available)
-/// the medium's geometry.
+/// Reads the live listing from <see cref="IMachineIoSession.ListDisks"/> so the console and the
+/// session API share one snapshot. One unreadable drive is reported on that drive's row and does
+/// not fail the rest of the command. JSON is written with <see cref="DebugSessionJsonContext"/>.
 /// </para>
 /// <para>
-/// Reports image paths exactly as <see cref="DriveSnapshot.MountedImagePath"/> records them
-/// — typically the absolute resolved path supplied at mount time. No <see cref="IDebugPathResolver"/>
-/// round-trip is required because the image path was already resolved when the medium was
-/// originally inserted (FR-DC0).
+/// Reports image paths exactly as the controller records them — typically the absolute resolved
+/// path supplied at mount time.
 /// </para>
 /// </remarks>
 [DeviceDebugCommand]
 public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
 {
-    /// <summary>Maximum slot number scanned (Apple II expansion slots 1..7).</summary>
-    private const int MaxSlot = 7;
+    private readonly IMachineIoSession? session;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DiskListCommand"/> class.
     /// </summary>
     public DiskListCommand()
+        : this(null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DiskListCommand"/> class that lists disks
+    /// through an existing session.
+    /// </summary>
+    /// <param name="session">The session to query, or <see langword="null"/> to open one from the command context.</param>
+    public DiskListCommand(IMachineIoSession? session)
         : base("disk-list", "List installed disk controllers and per-drive mount state")
     {
+        this.session = session;
     }
 
     /// <inheritdoc/>
     public override IReadOnlyList<string> Aliases { get; } = ["disklist"];
 
     /// <inheritdoc/>
-    public override string Usage => "disk-list";
+    public override string Usage => "disk-list [--json]";
 
     /// <inheritdoc/>
     public string Synopsis => this.Usage;
@@ -56,16 +62,21 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
         "Lists every installed disk controller (Disk II today; SmartPort 3.5\" later), one " +
         "row per drive, showing the slot, drive number, mount state, write-protect flag, " +
         "the path of the mounted image, the motor / quarter-track position, and the " +
-        "medium geometry where available. Requires a running machine.";
+        "medium geometry where available. A drive that cannot be read is reported on its " +
+        "own row. Requires a running machine.";
 
     /// <inheritdoc/>
-    public IReadOnlyList<CommandOption> Options { get; } = [];
+    public IReadOnlyList<CommandOption> Options { get; } =
+    [
+        new("--json", null, "flag", "Emit machine-readable JSON output.", null),
+    ];
 
     /// <inheritdoc/>
     public IReadOnlyList<string> Examples { get; } =
     [
         "disk-list",
         "disk list",
+        "disk list --json",
     ];
 
     /// <inheritdoc/>
@@ -80,49 +91,64 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(args);
 
-        if (args.Length > 0)
+        bool emitJson = false;
+        if (args.Length > 1)
         {
-            return CommandResult.Error("disk-list takes no arguments.");
+            return CommandResult.Error("Usage: disk-list [--json]");
         }
 
-        if (!DiskRuntimeHelpers.TryGetSlotManager(context, out var slotManager, out var error))
+        if (args.Length == 1)
+        {
+            if (!args[0].Equals("--json", StringComparison.OrdinalIgnoreCase))
+            {
+                return CommandResult.Error($"Unknown option: '{args[0]}'.");
+            }
+
+            emitJson = true;
+        }
+
+        if (!DiskRuntimeHelpers.TryGetSlotManager(context, out _, out var error))
         {
             return CommandResult.Error(error!);
+        }
+
+        IMachineIoSession io = this.session ?? new MachineDebugSession((IDebugContext)context);
+        IReadOnlyList<DiskControllerSnapshot> controllers = io.ListDisks();
+        if (emitJson)
+        {
+            string json = JsonSerializer.Serialize(
+                controllers,
+                DebugSessionJsonContext.Default.IReadOnlyListDiskControllerSnapshot);
+            context.Output.WriteLine(json);
+            return CommandResult.Ok();
         }
 
         var output = context.Output;
         output.WriteLine();
         output.WriteLine("Disk controllers:");
 
-        var found = 0;
-        for (var slot = 1; slot <= MaxSlot; slot++)
+        for (int i = 0; i < controllers.Count; i++)
         {
-            var card = slotManager!.GetCard(slot);
-            if (card is not IDiskController disk)
-            {
-                continue;
-            }
-
-            found++;
+            DiskControllerSnapshot controller = controllers[i];
             output.WriteLine();
             output.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
                 "  Slot {0}: {1} ({2} drive{3})",
-                slot,
-                card.Name,
-                disk.DriveCount,
-                disk.DriveCount == 1 ? string.Empty : "s"));
+                controller.Slot,
+                controller.Name,
+                controller.DriveCount,
+                controller.DriveCount == 1 ? string.Empty : "s"));
 
-            for (var d = 0; d < disk.DriveCount; d++)
+            for (int d = 0; d < controller.Drives.Count; d++)
             {
-                DriveSnapshot snap;
-                try
+                DiskDriveSnapshot snap = controller.Drives[d];
+                if (snap.Error is not null)
                 {
-                    snap = disk.GetDriveSnapshot(d);
-                }
-                catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
-                {
-                    output.WriteLine($"    Drive {d + 1}: <unreadable: {ex.Message}>");
+                    output.WriteLine(string.Format(
+                        CultureInfo.InvariantCulture,
+                        "    Drive {0}: unreadable ({1})",
+                        snap.Drive,
+                        snap.Error));
                     continue;
                 }
 
@@ -131,7 +157,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
                     output.WriteLine(string.Format(
                         CultureInfo.InvariantCulture,
                         "    Drive {0}: empty (selected={1}, motor={2}, quarter-track={3})",
-                        d + 1,
+                        snap.Drive,
                         YesNo(snap.Selected),
                         YesNo(snap.MotorOn),
                         snap.QuarterTrack));
@@ -141,7 +167,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
                 output.WriteLine(string.Format(
                     CultureInfo.InvariantCulture,
                     "    Drive {0}: mounted '{1}'",
-                    d + 1,
+                    snap.Drive,
                     snap.MountedImagePath ?? "<unknown>"));
                 output.WriteLine(string.Format(
                     CultureInfo.InvariantCulture,
@@ -164,7 +190,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
             }
         }
 
-        if (found == 0)
+        if (controllers.Count == 0)
         {
             output.WriteLine();
             output.WriteLine("  No disk controllers installed.");

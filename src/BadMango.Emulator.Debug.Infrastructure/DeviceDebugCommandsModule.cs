@@ -8,6 +8,7 @@ using System.Reflection;
 
 using Autofac;
 
+using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
 using BadMango.Emulator.Devices;
 
@@ -49,7 +50,11 @@ public class DeviceDebugCommandsModule : AutofacModule
 
         foreach (var commandType in commandTypes)
         {
-            if (HasWindowManagerConstructor(commandType))
+            if (HasSessionConstructor(commandType))
+            {
+                RegisterWithSession(builder, commandType);
+            }
+            else if (HasWindowManagerConstructor(commandType))
             {
                 // Register with window manager injection using a lambda
                 RegisterWithWindowManager(builder, commandType);
@@ -89,11 +94,31 @@ public class DeviceDebugCommandsModule : AutofacModule
             return false;
         }
 
-        // Must have either a parameterless constructor or one taking IDebugWindowManager
+        // Must have a parameterless constructor, a session constructor, or one taking IDebugWindowManager.
         bool hasParameterless = type.GetConstructor(Type.EmptyTypes) is not null;
         bool hasWindowManager = HasWindowManagerConstructor(type);
+        bool hasSession = HasSessionConstructor(type);
 
-        return hasParameterless || hasWindowManager;
+        return hasParameterless || hasWindowManager || hasSession;
+    }
+
+    /// <summary>
+    /// Determines if a type has a constructor that takes an <see cref="IMachineIoSession"/> parameter.
+    /// </summary>
+    /// <param name="type">The type to check.</param>
+    /// <returns>
+    /// <see langword="true"/> if the type has a constructor with a single
+    /// <see cref="IMachineIoSession"/> parameter; otherwise, <see langword="false"/>.
+    /// </returns>
+    private static bool HasSessionConstructor(Type type)
+    {
+        return type.GetConstructors()
+            .Any(ctor =>
+            {
+                var parameters = ctor.GetParameters();
+                return parameters.Length == 1 &&
+                       parameters[0].ParameterType == typeof(IMachineIoSession);
+            });
     }
 
     /// <summary>
@@ -113,6 +138,30 @@ public class DeviceDebugCommandsModule : AutofacModule
                 return parameters.Length == 1 &&
                        parameters[0].ParameterType == typeof(IDebugWindowManager);
             });
+    }
+
+    /// <summary>
+    /// Registers a command type that requires <see cref="IMachineIoSession"/> injection.
+    /// </summary>
+    /// <param name="builder">The container builder.</param>
+    /// <param name="commandType">The command type to register.</param>
+    private static void RegisterWithSession(ContainerBuilder builder, Type commandType)
+    {
+        builder.Register(ctx =>
+        {
+            var session = ctx.ResolveOptional<IMachineIoSession>();
+            var constructor = commandType.GetConstructors()
+                .First(ctor =>
+                {
+                    var parameters = ctor.GetParameters();
+                    return parameters.Length == 1 &&
+                           parameters[0].ParameterType == typeof(IMachineIoSession);
+                });
+
+            return (ICommandHandler)constructor.Invoke([session]);
+        })
+        .As<ICommandHandler>()
+        .SingleInstance();
     }
 
     /// <summary>

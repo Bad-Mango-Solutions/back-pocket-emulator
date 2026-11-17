@@ -5,12 +5,20 @@
 namespace BadMango.Emulator.Debug.Infrastructure;
 
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
 using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
+using BadMango.Emulator.Devices;
+using BadMango.Emulator.Devices.Interfaces;
+using BadMango.Emulator.Rendering;
+using BadMango.Emulator.Storage.Formats;
+using BadMango.Emulator.Storage.Media;
+
+using Serilog;
 
 using InfrastructureWatchAccess = WatchAccess;
 using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
@@ -45,16 +53,23 @@ using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
 /// <see cref="StopRun(Guid, TimeSpan?)"/> on a finished run does not cancel a disposed token.
 /// </para>
 /// </remarks>
-public sealed class MachineDebugSession : IDebugSession
+public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 {
+    /// <summary>
+    /// Cycles between screen checks. One Apple II frame is 65 cycles by 262 lines.
+    /// </summary>
+    public const ulong ScreenTextPollIntervalCycles = 17_030;
+
     private const int ExecutionLockPollMilliseconds = 15;
     private const string NoMachineMessage = "No machine is attached to the debug context.";
 
     private static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ScreenTextMatchTimeout = TimeSpan.FromMilliseconds(100);
 
     private readonly Lock executionLock = new();
     private readonly Lock backgroundRunLock = new();
     private readonly IDebugContext debugContext;
+    private readonly ILogger logger;
     private readonly Dictionary<Guid, BackgroundRunState> backgroundRuns = [];
     private readonly Dictionary<Guid, RunResult> completedRuns = [];
     private Guid? activeRunId;
@@ -63,11 +78,13 @@ public sealed class MachineDebugSession : IDebugSession
     /// Initializes a new instance of the <see cref="MachineDebugSession"/> class.
     /// </summary>
     /// <param name="debugContext">The attached debug context.</param>
+    /// <param name="logger">The logger for mount rollback and unmount failures. A silent logger is used when omitted.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="debugContext"/> is <see langword="null"/>.</exception>
-    public MachineDebugSession(IDebugContext debugContext)
+    public MachineDebugSession(IDebugContext debugContext, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(debugContext);
         this.debugContext = debugContext;
+        this.logger = logger ?? Serilog.Core.Logger.None;
     }
 
     private IMachine Machine => debugContext.Machine ?? throw new InvalidOperationException(NoMachineMessage);
@@ -457,8 +474,325 @@ public sealed class MachineDebugSession : IDebugSession
             Description: info.Description);
     }
 
+    /// <inheritdoc />
+    public ScreenTextSnapshot GetScreenText() => GetScreenText(Machine);
+
+    /// <inheritdoc />
+    public VideoStateSnapshot GetVideoState()
+    {
+        IMachine machine = Machine;
+        IVideoDevice video = machine.GetComponent<IVideoDevice>()
+            ?? throw new InvalidOperationException("No video device found in the attached machine.");
+        return new(
+            Mode: video.CurrentMode.ToString(),
+            IsTextMode: video.IsTextMode,
+            IsMixedMode: video.IsMixedMode,
+            IsPage2: video.IsPage2,
+            IsHiRes: video.IsHiRes,
+            Is80Column: video.Is80Column,
+            IsDoubleHiRes: video.IsDoubleHiRes,
+            IsVerticalBlanking: video.IsVerticalBlanking,
+            Annunciators: [.. video.Annunciators]);
+    }
+
+    /// <inheritdoc />
+    public TypeKeysReceipt TypeKeys(string text)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(text);
+
+        IMachine machine = Machine;
+        IKeyboardInput input = machine.GetComponent<IKeyboardInput>()
+            ?? throw new InvalidOperationException("No keyboard input found in the attached machine.");
+        BadMango.Emulator.Devices.TypeTextReceipt receipt = input.TypeText(text);
+        return new TypeKeysReceipt(receipt.Accepted, [.. receipt.Skipped], receipt.Rejected);
+    }
+
+    /// <inheritdoc />
+    public void MountDisk(int slot, int drive, string path, bool writeProtect = false)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(slot, PeripheralSlots.Minimum);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(slot, PeripheralSlots.Maximum);
+        ArgumentOutOfRangeException.ThrowIfLessThan(drive, 1);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        IMachine machine = Machine;
+        IDiskController controller = ResolveController(machine, slot, drive, out int driveIndex);
+        IDebugPathResolver? resolver = debugContext.PathResolver;
+        string resolvedPath = path;
+        if (resolver is not null)
+        {
+            if (!resolver.TryResolve(path, out string? resolved))
+            {
+                throw new InvalidOperationException($"Cannot resolve path: '{path}'.");
+            }
+
+            resolvedPath = resolved!;
+        }
+
+        if (!File.Exists(resolvedPath))
+        {
+            throw new FileNotFoundException("Disk image file not found.", resolvedPath);
+        }
+
+        DiskImageFactory factory = debugContext.DiskImageFactory
+            ?? throw new InvalidOperationException("DiskImageFactory is not available on the debug context.");
+        DiskImageOpenResult open = factory.Open(resolvedPath, forceReadOnly: writeProtect);
+
+        I525Media? media = open switch
+        {
+            Image525AndBlockResult both => both.TrackMedia,
+            Image525Result trackOnly => trackOnly.Media,
+            _ => null,
+        };
+
+        if (media is null)
+        {
+            open.Dispose();
+            throw new InvalidOperationException(
+                $"Image '{resolvedPath}' has no 5.25\" track view and cannot be mounted on slot {slot}.");
+        }
+
+        try
+        {
+            controller.Mount(driveIndex, media, resolvedPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            open.Dispose();
+            throw new InvalidOperationException($"Mount rejected: {ex.Message}", ex);
+        }
+
+        if (debugContext.MountedDisks.IsDisposed)
+        {
+            RollbackMount(controller, slot, drive, driveIndex, open, disposed: null);
+        }
+
+        try
+        {
+            debugContext.MountedDisks.Track(slot, driveIndex, open);
+        }
+        catch (ObjectDisposedException ex)
+        {
+            RollbackMount(controller, slot, drive, driveIndex, open, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public void EjectDisk(int slot, int drive)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(slot, PeripheralSlots.Minimum);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(slot, PeripheralSlots.Maximum);
+        ArgumentOutOfRangeException.ThrowIfLessThan(drive, 1);
+
+        IMachine machine = Machine;
+        IDiskController controller = ResolveController(machine, slot, drive, out int driveIndex);
+        bool ejected = controller.Eject(driveIndex);
+        if (!ejected)
+        {
+            DriveSnapshot snapshot = controller.GetDriveSnapshot(driveIndex);
+            if (snapshot.HasMedia)
+            {
+                logger.Error(
+                    "Unmount of slot {Slot} drive {Drive} failed because pending writes could not be flushed. The image remains mounted.",
+                    slot,
+                    drive);
+                throw new InvalidOperationException(
+                    $"Eject of slot {slot} drive {drive} failed because pending writes could not be flushed. The image remains mounted.");
+            }
+
+            throw new InvalidOperationException($"Slot {slot} drive {drive} is already empty.");
+        }
+
+        if (!debugContext.MountedDisks.IsDisposed)
+        {
+            try
+            {
+                debugContext.MountedDisks.Release(slot, driveIndex);
+            }
+            catch (ObjectDisposedException ex)
+            {
+                logger.Warning(
+                    ex,
+                    "Mounted-disk registry was disposed while releasing the image for slot {Slot} drive {Drive}. The drive was already unmounted.",
+                    slot,
+                    drive);
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<DiskControllerSnapshot> ListDisks()
+    {
+        IMachine machine = Machine;
+        ISlotManager slotManager = machine.GetComponent<ISlotManager>()
+            ?? throw new InvalidOperationException("No slot manager available on the attached machine.");
+
+        var controllers = new List<DiskControllerSnapshot>();
+        for (int slot = PeripheralSlots.Minimum; slot <= PeripheralSlots.Maximum; slot++)
+        {
+            ISlotCard? card = slotManager.GetCard(slot);
+            if (card is not IDiskController controller)
+            {
+                continue;
+            }
+
+            var drives = new List<BadMango.Emulator.Debug.Abstractions.DiskDriveSnapshot>(controller.DriveCount);
+            for (int i = 0; i < controller.DriveCount; i++)
+            {
+                try
+                {
+                    DriveSnapshot snapshot = controller.GetDriveSnapshot(i);
+                    drives.Add(ToDriveSnapshot(i + 1, snapshot));
+                }
+                catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NotSupportedException)
+                {
+                    logger.Warning(ex, "Drive {Drive} on slot {Slot} could not be read.", i + 1, slot);
+                    drives.Add(UnreadableDrive(i + 1, ex.Message));
+                }
+            }
+
+            controllers.Add(new DiskControllerSnapshot(slot, card.Name, controller.DriveCount, drives));
+        }
+
+        return controllers;
+    }
+
+    /// <inheritdoc />
+    public ScreenTextWaitResult WaitForScreenText(string regexPattern, RunBudget budget, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(regexPattern);
+        ArgumentNullException.ThrowIfNull(budget);
+        var regex = new Regex(regexPattern, RegexOptions.CultureInvariant, ScreenTextMatchTimeout);
+
+        EnterExecutionUnlessBackgroundRunActive();
+        try
+        {
+            ThrowIfBackgroundRunActive();
+            IMachine bound = Machine;
+            var stopwatch = Stopwatch.StartNew();
+            ulong cycleCount = 0;
+
+            while (true)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return ScreenTextWaitResult.Cancelled(cycleCount);
+                }
+
+                EnsureStillAttached(bound);
+
+                try
+                {
+                    if (regex.IsMatch(GetScreenText(bound).CombinedText))
+                    {
+                        return ScreenTextWaitResult.Match(cycleCount);
+                    }
+                }
+                catch (RegexMatchTimeoutException ex)
+                {
+                    return ScreenTextWaitResult.Fault(cycleCount, ex);
+                }
+
+                if (budget.WallClock is TimeSpan wallClock && stopwatch.Elapsed >= wallClock)
+                {
+                    return ScreenTextWaitResult.WallClockTimeout(cycleCount);
+                }
+
+                if (bound.Cpu.Halted)
+                {
+                    return ScreenTextWaitResult.Halted(cycleCount);
+                }
+
+                if (cycleCount >= budget.MaxCycles)
+                {
+                    return ScreenTextWaitResult.BudgetExhausted(cycleCount);
+                }
+
+                ulong frameBudget = ScreenTextPollIntervalCycles;
+                ulong remaining = budget.MaxCycles - cycleCount;
+                if (frameBudget > remaining)
+                {
+                    frameBudget = remaining;
+                }
+
+                try
+                {
+                    while (frameBudget > 0)
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return ScreenTextWaitResult.Cancelled(cycleCount);
+                        }
+
+                        if (bound.Cpu.Halted)
+                        {
+                            break;
+                        }
+
+                        var stepResult = bound.Step();
+                        ulong consumed = stepResult.CyclesConsumed.Value;
+                        if (consumed == 0)
+                        {
+                            consumed = 1;
+                        }
+
+                        cycleCount += consumed;
+                        frameBudget = frameBudget > consumed ? frameBudget - consumed : 0;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return ScreenTextWaitResult.Cancelled(cycleCount);
+                }
+                catch (Exception ex) when (!IsCriticalException(ex))
+                {
+                    return ScreenTextWaitResult.Fault(cycleCount, ex);
+                }
+            }
+        }
+        finally
+        {
+            executionLock.Exit();
+        }
+    }
+
     private static bool IsCriticalException(Exception ex) =>
         ex is OutOfMemoryException or AccessViolationException or InvalidProgramException or BadImageFormatException;
+
+    private static BadMango.Emulator.Debug.Abstractions.DiskDriveSnapshot ToDriveSnapshot(int drive, DriveSnapshot snapshot)
+    {
+        DiskGeometrySnapshot? geometry = snapshot.Geometry is null
+            ? null
+            : new DiskGeometrySnapshot(
+                snapshot.Geometry.Value.TrackCount,
+                snapshot.Geometry.Value.SectorsPerTrack,
+                snapshot.Geometry.Value.BytesPerSector,
+                snapshot.Geometry.Value.SectorOrder.ToString(),
+                snapshot.Geometry.Value.TotalBytes);
+        return new(
+            Drive: drive,
+            Selected: snapshot.Selected,
+            MotorOn: snapshot.MotorOn,
+            PhaseLatch: snapshot.PhaseLatch,
+            QuarterTrack: snapshot.QuarterTrack,
+            WriteProtect: snapshot.WriteProtect,
+            HasMedia: snapshot.HasMedia,
+            MountedImagePath: snapshot.MountedImagePath,
+            Geometry: geometry);
+    }
+
+    private static BadMango.Emulator.Debug.Abstractions.DiskDriveSnapshot UnreadableDrive(int drive, string error) =>
+        new(
+            Drive: drive,
+            Selected: false,
+            MotorOn: false,
+            PhaseLatch: 0,
+            QuarterTrack: 0,
+            WriteProtect: false,
+            HasMedia: false,
+            MountedImagePath: null,
+            Geometry: null,
+            Error: error);
 
     private static RunResult CreateResult(IMachine bound, StopReason stopReason, ulong instructions, ulong cycles, TimeSpan elapsed, string message) =>
         new(
@@ -557,6 +891,104 @@ public sealed class MachineDebugSession : IDebugSession
                     "A background run is active. Stop the run before stepping, running, writing memory, or resetting the machine.");
             }
         }
+    }
+
+    private IDiskController ResolveController(IMachine machine, int slot, int drive, out int driveIndex)
+    {
+        ISlotManager slotManager = machine.GetComponent<ISlotManager>()
+            ?? throw new InvalidOperationException("No slot manager available on the attached machine.");
+        if (slotManager.GetCard(slot) is not IDiskController controller)
+        {
+            throw new InvalidOperationException($"Slot {slot} does not contain a disk controller.");
+        }
+
+        if (drive > controller.DriveCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(drive), $"Drive must be in 1..{controller.DriveCount} for slot {slot}.");
+        }
+
+        driveIndex = drive - 1;
+        return controller;
+    }
+
+    private void RollbackMount(
+        IDiskController controller,
+        int slot,
+        int drive,
+        int driveIndex,
+        DiskImageOpenResult open,
+        ObjectDisposedException? disposed)
+    {
+        if (!TryUnmountForRollback(controller, slot, drive, driveIndex))
+        {
+            throw new InvalidOperationException(
+                "Mount tracking is unavailable because the debug context has been disposed, and rolling back the mount failed. The image remains mounted.",
+                disposed);
+        }
+
+        open.Dispose();
+        throw new InvalidOperationException(
+            "Mount tracking is unavailable because the debug context has been disposed.",
+            disposed);
+    }
+
+    private bool TryUnmountForRollback(IDiskController controller, int slot, int drive, int driveIndex)
+    {
+        try
+        {
+            if (controller.Eject(driveIndex))
+            {
+                return true;
+            }
+
+            logger.Error(
+                "Rollback unmount of slot {Slot} drive {Drive} failed because pending writes could not be flushed. The image remains mounted and will not be disposed.",
+                slot,
+                drive);
+            return false;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            logger.Error(
+                ex,
+                "Rollback unmount of slot {Slot} drive {Drive} failed. The image remains mounted and will not be disposed.",
+                slot,
+                drive);
+            return false;
+        }
+    }
+
+    private ScreenTextSnapshot GetScreenText(IMachine machine)
+    {
+        IVideoDevice video = machine.GetComponent<IVideoDevice>()
+            ?? throw new InvalidOperationException("No video device found in the attached machine.");
+        IMainMemoryProvider? mainMemory = machine.GetComponent<IMainMemoryProvider>();
+        IMemoryBus bus = machine.Bus;
+        IExtended80ColumnDevice? aux = machine.GetComponent<IExtended80ColumnDevice>();
+
+        Func<ushort, byte> readMain = mainMemory is null
+            ? address =>
+            {
+                BusResult<byte> read = bus.TryRead8(CreateDebugReadAccess(address));
+                return read.Ok ? read.Value : (byte)0;
+            }
+            : mainMemory.ReadMainRam;
+
+        bool is80Column = video.Is80Column;
+        string[] lines = TextScreen.ReadLines(
+            readMain,
+            aux is null ? null : aux.ReadAuxRam,
+            is80Column,
+            video.IsPage2);
+
+        return new ScreenTextSnapshot(
+            Rows: lines.Length,
+            Columns: lines.Length == 0 ? TextScreen.Columns40 : lines[0].Length,
+            IsTextMode: video.IsTextMode,
+            IsMixedMode: video.IsMixedMode,
+            Is80Column: is80Column,
+            IsPage2: video.IsPage2,
+            Lines: lines);
     }
 
     private void CompleteBackgroundRun(Guid runId, BackgroundRunState state, RunCondition condition, RunBudget budget)

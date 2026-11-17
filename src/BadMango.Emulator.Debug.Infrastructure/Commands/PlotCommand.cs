@@ -6,6 +6,7 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Devices;
+using BadMango.Emulator.Rendering;
 
 /// <summary>
 /// Command to plot lo-res graphics points or lines.
@@ -23,13 +24,8 @@ using BadMango.Emulator.Devices;
 [DeviceDebugCommand]
 public sealed class PlotCommand : CommandHandlerBase, ICommandHelp
 {
-    private const ushort TextPage1Base = 0x0400;
     private const int LoResWidth = 40;
     private const int LoResHeight = 48;
-    private const int TextRows = 24;
-
-    // Pre-computed row addresses for text page 1
-    private static readonly ushort[] TextRowAddresses = ComputeTextRowAddresses();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PlotCommand"/> class.
@@ -168,19 +164,6 @@ public sealed class PlotCommand : CommandHandlerBase, ICommandHelp
         }
     }
 
-    private static ushort[] ComputeTextRowAddresses()
-    {
-        var addresses = new ushort[TextRows];
-        for (int row = 0; row < TextRows; row++)
-        {
-            int group = row / 8;
-            int offset = row % 8;
-            addresses[row] = (ushort)(TextPage1Base + (offset * 128) + (group * 40));
-        }
-
-        return addresses;
-    }
-
     private static void PlotPoint(IDebugContext debugContext, int x, int y, int color)
     {
         var bus = debugContext.Machine!.Bus;
@@ -190,7 +173,7 @@ public sealed class PlotCommand : CommandHandlerBase, ICommandHelp
         bool isTopBlock = (y % 2) == 0;
 
         // Calculate address
-        ushort address = (ushort)(TextRowAddresses[textRow] + x);
+        ushort address = (ushort)(TextScreen.Page1RowAddress(textRow) + x);
 
         // Read current value
         var readAccess = new BusAccess(

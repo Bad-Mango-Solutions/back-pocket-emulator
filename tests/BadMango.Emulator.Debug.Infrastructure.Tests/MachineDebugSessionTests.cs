@@ -16,6 +16,10 @@ using BadMango.Emulator.Core.Debugger;
 using BadMango.Emulator.Core.Interfaces.Cpu;
 using BadMango.Emulator.Core.Interfaces.Debugging;
 using BadMango.Emulator.Debug.Abstractions;
+using BadMango.Emulator.Devices;
+using BadMango.Emulator.Devices.Interfaces;
+using BadMango.Emulator.Rendering;
+using BadMango.Emulator.Storage.Media;
 
 using Moq;
 
@@ -25,6 +29,334 @@ using Moq;
 [TestFixture]
 public sealed class MachineDebugSessionTests : IDebugSessionContractTests
 {
+    /// <summary>
+    /// Verifies video-state snapshots come from the attached video model.
+    /// </summary>
+    [Test]
+    public void GetVideoState_UsesAttachedVideoDevice()
+    {
+        var video = new Mock<IVideoDevice>(MockBehavior.Strict);
+        video.SetupGet(v => v.CurrentMode).Returns(VideoMode.Text80);
+        video.SetupGet(v => v.IsTextMode).Returns(true);
+        video.SetupGet(v => v.IsMixedMode).Returns(false);
+        video.SetupGet(v => v.IsPage2).Returns(true);
+        video.SetupGet(v => v.IsHiRes).Returns(false);
+        video.SetupGet(v => v.Is80Column).Returns(true);
+        video.SetupGet(v => v.IsDoubleHiRes).Returns(false);
+        video.SetupGet(v => v.IsVerticalBlanking).Returns(true);
+        video.SetupGet(v => v.Annunciators).Returns([true, false, true, false]);
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(c => c.Machine).Returns(machine.Object);
+
+        var session = new MachineDebugSession(context.Object);
+        VideoStateSnapshot state = session.GetVideoState();
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Mode, Is.EqualTo(VideoMode.Text80.ToString()));
+            Assert.That(state.Is80Column, Is.True);
+            Assert.That(state.IsVerticalBlanking, Is.True);
+            Assert.That(state.Annunciators, Is.EqualTo(new[] { true, false, true, false }));
+        });
+    }
+
+    /// <summary>
+    /// Verifies 80-column screen text is read from interleaved auxiliary and main text pages.
+    /// </summary>
+    [Test]
+    public void GetScreenText_When80ColumnMode_InterleavesAuxAndMain()
+    {
+        byte[] ram = new byte[0x10000];
+        var provider = new FakeMainMemoryProvider(ram);
+        var aux = new Mock<IExtended80ColumnDevice>(MockBehavior.Strict);
+        aux.Setup(a => a.ReadAuxRam(It.IsAny<ushort>())).Returns((ushort _) => (byte)0xC1); // 'A'
+
+        var video = new Mock<IVideoDevice>(MockBehavior.Strict);
+        video.SetupGet(v => v.Is80Column).Returns(true);
+        video.SetupGet(v => v.IsTextMode).Returns(true);
+        video.SetupGet(v => v.IsMixedMode).Returns(false);
+        video.SetupGet(v => v.IsPage2).Returns(false);
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
+        machine.Setup(m => m.GetComponent<IMainMemoryProvider>()).Returns(provider);
+        machine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns(aux.Object);
+        machine.SetupGet(m => m.Bus).Returns(Mock.Of<IMemoryBus>());
+
+        ram[0x0400] = 0xC2; // 'B'
+        ram[0x0401] = 0xC2; // 'B'
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(c => c.Machine).Returns(machine.Object);
+
+        var session = new MachineDebugSession(context.Object);
+        ScreenTextSnapshot screen = session.GetScreenText();
+        Assert.Multiple(() =>
+        {
+            Assert.That(screen.Columns, Is.EqualTo(80));
+            Assert.That(screen.Lines[0].Substring(0, 4), Is.EqualTo("ABAB"));
+            Assert.That(screen.Is80Column, Is.True);
+        });
+    }
+
+    /// <summary>
+    /// Verifies typed key requests are forwarded to keyboard input.
+    /// </summary>
+    [Test]
+    public void TypeKeys_ForwardsToKeyboardInput()
+    {
+        var keyboardInput = new Mock<IKeyboardInput>(MockBehavior.Strict);
+        keyboardInput
+            .Setup(k => k.TypeText("HELLO", null))
+            .Returns(new BadMango.Emulator.Devices.TypeTextReceipt(5, ['?'], Rejected: false));
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.Setup(m => m.GetComponent<IKeyboardInput>()).Returns(keyboardInput.Object);
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(c => c.Machine).Returns(machine.Object);
+
+        var session = new MachineDebugSession(context.Object);
+        BadMango.Emulator.Debug.Abstractions.TypeKeysReceipt receipt = session.TypeKeys("HELLO");
+        Assert.Multiple(() =>
+        {
+            Assert.That(receipt.Accepted, Is.EqualTo(5));
+            Assert.That(receipt.Skipped, Is.EqualTo(new[] { '?' }));
+            Assert.That(receipt.Rejected, Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Verifies disk listings return live controller and drive snapshot data.
+    /// </summary>
+    [Test]
+    public void ListDisks_ReturnsControllerAndDriveSnapshots()
+    {
+        var card = new Mock<ISlotCard>(MockBehavior.Strict);
+        card.SetupGet(c => c.Name).Returns("Disk II");
+
+        var controller = card.As<IDiskController>();
+        controller.SetupGet(c => c.DriveCount).Returns(1);
+        controller.Setup(c => c.GetDriveSnapshot(0)).Returns(new DriveSnapshot(
+            Selected: true,
+            MotorOn: true,
+            PhaseLatch: 2,
+            QuarterTrack: 8,
+            WriteProtect: false,
+            HasMedia: true,
+            MountedImagePath: "/tmp/test.dsk",
+            Geometry: DiskGeometry.Standard525Dos));
+
+        var slotManager = new Mock<ISlotManager>(MockBehavior.Loose);
+        slotManager.Setup(s => s.GetCard(6)).Returns(card.Object);
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.Setup(m => m.GetComponent<ISlotManager>()).Returns(slotManager.Object);
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(c => c.Machine).Returns(machine.Object);
+
+        var session = new MachineDebugSession(context.Object);
+        IReadOnlyList<DiskControllerSnapshot> disks = session.ListDisks();
+        Assert.Multiple(() =>
+        {
+            Assert.That(disks.Count, Is.EqualTo(1));
+            Assert.That(disks[0].Slot, Is.EqualTo(6));
+            Assert.That(disks[0].Drives[0].MountedImagePath, Is.EqualTo("/tmp/test.dsk"));
+            Assert.That(disks[0].Drives[0].Geometry!.TrackCount, Is.EqualTo(35));
+        });
+    }
+
+    /// <summary>
+    /// Verifies screen-text waiting advances execution until the requested pattern appears.
+    /// </summary>
+    [Test]
+    public void WaitForScreenText_WhenPatternAppears_ReturnsTrue()
+    {
+        byte[] ram = new byte[0x10000];
+        ram[0x0400] = 0xC1; // 'A'
+        var provider = new FakeMainMemoryProvider(ram);
+
+        var video = new Mock<IVideoDevice>(MockBehavior.Strict);
+        video.SetupGet(v => v.Is80Column).Returns(false);
+        video.SetupGet(v => v.IsPage2).Returns(false);
+        video.SetupGet(v => v.IsTextMode).Returns(true);
+        video.SetupGet(v => v.IsMixedMode).Returns(false);
+
+        var cpu = new Mock<ICpu>(MockBehavior.Strict);
+        cpu.SetupGet(c => c.Halted).Returns(false);
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(m => m.Cpu).Returns(cpu.Object);
+        machine.SetupGet(m => m.Bus).Returns(Mock.Of<IMemoryBus>());
+        machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
+        machine.Setup(m => m.GetComponent<IMainMemoryProvider>()).Returns(provider);
+        machine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns((IExtended80ColumnDevice?)null);
+        machine.Setup(m => m.Step()).Returns(() =>
+        {
+            ram[0x0400] = 0xDD; // ']'
+            return new CpuStepResult(CpuRunState.Running, new Cycle(2));
+        });
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(c => c.Machine).Returns(machine.Object);
+
+        var session = new MachineDebugSession(context.Object);
+        ScreenTextWaitResult matched = session.WaitForScreenText(@"\]", new RunBudget(MaxCycles: 20));
+        Assert.That(matched.Reason, Is.EqualTo(ScreenTextWaitReason.Matched));
+        Assert.That(matched.Matched, Is.True);
+    }
+
+    /// <summary>
+    /// Verifies a 40-column page, including page 2 and inverse and flashing glyphs.
+    /// </summary>
+    [Test]
+    public void GetScreenText_Reads40ColumnPage2InverseAndFlashingGlyphs()
+    {
+        byte[] ram = new byte[0x10000];
+        ram[0x0400] = 0xC2; // normal 'B' on page 1
+        ram[0x0800] = 0x01; // inverse 'A' on page 2
+        ram[0x0801] = 0x41; // flashing 'A' on page 2
+        var provider = new FakeMainMemoryProvider(ram);
+
+        var video = new Mock<IVideoDevice>(MockBehavior.Strict);
+        video.SetupGet(v => v.Is80Column).Returns(false);
+        video.SetupGet(v => v.IsTextMode).Returns(true);
+        video.SetupGet(v => v.IsMixedMode).Returns(false);
+        video.SetupGet(v => v.IsPage2).Returns(true);
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
+        machine.Setup(m => m.GetComponent<IMainMemoryProvider>()).Returns(provider);
+        machine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns((IExtended80ColumnDevice?)null);
+        machine.SetupGet(m => m.Bus).Returns(Mock.Of<IMemoryBus>());
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(c => c.Machine).Returns(machine.Object);
+
+        var session = new MachineDebugSession(context.Object);
+        ScreenTextSnapshot screen = session.GetScreenText();
+        Assert.Multiple(() =>
+        {
+            Assert.That(screen.Columns, Is.EqualTo(40));
+            Assert.That(screen.Lines[0], Has.Length.EqualTo(40));
+            Assert.That(screen.IsPage2, Is.True);
+            Assert.That(TextScreen.IsInverse(0x01), Is.True);
+            Assert.That(TextScreen.IsFlashing(0x41), Is.True);
+            Assert.That(screen.Lines[0][..2], Is.EqualTo("AA"));
+            Assert.That(screen.CombinedText, Is.EqualTo(string.Join("\n", screen.Lines)));
+            Assert.That(screen.CombinedText, Does.Not.Contain("\r"));
+        });
+    }
+
+    /// <summary>
+    /// Verifies the screen is sampled about once per frame, not after every instruction.
+    /// </summary>
+    [Test]
+    public void WaitForScreenText_PollsOncePerFrame()
+    {
+        int reads = 0;
+        byte[] ram = new byte[0x10000];
+        var provider = new CountingMainMemoryProvider(ram, () => reads++);
+
+        var video = new Mock<IVideoDevice>(MockBehavior.Strict);
+        video.SetupGet(v => v.Is80Column).Returns(false);
+        video.SetupGet(v => v.IsPage2).Returns(false);
+        video.SetupGet(v => v.IsTextMode).Returns(true);
+        video.SetupGet(v => v.IsMixedMode).Returns(false);
+
+        int steps = 0;
+        var cpu = new Mock<ICpu>(MockBehavior.Strict);
+        cpu.SetupGet(c => c.Halted).Returns(false);
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(m => m.Cpu).Returns(cpu.Object);
+        machine.SetupGet(m => m.Bus).Returns(Mock.Of<IMemoryBus>());
+        machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
+        machine.Setup(m => m.GetComponent<IMainMemoryProvider>()).Returns(provider);
+        machine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns((IExtended80ColumnDevice?)null);
+        machine.Setup(m => m.Step()).Returns(() =>
+        {
+            steps++;
+            return new CpuStepResult(CpuRunState.Running, new Cycle(1));
+        });
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(c => c.Machine).Returns(machine.Object);
+
+        var session = new MachineDebugSession(context.Object);
+        ScreenTextWaitResult result = session.WaitForScreenText(
+            "NO-SUCH-TEXT",
+            new RunBudget(MaxCycles: MachineDebugSession.ScreenTextPollIntervalCycles));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Reason, Is.EqualTo(ScreenTextWaitReason.BudgetExhausted));
+            Assert.That(steps, Is.EqualTo((int)MachineDebugSession.ScreenTextPollIntervalCycles));
+            Assert.That(reads, Is.LessThan(4_000));
+            Assert.That(reads, Is.GreaterThan(0));
+        });
+    }
+
+    /// <summary>
+    /// Verifies each non-match stop reason is reported instead of a bare false.
+    /// </summary>
+    [Test]
+    public void WaitForScreenText_ReportsEveryStopReason()
+    {
+        byte[] ram = new byte[0x10000];
+        var provider = new FakeMainMemoryProvider(ram);
+        var video = new Mock<IVideoDevice>(MockBehavior.Strict);
+        video.SetupGet(v => v.Is80Column).Returns(false);
+        video.SetupGet(v => v.IsPage2).Returns(false);
+        video.SetupGet(v => v.IsTextMode).Returns(true);
+        video.SetupGet(v => v.IsMixedMode).Returns(false);
+
+        var haltedCpu = new Mock<ICpu>(MockBehavior.Strict);
+        haltedCpu.SetupGet(c => c.Halted).Returns(true);
+        var runningCpu = new Mock<ICpu>(MockBehavior.Strict);
+        runningCpu.SetupGet(c => c.Halted).Returns(false);
+
+        var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(m => m.Bus).Returns(Mock.Of<IMemoryBus>());
+        machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
+        machine.Setup(m => m.GetComponent<IMainMemoryProvider>()).Returns(provider);
+        machine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns((IExtended80ColumnDevice?)null);
+        machine.Setup(m => m.Step()).Throws(new InvalidOperationException("step failed"));
+
+        var context = new Mock<IDebugContext>(MockBehavior.Strict);
+        context.SetupGet(c => c.Machine).Returns(machine.Object);
+        var session = new MachineDebugSession(context.Object);
+
+        machine.SetupGet(m => m.Cpu).Returns(haltedCpu.Object);
+        ScreenTextWaitResult halted = session.WaitForScreenText("NO-SUCH-TEXT", new RunBudget(MaxCycles: 100));
+
+        machine.SetupGet(m => m.Cpu).Returns(runningCpu.Object);
+        ScreenTextWaitResult budget = session.WaitForScreenText("NO-SUCH-TEXT", new RunBudget(MaxCycles: 0));
+        ScreenTextWaitResult wall = session.WaitForScreenText(
+            "NO-SUCH-TEXT",
+            new RunBudget(MaxCycles: 100, WallClock: TimeSpan.Zero));
+        ScreenTextWaitResult cancelled = session.WaitForScreenText(
+            "NO-SUCH-TEXT",
+            new RunBudget(MaxCycles: 100),
+            new CancellationToken(canceled: true));
+        ScreenTextWaitResult faulted = session.WaitForScreenText("NO-SUCH-TEXT", new RunBudget(MaxCycles: 10));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(halted.Reason, Is.EqualTo(ScreenTextWaitReason.Halted));
+            Assert.That(budget.Reason, Is.EqualTo(ScreenTextWaitReason.BudgetExhausted));
+            Assert.That(wall.Reason, Is.EqualTo(ScreenTextWaitReason.WallClockTimeout));
+            Assert.That(cancelled.Reason, Is.EqualTo(ScreenTextWaitReason.Cancelled));
+            Assert.That(faulted.Reason, Is.EqualTo(ScreenTextWaitReason.Faulted));
+            Assert.That(faulted.Exception, Is.TypeOf<InvalidOperationException>());
+            Assert.That(faulted.FaultMessage, Does.Contain("step failed"));
+        });
+    }
+
     /// <summary>
     /// Verifies debugger reads and writes of a soft switch do not toggle it.
     /// </summary>
@@ -762,6 +1094,24 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
             {
                 Session.StopRun(RunId);
             }
+        }
+    }
+
+    private sealed class FakeMainMemoryProvider(byte[] memory) : IMainMemoryProvider
+    {
+        public ReadOnlyMemory<byte> MainRam => memory;
+
+        public byte ReadMainRam(ushort address) => memory[address];
+    }
+
+    private sealed class CountingMainMemoryProvider(byte[] memory, Action onRead) : IMainMemoryProvider
+    {
+        public ReadOnlyMemory<byte> MainRam => memory;
+
+        public byte ReadMainRam(ushort address)
+        {
+            onRead();
+            return memory[address];
         }
     }
 

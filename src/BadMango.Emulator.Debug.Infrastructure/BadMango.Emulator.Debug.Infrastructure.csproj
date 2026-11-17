@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <PackageReference Include="Autofac" />
+    <PackageReference Include="Serilog" />
   </ItemGroup>
 
   <ItemGroup>
