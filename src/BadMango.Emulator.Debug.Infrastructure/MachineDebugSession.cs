@@ -56,6 +56,10 @@ using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
 /// run has finished. <see cref="GetRunStatus"/> keeps the result until the next <see cref="StartRun"/>.
 /// <see cref="StopRun(Guid, TimeSpan?)"/> on a finished run does not cancel a disposed token.
 /// </para>
+/// <para>
+/// GitHub issue #337 calls <see cref="IDebugSession"/>. This type is that session.
+/// It does not add another memory-read shape beside <see cref="ReadMemory"/>.
+/// </para>
 /// </remarks>
 public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 {
@@ -144,8 +148,11 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 
     /// <inheritdoc />
     /// <remarks>
-    /// Each byte is a <c>TryRead8</c> debug read. A fault is stored in <see cref="MemoryBlock.Faults"/>
-    /// and the read continues. The bus reports the fault as a result, so a large unmapped span does
+    /// Each byte is a <c>TryRead8</c> debug read. A successful read carries a zero
+    /// <see cref="BusFault"/>: <see cref="FaultKind"/> is <see cref="FaultKind.None"/> and the
+    /// address, device, and region stay at their defaults. The session does not read those
+    /// fields from a success. A failed read is stored in <see cref="MemoryBlock.Faults"/> and
+    /// the read continues. The bus reports the fault as a result, so a large unmapped span does
     /// not throw once per byte.
     /// </remarks>
     public MemoryBlock ReadMemory(uint address, int length)

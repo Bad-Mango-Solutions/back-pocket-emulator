@@ -9,6 +9,11 @@ using BadMango.Emulator.Core.Cpu;
 /// <summary>
 /// Defines the core contract for a debug session that can query and control emulator state.
 /// </summary>
+/// <remarks>
+/// GitHub issue #337 calls <see cref="IDebugSession"/> for inspection and control.
+/// That host does not call <c>CpuBase.Read8</c> and does not issue its own <c>TryRead8</c>.
+/// Memory reads stay on <see cref="ReadMemory"/>, which keeps the existing fault mask.
+/// </remarks>
 public interface IDebugSession
 {
     /// <summary>

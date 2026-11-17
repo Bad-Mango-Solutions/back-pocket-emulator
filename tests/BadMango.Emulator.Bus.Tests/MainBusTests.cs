@@ -293,6 +293,10 @@ public class MainBusTests
         {
             Assert.That(result.Ok, Is.True, "Decomposed mode should ignore NX");
             Assert.That(result.Value, Is.EqualTo(0xEA));
+            Assert.That(result.Fault, Is.EqualTo(default(BusFault)));
+            Assert.That(result.Fault.Address, Is.EqualTo(default(Addr)));
+            Assert.That(result.Fault.DeviceId, Is.EqualTo(0));
+            Assert.That(result.Fault.RegionTag, Is.EqualTo(default(RegionTag)));
         });
     }
 
