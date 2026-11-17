@@ -40,17 +40,6 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
     private readonly Func<DateTimeOffset> clock;
 
     /// <summary>
-    /// Gets a text renderer with no cycle budget.
-    /// </summary>
-    public static IDebugOutputRenderer PlainText { get; } = new DebugOutputRenderer();
-
-    /// <inheritdoc/>
-    public bool JsonOutput { get; }
-
-    /// <inheritdoc/>
-    public ulong? DefaultMaxCycles { get; }
-
-    /// <summary>
     /// Initializes a new instance of the <see cref="DebugOutputRenderer"/> class.
     /// </summary>
     /// <param name="options">Startup options. <see langword="null"/> selects text output.</param>
@@ -61,6 +50,17 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         this.DefaultMaxCycles = options?.MaxCycles;
         this.clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
+
+    /// <summary>
+    /// Gets a text renderer with no cycle budget.
+    /// </summary>
+    public static IDebugOutputRenderer PlainText { get; } = new DebugOutputRenderer();
+
+    /// <inheritdoc/>
+    public bool JsonOutput { get; }
+
+    /// <inheritdoc/>
+    public ulong? DefaultMaxCycles { get; }
 
     /// <summary>
     /// Formats a bus fault kind as the named low-byte bitmask, preserving unknown bits.
@@ -217,32 +217,6 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
                     FaultText(kind)));
             }
         }
-    }
-
-    private static string FormatFaultKind(byte mask, bool isMasked, string defaultName)
-    {
-        ushort combinedMask = mask;
-        var names = new List<string>();
-        foreach ((FaultKind kind, string name) in KnownFaultNames)
-        {
-            if ((combinedMask & (ushort)kind) != 0)
-            {
-                names.Add(name);
-            }
-        }
-
-        ushort unknownBits = (ushort)(combinedMask & ~KnownFaultMask);
-        if (unknownBits != 0)
-        {
-            names.Add($"unknown 0x{unknownBits:X4}");
-        }
-
-        if (names.Count == 0)
-        {
-            return isMasked ? $"{defaultName} {mask:X2}" : $"{defaultName} {combinedMask:X4}";
-        }
-
-        return string.Join("|", names);
     }
 
     /// <summary>
@@ -402,6 +376,39 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         }
 
         output.WriteLine(text);
+    }
+
+    /// <summary>
+    /// Formats a raw fault mask as the named bitmask, preserving unknown bits.
+    /// </summary>
+    /// <param name="mask">The raw fault mask.</param>
+    /// <param name="isMasked">Whether the mask is a byte-level mask value.</param>
+    /// <param name="defaultName">Default label to use if no named bits are present.</param>
+    /// <returns>A pipe-delimited list of known fault names and remaining unknown bits.</returns>
+    private static string FormatFaultKind(byte mask, bool isMasked, string defaultName)
+    {
+        ushort combinedMask = mask;
+        var names = new List<string>();
+        foreach ((FaultKind kind, string name) in KnownFaultNames)
+        {
+            if ((combinedMask & (ushort)kind) != 0)
+            {
+                names.Add(name);
+            }
+        }
+
+        ushort unknownBits = (ushort)(combinedMask & ~KnownFaultMask);
+        if (unknownBits != 0)
+        {
+            names.Add($"unknown 0x{unknownBits:X4}");
+        }
+
+        if (names.Count == 0)
+        {
+            return isMasked ? $"{defaultName} {mask:X2}" : $"{defaultName} {combinedMask:X4}";
+        }
+
+        return string.Join("|", names);
     }
 
     private void WriteEnvelope<T>(TextWriter output, T payload, JsonTypeInfo<DebugEnvelope<T>> typeInfo)
