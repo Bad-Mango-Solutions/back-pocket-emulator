@@ -59,7 +59,8 @@ public static class Cpu65C02OpcodeTableBuilder
     /// <returns>An <see cref="OpcodeTable"/> configured for the 65C02 CPU.</returns>
     public static OpcodeTable Build()
     {
-        var handlers = new OpcodeHandler[256];
+        var handlers = new OpcodeHandler?[256];
+        var dispatchTargets = new OpcodeDispatch?[256];
         var metadata = new OpcodeInfo[256];
 
         // Initialize all opcodes to illegal opcode handler
@@ -71,6 +72,14 @@ public static class Cpu65C02OpcodeTableBuilder
         void SetOpcode(byte opcode, OpcodeHandler handler, CpuInstructions instruction, CpuAddressingModes addressingMode)
         {
             handlers[opcode] = handler;
+            dispatchTargets[opcode] = null;
+            metadata[opcode] = new(instruction, addressingMode, GetOperandLength(addressingMode), BaseCycles[opcode]);
+        }
+
+        void SetDirectOpcode(byte opcode, OpcodeDispatch dispatchTarget, CpuInstructions instruction, CpuAddressingModes addressingMode)
+        {
+            handlers[opcode] = null;
+            dispatchTargets[opcode] = dispatchTarget;
             metadata[opcode] = new(instruction, addressingMode, GetOperandLength(addressingMode), BaseCycles[opcode]);
         }
 
@@ -230,21 +239,21 @@ public static class Cpu65C02OpcodeTableBuilder
         SetOpcode(0x8C, Instructions.STY(AddressingModes.Absolute), CpuInstructions.STY, CpuAddressingModes.Absolute);
 
         // Flag manipulation instructions (all use Implied addressing)
-        SetOpcode(0x18, Instructions.CLC(AddressingModes.Implied), CpuInstructions.CLC, CpuAddressingModes.Implied); // Clear Carry
-        SetOpcode(0x38, Instructions.SEC(AddressingModes.Implied), CpuInstructions.SEC, CpuAddressingModes.Implied); // Set Carry
-        SetOpcode(0x58, Instructions.CLI(AddressingModes.Implied), CpuInstructions.CLI, CpuAddressingModes.Implied); // Clear Interrupt Disable
-        SetOpcode(0x78, Instructions.SEI(AddressingModes.Implied), CpuInstructions.SEI, CpuAddressingModes.Implied); // Set Interrupt Disable
-        SetOpcode(0xD8, Instructions.CLD(AddressingModes.Implied), CpuInstructions.CLD, CpuAddressingModes.Implied); // Clear Decimal
-        SetOpcode(0xF8, Instructions.SED(AddressingModes.Implied), CpuInstructions.SED, CpuAddressingModes.Implied); // Set Decimal
-        SetOpcode(0xB8, Instructions.CLV(AddressingModes.Implied), CpuInstructions.CLV, CpuAddressingModes.Implied); // Clear Overflow
+        SetDirectOpcode(0x18, Instructions.CLCImpliedDispatch, CpuInstructions.CLC, CpuAddressingModes.Implied); // Clear Carry
+        SetDirectOpcode(0x38, Instructions.SECImpliedDispatch, CpuInstructions.SEC, CpuAddressingModes.Implied); // Set Carry
+        SetDirectOpcode(0x58, Instructions.CLIImpliedDispatch, CpuInstructions.CLI, CpuAddressingModes.Implied); // Clear Interrupt Disable
+        SetDirectOpcode(0x78, Instructions.SEIImpliedDispatch, CpuInstructions.SEI, CpuAddressingModes.Implied); // Set Interrupt Disable
+        SetDirectOpcode(0xD8, Instructions.CLDImpliedDispatch, CpuInstructions.CLD, CpuAddressingModes.Implied); // Clear Decimal
+        SetDirectOpcode(0xF8, Instructions.SEDImpliedDispatch, CpuInstructions.SED, CpuAddressingModes.Implied); // Set Decimal
+        SetDirectOpcode(0xB8, Instructions.CLVImpliedDispatch, CpuInstructions.CLV, CpuAddressingModes.Implied); // Clear Overflow
 
         // Register Transfer Operations
-        SetOpcode(0xAA, Instructions.TAX(AddressingModes.Implied), CpuInstructions.TAX, CpuAddressingModes.Implied); // Transfer RegisterAccumulator to X
-        SetOpcode(0xA8, Instructions.TAY(AddressingModes.Implied), CpuInstructions.TAY, CpuAddressingModes.Implied); // Transfer RegisterAccumulator to Y
-        SetOpcode(0x8A, Instructions.TXA(AddressingModes.Implied), CpuInstructions.TXA, CpuAddressingModes.Implied); // Transfer X to RegisterAccumulator
-        SetOpcode(0x98, Instructions.TYA(AddressingModes.Implied), CpuInstructions.TYA, CpuAddressingModes.Implied); // Transfer Y to RegisterAccumulator
-        SetOpcode(0x9A, Instructions.TXS(AddressingModes.Implied), CpuInstructions.TXS, CpuAddressingModes.Implied); // Transfer X to SP
-        SetOpcode(0xBA, Instructions.TSX(AddressingModes.Implied), CpuInstructions.TSX, CpuAddressingModes.Implied); // Transfer SP to X
+        SetDirectOpcode(0xAA, Instructions.TAXImpliedDispatch, CpuInstructions.TAX, CpuAddressingModes.Implied); // Transfer RegisterAccumulator to X
+        SetDirectOpcode(0xA8, Instructions.TAYImpliedDispatch, CpuInstructions.TAY, CpuAddressingModes.Implied); // Transfer RegisterAccumulator to Y
+        SetDirectOpcode(0x8A, Instructions.TXAImpliedDispatch, CpuInstructions.TXA, CpuAddressingModes.Implied); // Transfer X to RegisterAccumulator
+        SetDirectOpcode(0x98, Instructions.TYAImpliedDispatch, CpuInstructions.TYA, CpuAddressingModes.Implied); // Transfer Y to RegisterAccumulator
+        SetDirectOpcode(0x9A, Instructions.TXSImpliedDispatch, CpuInstructions.TXS, CpuAddressingModes.Implied); // Transfer X to SP
+        SetDirectOpcode(0xBA, Instructions.TSXImpliedDispatch, CpuInstructions.TSX, CpuAddressingModes.Implied); // Transfer SP to X
 
         // Stack Operations
         SetOpcode(0x48, Instructions.PHA(AddressingModes.Implied), CpuInstructions.PHA, CpuAddressingModes.Implied); // Push Accumulator
@@ -447,7 +456,7 @@ public static class Cpu65C02OpcodeTableBuilder
         SetOpcode(0x6E, Instructions.ROR(AddressingModes.Absolute), CpuInstructions.ROR, CpuAddressingModes.Absolute);
         SetOpcode(0x7E, Instructions.ROR(AddressingModes.AbsoluteX), CpuInstructions.ROR, CpuAddressingModes.AbsoluteX);
 
-        return new(handlers, metadata);
+        return new(handlers, metadata, dispatchTargets);
     }
 
     /// <summary>

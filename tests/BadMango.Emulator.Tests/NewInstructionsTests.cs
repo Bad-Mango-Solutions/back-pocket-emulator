@@ -43,8 +43,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, x: 0x00, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.TAX(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xAA);
 
         // Assert
         Assert.That(Cpu.Registers.X.GetByte(), Is.EqualTo(0x42));
@@ -62,8 +61,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x00, y: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.TAY(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xA8);
 
         // Assert
         Assert.That(Cpu.Registers.Y.GetByte(), Is.EqualTo(0x00));
@@ -80,8 +78,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x00, x: 0x80, p: 0, cycles: 10, compat: true);
 
         // Act
-        var handler = Instructions.TXA(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x8A);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x80));
@@ -98,8 +95,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x00, y: 0x55, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.TYA(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x98);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x55));
@@ -115,8 +111,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0xAB, sp: 0xFF, p: FlagZ | FlagN, cycles: 10);
 
         // Act
-        var handler = Instructions.TXS(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x9A);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xAB));
@@ -133,8 +128,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0x00, sp: 0x00, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.TSX(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xBA);
 
         // Assert
         Assert.That(Cpu.Registers.X.GetByte(), Is.EqualTo(0x00));
@@ -1211,5 +1205,15 @@ public class NewInstructionsTests : CpuTestBase
         Cpu.Registers.SP.SetByte(sp);
         Cpu.Registers.P = p;
         Cpu.SetCycles(cycles);
+    }
+
+    /// <summary>
+    /// Executes one opcode through the 65C02 opcode table.
+    /// A direct-dispatch opcode runs its cached delegate and has no legacy handler.
+    /// </summary>
+    /// <param name="opcode">The opcode byte.</param>
+    private void ExecuteOpcode(byte opcode)
+    {
+        Cpu65C02OpcodeTableBuilder.Build().Execute(opcode, Cpu);
     }
 }

@@ -6,120 +6,103 @@
 namespace BadMango.Emulator.Emulation.Cpu;
 
 using Core.Cpu;
+using Core.Interfaces.Cpu;
 
 /// <content>
 /// Register transfer instructions (TAX, TAY, TXA, TYA, TXS, TSX).
 /// </content>
 public static partial class Instructions
 {
-    /// <summary>
-    /// TAX - Transfer Accumulator to X instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes TAX.</returns>
-    public static OpcodeHandler TAX(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            byte size = cpu.Registers.GetIndexSize();
-            var value = cpu.Registers.A.GetValue(size);
-            cpu.Registers.X.SetValue(value, size);
-            cpu.Registers.P.SetZeroAndNegative(value, size);
+    /// <summary>Cached direct-dispatch delegate for TAX implied.</summary>
+    internal static readonly OpcodeDispatch TAXImpliedDispatch = DispatchTAXImplied;
 
-            cpu.Registers.TCU += 1;
-        };
+    /// <summary>Cached direct-dispatch delegate for TAY implied.</summary>
+    internal static readonly OpcodeDispatch TAYImpliedDispatch = DispatchTAYImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TXA implied.</summary>
+    internal static readonly OpcodeDispatch TXAImpliedDispatch = DispatchTXAImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TYA implied.</summary>
+    internal static readonly OpcodeDispatch TYAImpliedDispatch = DispatchTYAImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TXS implied.</summary>
+    internal static readonly OpcodeDispatch TXSImpliedDispatch = DispatchTXSImplied;
+
+    /// <summary>Cached direct-dispatch delegate for TSX implied.</summary>
+    internal static readonly OpcodeDispatch TSXImpliedDispatch = DispatchTSXImplied;
+
+    private static void DispatchTAXImplied(ICpu cpu, in OpcodeEntry entry) => OpTAX<ImpliedMode>(cpu);
+
+    private static void DispatchTAYImplied(ICpu cpu, in OpcodeEntry entry) => OpTAY<ImpliedMode>(cpu);
+
+    private static void DispatchTXAImplied(ICpu cpu, in OpcodeEntry entry) => OpTXA<ImpliedMode>(cpu);
+
+    private static void DispatchTYAImplied(ICpu cpu, in OpcodeEntry entry) => OpTYA<ImpliedMode>(cpu);
+
+    private static void DispatchTXSImplied(ICpu cpu, in OpcodeEntry entry) => OpTXS<ImpliedMode>(cpu);
+
+    private static void DispatchTSXImplied(ICpu cpu, in OpcodeEntry entry) => OpTSX<ImpliedMode>(cpu);
+
+    private static void OpTAX<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        var value = cpu.Registers.A.GetValue(size);
+        cpu.Registers.X.SetValue(value, size);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
     }
 
-    /// <summary>
-    /// TAY - Transfer Accumulator to Y instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes TAY.</returns>
-    public static OpcodeHandler TAY(AddressingModeHandler addressingMode)
+    private static void OpTAY<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            byte size = cpu.Registers.GetIndexSize();
-            var value = cpu.Registers.A.GetValue(size);
-            cpu.Registers.Y.SetValue(value, size);
-            cpu.Registers.P.SetZeroAndNegative(value, size);
-
-            cpu.Registers.TCU += 1;
-        };
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        var value = cpu.Registers.A.GetValue(size);
+        cpu.Registers.Y.SetValue(value, size);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
     }
 
-    /// <summary>
-    /// TXA - Transfer X to Accumulator instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes TXA.</returns>
-    public static OpcodeHandler TXA(AddressingModeHandler addressingMode)
+    private static void OpTXA<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            byte size = cpu.Registers.GetAccumulatorSize();
-            var value = cpu.Registers.X.GetValue(size);
-            cpu.Registers.A.SetValue(value, size);
-            cpu.Registers.P.SetZeroAndNegative(value, size);
-
-            cpu.Registers.TCU += 1;
-        };
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetAccumulatorSize();
+        var value = cpu.Registers.X.GetValue(size);
+        cpu.Registers.A.SetValue(value, size);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
     }
 
-    /// <summary>
-    /// TYA - Transfer Y to Accumulator instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes TYA.</returns>
-    public static OpcodeHandler TYA(AddressingModeHandler addressingMode)
+    private static void OpTYA<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            byte size = cpu.Registers.GetAccumulatorSize();
-            var value = cpu.Registers.Y.GetValue(size);
-            cpu.Registers.A.SetValue(value, size);
-            cpu.Registers.P.SetZeroAndNegative(value, size);
-
-            cpu.Registers.TCU += 1;
-        };
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetAccumulatorSize();
+        var value = cpu.Registers.Y.GetValue(size);
+        cpu.Registers.A.SetValue(value, size);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
     }
 
-    /// <summary>
-    /// TXS - Transfer X to Stack Pointer instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes TXS.</returns>
-    public static OpcodeHandler TXS(AddressingModeHandler addressingMode)
+    private static void OpTXS<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.Registers.SP.SetDWord(cpu.Registers.X.GetByte());
-
-            cpu.Registers.TCU += 1;
-        };
+        TMode.Resolve(cpu);
+        cpu.Registers.SP.SetDWord(cpu.Registers.X.GetByte());
+        cpu.Registers.TCU += 1;
     }
 
-    /// <summary>
-    /// TSX - Transfer Stack Pointer to X instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes TSX.</returns>
-    public static OpcodeHandler TSX(AddressingModeHandler addressingMode)
+    private static void OpTSX<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            byte size = cpu.Registers.GetIndexSize();
-            byte value = cpu.Registers.SP.GetByte();
-            cpu.Registers.X.SetByte(value);
-            cpu.Registers.P.SetZeroAndNegative(value, size);
-
-            cpu.Registers.TCU += 1;
-        };
+        TMode.Resolve(cpu);
+        byte size = cpu.Registers.GetIndexSize();
+        byte value = cpu.Registers.SP.GetByte();
+        cpu.Registers.X.SetByte(value);
+        cpu.Registers.P.SetZeroAndNegative(value, size);
+        cpu.Registers.TCU += 1;
     }
 }
