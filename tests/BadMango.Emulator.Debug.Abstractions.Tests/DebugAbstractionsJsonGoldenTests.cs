@@ -89,7 +89,7 @@ public class DebugAbstractionsJsonGoldenTests
   "address": 32766,
   "length": 4,
   "data": "41420000",
-  "faults": "00000301"
+  "faults": "00000103"
 }
 """));
     }
