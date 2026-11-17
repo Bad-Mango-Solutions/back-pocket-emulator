@@ -211,13 +211,17 @@ public sealed class SandboxPathGuardTests
             return;
         }
 
-        if ((File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0)
+        FileAttributes attributes = File.GetAttributes(link);
+        bool reparsePoint = (attributes & FileAttributes.ReparsePoint) != 0;
+        bool directory = (attributes & FileAttributes.Directory) != 0;
+        if (reparsePoint && directory)
         {
-            File.Delete(link);
+            // Windows directory symlinks and junctions are directories. File.Delete throws for them.
+            Directory.Delete(link);
             return;
         }
 
-        if (File.Exists(link))
+        if (reparsePoint || File.Exists(link))
         {
             File.Delete(link);
         }
