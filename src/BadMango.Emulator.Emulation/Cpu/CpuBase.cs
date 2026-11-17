@@ -82,6 +82,16 @@ public abstract class CpuBase : ICpu
     private bool stopRequested;
 
     /// <summary>
+    /// When <see langword="true"/>, an unmapped read sets <see cref="HaltState.Stp"/>.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see langword="true"/>, which is the 65C02 <c>NoOp</c> reaction. The 65C02
+    /// clears it while <c>AbortReaction</c> is <c>HostBreak</c>. The fast path returns before
+    /// this field is read.
+    /// </remarks>
+    private bool haltOnUnmapped = true;
+
+    /// <summary>
     /// The attached debug listener, if any.
     /// </summary>
     private IDebugStepListener? debugListener;
@@ -152,16 +162,6 @@ public abstract class CpuBase : ICpu
         get => trace;
         set => trace = value;
     }
-
-    /// <summary>
-    /// Gets a value indicating whether an unmapped read sets <see cref="HaltState.Stp"/>.
-    /// </summary>
-    /// <value><see langword="true"/> when an unmapped read halts the CPU.</value>
-    /// <remarks>
-    /// The fast path does not read this property. Only <see cref="NoteUnmappedFault"/> does,
-    /// and only after a checked read has already failed.
-    /// </remarks>
-    protected virtual bool HaltOnUnmapped => true;
 
     /// <summary>
     /// Gets the memory bus for all memory operations.
@@ -299,9 +299,9 @@ public abstract class CpuBase : ICpu
         if (result.Failed)
         {
             // Handle bus fault - for now, return 0xFF (floating bus) and halt on unmapped
-            if (result.Fault.Kind == FaultKind.Unmapped)
+            if (result.Fault.Kind == FaultKind.Unmapped && haltOnUnmapped)
             {
-                NoteUnmappedFault();
+                haltReason = HaltState.Stp;
             }
 
             return 0xFF;
@@ -390,7 +390,8 @@ public abstract class CpuBase : ICpu
     /// and any other byte uses <see cref="IMemoryBus.TryRead8"/>. The second byte's address is
     /// <paramref name="address"/> + 1 as a <see cref="uint"/>, so <c>$FFFF</c> on a 16-bit bus
     /// addresses <c>$10000</c>. The first fault stops the rest of the access and returns
-    /// <c>0xFFFF</c>. <see cref="FaultKind.Unmapped"/> calls <see cref="NoteUnmappedFault"/>.
+    /// <c>0xFFFF</c>. <see cref="FaultKind.Unmapped"/> sets <see cref="HaltState.Stp"/> unless a
+    /// derived CPU has disabled that halt.
     /// A same-page access that is not eligible keeps <see cref="IMemoryBus.TryRead16"/>.
     /// This method does not add to <see cref="Registers.TCU"/>.
     /// </remarks>
@@ -411,9 +412,9 @@ public abstract class CpuBase : ICpu
 
         if (result.Failed)
         {
-            if (result.Fault.Kind == FaultKind.Unmapped)
+            if (result.Fault.Kind == FaultKind.Unmapped && haltOnUnmapped)
             {
-                NoteUnmappedFault();
+                haltReason = HaltState.Stp;
             }
 
             return 0xFFFF;
@@ -507,6 +508,16 @@ public abstract class CpuBase : ICpu
     // ─── Protected Helper Methods ───────────────────────────────────────
 
     /// <summary>
+    /// Sets whether an unmapped read sets <see cref="HaltState.Stp"/>.
+    /// </summary>
+    /// <param name="halt"><see langword="true"/> to keep the unmapped halt.</param>
+    /// <remarks>
+    /// The 65C02 calls this from its abort-reaction setter. The fault branches read the field
+    /// directly. There is no virtual call on that path.
+    /// </remarks>
+    protected void SetHaltOnUnmapped(bool halt) => haltOnUnmapped = halt;
+
+    /// <summary>
     /// Reads one instruction byte, indexing a <see cref="MainBus"/> page when
     /// <paramref name="fetchOperation"/> is published for it.
     /// </summary>
@@ -522,9 +533,9 @@ public abstract class CpuBase : ICpu
     /// A hit does not build a <see cref="BusAccess"/>, does not call <see cref="GetEmulationFlag"/>,
     /// does not read <see cref="IEventContext.Now"/>, and does not change <see cref="HaltReason"/>.
     /// A miss calls <see cref="IMemoryBus.TryRead8"/> with <see cref="AccessIntent.InstructionFetch"/>.
-    /// An unmapped miss calls <see cref="NoteUnmappedFault"/> and returns <c>0xFF</c>. The base
-    /// CPU sets <see cref="HaltState.Stp"/>. A 65C02 whose abort reaction is host-break does not.
-    /// Any other fault returns <c>0xFF</c> without setting <see cref="HaltState.Stp"/>.
+    /// An unmapped miss sets <see cref="HaltState.Stp"/> and returns <c>0xFF</c>, unless a derived
+    /// CPU has disabled that halt. A 65C02 whose abort reaction is host-break disables it. Any
+    /// other fault returns <c>0xFF</c> without setting <see cref="HaltState.Stp"/>.
     /// </para>
     /// <para>
     /// The method does not add to <see cref="Registers.TCU"/>. <c>FetchByte</c> still adds the
@@ -543,9 +554,9 @@ public abstract class CpuBase : ICpu
 
         if (result.Failed)
         {
-            if (result.Fault.Kind == FaultKind.Unmapped)
+            if (result.Fault.Kind == FaultKind.Unmapped && haltOnUnmapped)
             {
-                NoteUnmappedFault();
+                haltReason = HaltState.Stp;
             }
 
             return 0xFF;
@@ -580,9 +591,9 @@ public abstract class CpuBase : ICpu
 
         if (result.Failed)
         {
-            if (result.Fault.Kind == FaultKind.Unmapped)
+            if (result.Fault.Kind == FaultKind.Unmapped && haltOnUnmapped)
             {
-                NoteUnmappedFault();
+                haltReason = HaltState.Stp;
             }
 
             return 0xFFFFFFFF;
@@ -781,23 +792,6 @@ public abstract class CpuBase : ICpu
     }
 
     /// <summary>
-    /// Records an unmapped read. The base CPU sets <see cref="HaltState.Stp"/>.
-    /// </summary>
-    /// <remarks>
-    /// Kept out of line so the fast path, which returns before this method, does not load
-    /// <see cref="HaltOnUnmapped"/>. <see cref="Cpu65C02"/> reports <see langword="false"/> from
-    /// that property while its abort reaction is host-break, so the fetch does not stop the CPU.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void NoteUnmappedFault()
-    {
-        if (HaltOnUnmapped)
-        {
-            haltReason = HaltState.Stp;
-        }
-    }
-
-    /// <summary>
     /// Stores one byte when the live page publishes <see cref="FastPathOps.Write"/>.
     /// </summary>
     /// <param name="address">The CPU address.</param>
@@ -981,9 +975,9 @@ public abstract class CpuBase : ICpu
             var result = bus.TryRead8(access);
             if (result.Failed)
             {
-                if (result.Fault.Kind == FaultKind.Unmapped)
+                if (result.Fault.Kind == FaultKind.Unmapped && haltOnUnmapped)
                 {
-                    NoteUnmappedFault();
+                    haltReason = HaltState.Stp;
                 }
 
                 return faultValue;

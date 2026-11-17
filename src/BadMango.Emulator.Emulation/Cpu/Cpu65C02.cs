@@ -169,15 +169,12 @@ public sealed class Cpu65C02 : CpuBase
     public AbortReaction AbortReaction
     {
         get => abortReaction;
-        set => abortReaction = value;
+        set
+        {
+            abortReaction = value;
+            SetHaltOnUnmapped(value != AbortReaction.HostBreak);
+        }
     }
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Host-break replaces the unmapped halt with a stop at the next instruction boundary.
-    /// The fast path does not read <see cref="AbortReaction"/>.
-    /// </remarks>
-    protected override bool HaltOnUnmapped => abortReaction != AbortReaction.HostBreak;
 
     /// <inheritdoc/>
     /// <remarks>
