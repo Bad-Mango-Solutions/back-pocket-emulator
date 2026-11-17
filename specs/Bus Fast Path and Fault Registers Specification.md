@@ -6,7 +6,7 @@
 | Owner | Josh |
 | Tracking issue | #500 |
 | Epic | #499 |
-| Baseline | `main` at `66ad4e7` (dispatch benchmarks from #497). PR #489 (debug fault mask), PR #496 (benchmarking spec), and PR #498 (load/store dispatch and the published mix number) are open and are not on this baseline. |
+| Baseline | Bus behavior below is `main` at `66ad4e7`. #489 has since merged (`a6feca5`, on `main` at `2cb72e0`). Its numbered fault mask is current behavior in section 3, and A5 migrates it. |
 | Related | `reference/Main bus architecture.md`, `reference/WDC 65816 Emulator Reference.md`, `specs/Architecture Spec v1.0 Part 1.md` through `Part 3.md`, #501 |
 
 ---
@@ -54,9 +54,9 @@ Traps are not a page property. `Cpu65C02.Step` calls `ITrapRegistry.TryExecute` 
 
 Bank switching rewrites `pageTable` in place. `LanguageCardDevice.ApplyState` activates or deactivates the high and low layers and calls `SelectSwapVariant`. `$C081` / `$C089` split mode installs `LanguageCardSplitTarget`, an `ICompositeTarget` that reads ROM and writes language-card RAM. Full RAM (`$C083` family) and full ROM (`$C082` family) install `RamTarget` or the base ROM. `Extended80ColumnDevice` and `AuxiliaryMemoryController` activate layers for 80STORE, aux RAM, and aux zero page. `SelectSwapVariant`, `RemapPage`, `RemapPageRange`, `ActivateLayer`, and `DeactivateLayer` replace `PageEntry` values. The comments say the update is atomic. `PageEntry` is a large struct, and the store is an ordinary array element write. Soft-switch handlers run on the CPU thread inside the write that touched `$C0xx`, so the CPU is not reading that entry concurrently with the store.
 
-`FaultKind` (`src/BadMango.Emulator.Bus/FaultKind.cs`) is a `byte` enum, not `[Flags]`: `None = 0`, `Unmapped = 1`, `Permission = 2`, `Nx = 3`, `Misaligned = 4`, `DeviceFault = 5`. PR #489, which is not merged, documents `MemoryBlock.Faults` as one byte per data byte: `00` means the data byte is valid, and any other value is that kind byte with the same numbers. `SignalLine` (`src/BadMango.Emulator.Core/Signaling/SignalLine.cs`) is `IRQ`, `NMI`, `Reset`, `RDY`, `DmaReq`. There is no abort line. `MainBus` does not take an `ISignalBus`.
+`FaultKind` (`src/BadMango.Emulator.Bus/FaultKind.cs`) is a `byte` enum, not `[Flags]`: `None = 0`, `Unmapped = 1`, `Permission = 2`, `Nx = 3`, `Misaligned = 4`, `DeviceFault = 5`. #489 has merged. `MachineDebugSession.ReadMemory` stores `(byte)read.Fault.Kind` in `MemoryBlock.Faults` and continues. `00` means the data byte is valid. `MemoryBlock`'s remarks, `DebugOutputRenderer.FaultText` (the arms are the raw bytes 1 through 5), and `emudbg.md` (the `mem` / `peek` `--json` paragraph) document the same numbering: 1 Unmapped, 2 Permission, 3 Nx, 4 Misaligned, 5 DeviceFault. `SignalLine` (`src/BadMango.Emulator.Core/Signaling/SignalLine.cs`) is `IRQ`, `NMI`, `Reset`, `RDY`, `DmaReq`. There is no abort line. `MainBus` does not take an `ISignalBus`.
 
-There is no MCP server in the tree. `emudbg-agent-plan.md` and `PRD-emudbg-agent.md` name MCP over stdio as later work (#333, #337) on top of `IDebugSession`. `MachineDebugSession.ReadMemory` calls `TryRead8` with a debug access and throws `InvalidOperationException` on `Failed`. `MemCommand`, `PeekCommand`, `PokeCommand`, and `WriteCommand` call `Try*` and format `BusFault` with a `switch` on `FaultKind`.
+There is no MCP server in the tree. `emudbg-agent-plan.md` and `PRD-emudbg-agent.md` name MCP over stdio as later work (#333, #337) on top of `IDebugSession`. `MemCommand`, `PeekCommand`, `PokeCommand`, and `WriteCommand` call `Try*` and format `BusFault` with a `switch` on `FaultKind`. `ReadMemory` does not throw on a fault.
 
 `benchmarks/BadMango.Emulator.Benchmarks` is on `main`. `WorkloadMhzDispatchBenchmark` steps `MixWorkload`, `RamWorkload`, and `FlagsTransferWorkload` on `BareCpuFixture` (a `Cpu65C02` and a flat 64 KB RAM bus, no devices). The project has no `Bus/` benchmark and no machine fixture. PR #496 specifies that layout and a 5% compare threshold. It is not merged. PR #498, also not merged, reports the mix workload at 96.42 effective MHz (46.88 ns/instruction, 113 cycles / 25 instructions) and 0 bytes allocated per instruction, on one KVM guest, and says the mix did not move because the time is in the bus.
 
@@ -68,8 +68,8 @@ There is no MCP server in the tree. `emudbg-agent-plan.md` and `PRD-emudbg-agent
 | G2 | Soft-switch remaps are visible to the next byte. | Language-card, aux, and 80STORE tests read the bank the switch just selected, with no stale `PageEntry` copy. |
 | G3 | Faults are registers, not a success payload. | A successful access leaves fault status unchanged and does not construct a `BusFault`. A fault latches status and address, first fault wins, and constructs one `BusFault` only because status is nonzero. |
 | G4 | `FaultKind` is a flags value whose low byte is what a 65C02 fault uses, and whose low-byte encoding stays readable by the PR #489 mask. | Section 10. The mask's `00` still means valid. |
-| G5 | A nonzero status asserts `SignalLine.Abort`. | 65C02 reaction is `NoOp` or `HostBreak`. 65816/65832 reaction is the abort behavior in `reference/WDC 65816 Emulator Reference.md`. |
-| G6 | Wrong-bank diagnosis does not tax the fast path. | Mapping trace off: the fast path does not load the flag. Trace on: remap events and slow-path accesses are recorded, fast RAM indexes are not. |
+| G5 | A nonzero status asserts `SignalLine.Abort`. | 65C02 reaction defaults to `NoOp`. The debug session can switch it to `HostBreak`. 65816/65832 reaction is the abort behavior in `reference/WDC 65816 Emulator Reference.md`. |
+| G6 | Wrong-bank diagnosis does not tax the fast path. | Trace off: the fast path does not load the flag. Trace on, no range: remap events and slow-path accesses are recorded, and fast RAM indexes are not. A debugger range forces only the covering pages onto the slow path. |
 | G7 | Callers of `Try*` keep compiling, and the existing CPU tests stay green, across the stages in section 14. | No stage deletes `TryRead8` or makes a success `Kind` anything other than `None`. |
 | G8 | The mix workload gets faster and still allocates nothing. | Section 15. |
 
@@ -141,7 +141,7 @@ Device pages, composite pages (the `$C000` I/O page, slot ROM, `LanguageCardSpli
 
 ### 7.3 Rebuild
 
-Every bus operation that stores a `PageEntry` MUST recompute `FastBacking`, `FastBase`, and `FastOps` for each stored entry before it returns. The list is `MapPage`, `MapPageRange`, `MapRegion`, `MapPageAt`, `SetPageEntry`, both `RemapPage` overloads, `RemapPageRange`, `ActivateLayer`, `DeactivateLayer`, `SetLayerPermissions`, and `SelectSwapVariant`. `Clear` zeroes target storage and MUST NOT change fast-path fields.
+Every bus operation that stores a `PageEntry` MUST recompute `FastBacking`, `FastBase`, and `FastOps` for each stored entry before it returns. When a mapping-trace range is active (section 13.1), the published `FastOps` is the natural value from section 7.2 with `None` forced on every page the range covers. The rebuild uses that same function, so a remap cannot put a covered page back on the fast path. The list is `MapPage`, `MapPageRange`, `MapRegion`, `MapPageAt`, `SetPageEntry`, both `RemapPage` overloads, `RemapPageRange`, `ActivateLayer`, `DeactivateLayer`, `SetLayerPermissions`, and `SelectSwapVariant`. `Clear` zeroes target storage and MUST NOT change fast-path fields.
 
 `LanguageCardDevice.ApplyState`, `Extended80ColumnDevice`'s layer updates (80STORE, PAGE2, HIRES, RAMRD, RAMWRT, ALTZP), and `AuxiliaryMemoryController.ActivateLayer` are covered because they call those bus methods. No device maintains its own copy of the backing pointer.
 
@@ -261,7 +261,7 @@ Current values are a discriminant, not flags: `Nx = 3` would be `Unmapped | Perm
 | 6 | `0x0040` | reserved | — |
 | 7 | `0x0080` | reserved | — |
 
-`Unmapped` and `Permission` stay `0x01` and `0x02`, so a mask byte that #489 would already emit for those two faults still decodes. `Nx`, `Misaligned`, and `DeviceFault` change. PR #489 is open. Its `MemoryBlock` remarks and any golden fixture that assumed `03`, `04`, or `05` MUST be updated to these bits in the same change that flips the enum, or in the follow-up in Appendix A if #489 has merged by then. The mask stays one hex byte per data byte, omitted when every byte is `00`. Combined low-byte bits are legal (a flags value). The 65C02 bus sets one low-byte bit per fault, not a combination, except that the high byte may be set by a later CPU.
+`Unmapped` and `Permission` stay `0x01` and `0x02`, so a mask byte #489 already emits for those two faults still decodes. `Nx`, `Misaligned`, and `DeviceFault` change. #489 is merged, and the numbered kinds 1–5 are what `main` documents today. A5 owns the migration of that mask: `MemoryBlock` remarks, `DebugOutputRenderer.FaultText`, `emudbg.md`'s `--json` paragraph, and the tests that lock the bytes. The mask stays one hex byte per data byte, the low byte of `FaultKind`, omitted when every byte is `00`. Combined low-byte bits are legal. The 65C02 bus sets one low-byte bit per fault, not a combination, except that the high byte may be set by a later CPU. The mask MUST NOT keep emitting `03`, `04`, or `05` for `Nx`, `Misaligned`, and `DeviceFault` after A5.
 
 `switch (fault.Kind)` in `MemCommand`, `PeekCommand`, `PokeCommand`, and `WriteCommand` MUST become bit tests. A combined value would miss every arm and fall through to "unknown".
 
@@ -277,7 +277,7 @@ Current values are a discriminant, not flags: `Nx = 3` would be `Unmapped | Perm
 
 `Write` and `Fetch` are detail, not a reason to fault. `Permission` remains the low-byte bit for a `PagePerms` failure. `Privilege` is the high-byte bit for a ring failure that does not exist yet. `BankCrossing` without a low-byte bit is not a fault and MUST NOT be latched on its own.
 
-There are two `PrivilegeLevel` enums. `BadMango.Emulator.Bus.PrivilegeLevel` numbers `Ring0 = 0` as the most privileged. `BadMango.Emulator.Core.PrivilegeLevel` numbers `User = 0` as the least privileged. This spec does not unify them. The reserved `Privilege` bit is not a license to compare the two enums.
+`BadMango.Emulator.Bus.PrivilegeLevel` and `BadMango.Emulator.Core.PrivilegeLevel` are separate enums. Unifying them is #507. This spec does not rename either enum and does not choose which definition survives. The reserved `Privilege` bit is not a license to compare the two enums.
 
 ## 11. ABORT
 
@@ -294,7 +294,14 @@ There are two `PrivilegeLevel` enums. `BadMango.Emulator.Bus.PrivilegeLevel` num
 | `NoOp` | Default. The line is ignored. Status and address stay latched for the host. Execution continues, including the existing `HaltState.Stp` on unmapped fetch. |
 | `HostBreak` | At the next instruction boundary, call `RequestStop`. Do not set `HaltState.Stp`. Do not push a vector. Do not change registers. |
 
-`NoOp` is the default so current tests, which expect `Stp` or a floating-bus byte and do not expect a host stop, stay green. `HostBreak` is how a debugger turns a fault into a break. Neither reaction is a 6502 instruction.
+`NoOp` is the default so current tests, which expect `Stp` or a floating-bus byte and do not expect a host stop, stay green. Neither value is a 6502 instruction.
+
+`HostBreak` is a debugger setting, not a boot default. It lives in two places that stay in lockstep:
+
+- `IDebugSession` gains `AbortReaction AbortReaction { get; set; }`. `MachineDebugSession` reads and writes `Cpu65C02.AbortReaction`. The getter returns `NoOp` when the attached CPU is not a `Cpu65C02`. The setter MUST throw `InvalidOperationException` when the CPU is not a `Cpu65C02` and the new value is `HostBreak`, because a 65816 uses section 11.2 instead of a host stop.
+- The emudbg command `abort` calls that property. `abort` with no argument prints the current value. `abort noop` sets `NoOp`. `abort hostbreak` sets `HostBreak`. With `--json`, the result is one `emudbg/v1` envelope from `DebugSessionJsonContext`, the same path `regs` and `mem` use. The command MUST NOT pulse `SignalLine.Abort` itself. It only changes how the 65C02 treats a line the bus already asserted.
+
+A session that never touches the property leaves the CPU at `NoOp`. Reset of the machine MUST NOT clear the setting. The host chose it, and a guest reset is not that choice.
 
 ### 11.2 65816 and 65832
 
@@ -318,16 +325,30 @@ A `BusFault` MUST be constructed only when fault status is being set, or when a 
 
 ## 13. Mapping trace
 
-Wrong-bank reads under Apple II banking are often successful RAM reads. They are not faults, and once section 7 lands they are fast-path indexes. A per-read log of those indexes would put a flag check on the fast path. This spec does not do that.
+Wrong-bank reads under Apple II banking are often successful RAM reads. They are not faults, and once section 7 lands they are fast-path indexes. The default trace does not put a flag check on the fast path. A debugger who needs one instruction's resolved bank can force just those pages onto the slow path. Every other page stays fast.
 
-`MainBus` gains `MappingTraceEnabled`, default false.
+`MainBus` gains `MappingTraceEnabled`, default false, and an optional trace range, default empty.
 
-- When false, the slow path MAY load the flag once per slow access, next to the existing `faultRecordingEnabled` load. The fast path MUST NOT load it. Remap methods MUST NOT snapshot soft switches.
-- When true, each slow-path byte access appends one trace record into a fixed ring (the same shape as `BusFaultRing`: a pre-sized array, a `System.Threading.Lock`, no allocation on the append). The record holds cycle, address, intent, the target's existing `Name` reference, `RegionTag`, `PhysicalBase`, `DeviceId`, and page index. Copying the name reference MUST NOT allocate a string.
-- When true, each rebuild in section 7.3 appends a mapping-change record for the pages it replaced: page range, new target name, new `PhysicalBase`, new `PagePerms`, new `FastOps`. It also stores one soft-switch snapshot taken from `ISoftSwitchProvider.GetSoftSwitchStates()` on the providers the machine already has (`LanguageCardDevice`, `Extended80ColumnDevice`). `GetSoftSwitchStates` allocates a list. That allocation is allowed on the remap, which is a `$C0xx` write, and forbidden on the fast path. When trace is off, that call MUST NOT be made.
-- The ring is readable from the debugger the way `IBusFaultRing` is. A REPL command, or a mode of `buslog`, prints mapping changes and slow-path records. This epic does not add a window.
+- When trace is false and the range is empty, the slow path MAY load the flag once per slow access, next to the existing `faultRecordingEnabled` load. The fast path MUST NOT load the flag or the range. Remap methods MUST NOT snapshot soft switches.
+- When trace is true and the range is empty, each slow-path byte access appends one trace record into a fixed ring (the same shape as `BusFaultRing`: a pre-sized array, a `System.Threading.Lock`, no allocation on the append). The record holds cycle, address, intent, the target's existing `Name` reference, `RegionTag`, `PhysicalBase`, `DeviceId`, and page index. Copying the name reference MUST NOT allocate a string. Fast-path indexes are not records. This is the default when trace is turned on.
+- When trace is true, each rebuild in section 7.3 appends a mapping-change record for the pages it replaced: page range, new target name, new `PhysicalBase`, new `PagePerms`, and the natural `FastOps` from section 7.2 before any range is applied. It also stores one soft-switch snapshot taken from `ISoftSwitchProvider.GetSoftSwitchStates()` on the providers the machine already has (`LanguageCardDevice`, `Extended80ColumnDevice`). `GetSoftSwitchStates` allocates a list. That allocation is allowed on the remap, which is a `$C0xx` write, and forbidden on the fast path. When trace is off, that call MUST NOT be made.
+- The ring is readable from the debugger the way `IBusFaultRing` is. The emudbg command `maptrace` prints it. This epic does not add a window.
 
-A wrong bank that is still plain RAM shows up as a mapping-change: after the soft-switch write, `$D000`'s entry names the other bank's array and offset. It does not show up as a line per `LDA`. Section 17 records that limit.
+### 13.1 Forcing a range onto the slow path
+
+`IDebugSession` gains `SetMappingTraceRange(uint start, uint endInclusive)` and `ClearMappingTraceRange()`. `maptrace range $start $end` calls the setter. `maptrace range clear` and `maptrace off` call the clearer. `maptrace on` enables remap-and-slow-path logging with an empty range. `maptrace` with no argument prints whether trace is on and what the range is. `--json` uses the `emudbg/v1` envelope.
+
+Setting a range turns trace on. The range is in CPU addresses. Every 4 KB page that intersects `[start, endInclusive]` is covered, including a range that occupies only part of a page. The whole page goes slow, because `FastOps` is per page.
+
+Eligibility is recomputed, not patched by a check on the CPU fast path:
+
+1. Compute the natural `FastBacking`, `FastBase`, and `FastOps` from section 7.2.
+2. If that page intersects the active range, publish `FastOps` as `None`. Leave `FastBacking` and `FastBase` in place so the slow path can still name the array in the trace record.
+3. Otherwise publish the natural `FastOps`.
+
+`SetMappingTraceRange` runs that function on every page of the new range, and on every page of the previous range that the new range does not cover. `ClearMappingTraceRange` runs it on every page of the range being cleared, with no range active, which restores natural `FastOps`. Section 7.3's rebuild runs the same function, so a language-card or 80STORE remap while a range is active keeps a covered page slow and leaves a page outside the range fast. The CPU still only reads the published `FastOps`. It does not learn that a range exists.
+
+Accesses to a forced page are ordinary slow-path accesses, so they append the per-access record while trace is on. Accesses outside the range stay on the fast path and add no record. Clearing the range does not by itself turn trace off. `maptrace off` clears the range, recomputes those pages, and then disables trace.
 
 ## 14. API migration
 
@@ -345,7 +366,7 @@ Call sites on the baseline:
 | Tests under `BadMango.Emulator.Bus.Tests` and the debug command tests | Construct `BusFault` and call `Try*` directly. Stay valid. |
 | MCP | Not in the tree. #337 MUST call `IDebugSession`, not `CpuBase.Read8` and not `TryRead8` of its own. |
 
-`MachineDebugSession.ReadMemory` throws on the first fault. PR #489, unmerged, changes the session toward a per-byte `Faults` mask and keeps going. This epic does not choose a third shape. The session work in Appendix A MUST follow #489 if that PR has merged, and MUST match section 10's low byte either way. Until that lands, `ReadMemory` keeps throwing.
+`MachineDebugSession.ReadMemory` already keeps going across faults and stores `(byte)FaultKind` in `MemoryBlock.Faults`. That is the merged #489 shape. This epic does not add a third one. A5 changes the bytes that shape carries to section 10. `ReadMemory` MUST keep storing the low byte and MUST keep omitting the mask when every byte is `00`.
 
 Stages, each of which leaves `dotnet test` green:
 
@@ -417,9 +438,9 @@ This epic does not edit those architecture files. #501 does, after this spec is 
 These are decisions, not leftovers. Appendix A does not contain a sub-issue that "fixes" them unless the row says so.
 
 1. **NX is dead on the CPU path.** `TryRead8` raises `Nx` only for `BusAccessMode.Atomic`. Every CPU factory passes `Decomposed`. `PagePerms` says NX is ignored in compat mode, and `GetEmulationFlag` on the 65C02 returns true. #499's list of per-byte checks includes NX. The 65C02 fast path does not add it. A native fetch checks `FastOps.Fetch` and otherwise uses the slow path, which still will not raise `Nx` until some CPU issues `Atomic`. That change is out of scope.
-2. **Privilege fields are stored and not checked.** `PageEntry` carries three minimums. `TryRead8` ignores them. `Bus.PrivilegeLevel.Ring0 = 0` is "most privileged"; `Core.PrivilegeLevel.User = 0` is "least privileged". The fast path treats the default `Ring0` minimums as "no restriction" and refuses to fast-path any other minimum. It does not compare the two enums. The high-byte `Privilege` bit stays clear.
+2. **Privilege fields are stored and not checked.** `PageEntry` carries three minimums. `TryRead8` ignores them. `BadMango.Emulator.Bus.PrivilegeLevel` and `BadMango.Emulator.Core.PrivilegeLevel` are separate enums. Unifying them is #507. This spec does not rename either enum and does not choose which definition survives. The fast path treats the default minimums as no extra restriction, because the slow path does not enforce them, and it does not compare the two enums. The high-byte `Privilege` bit stays clear.
 3. **`BusResult.Cycles` is not the instruction cycle count.** #500 asks for cycle accounting to stay correct. The CPU never reads `BusResult.Cycles`. Correct means `Registers.TCU` and the 256-byte page-cross increments stay as they are. Adding the bus's `cycles: 1` into `TCU` would double-count.
-4. **PR #489's kind numbers are not a flags layout.** The mask documents 1, 2, 3, 4, 5. Section 10 keeps 0, 1, and 2, and moves 3, 4, and 5 onto bits 2, 3, and 4. `FaultKind` can no longer be a `byte` once the high byte exists; the mask stores the low byte.
+4. **#489 has merged, and its kind numbers are not a flags layout.** `main` documents the mask as 1, 2, 3, 4, 5 in `MemoryBlock`, `DebugOutputRenderer.FaultText`, and `emudbg.md`. Section 10 keeps 0, 1, and 2, and moves 3, 4, and 5 onto bits 2, 3, and 4. `FaultKind` can no longer be a `byte` once the high byte exists. The mask stores the low byte. A5 is the change that moves the merged mask, the `--json` text, and the tests together.
 5. **Sticky status versus "success leaves status at zero".** #499 can be read as "every success writes zero". Section 9 chooses first-fault-wins and a sticky register, cleared by the host or by reset. A success writes nothing.
 6. **Composite holes are successes.** A null `ICompositeTarget.ResolveTarget` returns `0xFF` with `Ok == true`. A null `PageEntry.Target` returns `Failed` and `Unmapped`. Only the second latches status and can assert `ABORT`. Treating every `0xFF` as a fault would break the I/O page.
 7. **Traps and watchpoints are not why a page is slow.** #500 lists them next to devices and composite pages. They run outside the bus, and the fast path does not consult them. Watchpoints still miss fetch and stack traffic, which is the limitation `WatchpointManager` already documents.
@@ -429,7 +450,7 @@ These are decisions, not leftovers. Appendix A does not contain a sub-issue that
 11. **MCP does not exist.** #499's caller list includes it. Section 14 names `IDebugSession` as the surface #337 will use. There is no MCP project to migrate in this epic.
 12. **The architecture note's fast path is a direct `IBusTarget` call, then a `Func<>`, then a function pointer.** The measured cost includes that interface call and the success `BusFault`. Section 7 indexes a `byte[]` instead. The note remains historical; section 16 points #501 at this spec.
 13. **ABORT "native only".** The vector table in `reference/WDC 65816 Emulator Reference.md` lists emulation `$FFF8` and native `$FFE8`, and the notes column says "native only". The ABORT Handling paragraph does not say emulation lacks the pin. Section 11.2 follows the paragraph and both columns. #501, or a 65816 CPU issue, should strike or confirm the "native only" words.
-14. **Mapping trace does not log fast RAM reads.** #499 wants wrong-bank reads diagnosed, and also wants zero cost on the fast path when trace is on. A wrong-bank RAM read is a fast index. Section 13 logs the remap and the soft-switch snapshot, not the `LDA`. A future mode that checks a flag on the fast path is a different spec.
+14. **Default mapping trace does not log fast RAM reads.** #499 wants wrong-bank reads diagnosed, and also wants zero cost on the fast path when trace is on. A wrong-bank RAM read is a fast index. With no range, section 13 logs the remap and the soft-switch snapshot, not the `LDA`. Per-access detail is the range in section 13.1: those pages are recomputed onto the slow path, and pages outside the range stay fast. The fast path still does not load a trace flag.
 
 ## Appendix A. Proposed implementation sub-issues
 
@@ -463,17 +484,24 @@ For epic #499. This appendix does not file or edit GitHub issues. Sizes: S is on
 - **Dependencies.** A2 for the CPU slow-path hook. The register types themselves do not need the fast path.
 - **Size.** M
 
-### A5. `FaultKind` flags and the PR #489 mask
+### A5. `FaultKind` flags, and migrate the merged #489 mask
 
-- **Scope.** Section 10. Underlying type `ushort`. Update `switch` sites. Update PR #489's `MemoryBlock` remarks and golden bytes if that PR has merged; if it has not, the row's test is a local decoder test that documents `00`, `01`, `02`, `04`, `08`, `10`.
-- **Acceptance.** `None` is 0. `Unmapped` is `0x0001`. `Permission` is `0x0002`. `Nx` is `0x0004`. `Misaligned` is `0x0008`. `DeviceFault` is `0x0010`. High-byte names match section 10.2. A 65C02 `TryRead8` fault has a zero high byte. `(byte)FaultKind.Unmapped` is `0x01`. The command formatters print a combined value rather than "unknown". Existing tests that use the enum names pass.
+- **Scope.** Section 10. Underlying type `ushort`. #489 is merged. This item owns moving every published copy of the numbered kinds 1–5 onto the flag bytes, in the same change, so the mask and the docs cannot drift:
+  - `FaultKind` itself, and `tests/BadMango.Emulator.Bus.Tests/FaultKindTests.cs` (today it asserts six discriminant values and `(byte)None == 0`).
+  - `MachineDebugSession.ReadMemory`, which stores `(byte)read.Fault.Kind` in `MemoryBlock.Faults`. The cast stays. The values change.
+  - `MemoryBlock` remarks, which list "1 Unmapped, 2 Permission, 3 Nx, 4 Misaligned, 5 DeviceFault".
+  - `DebugOutputRenderer.FaultText`, whose switch arms are the raw bytes 1, 2, 3, 4, and 5. Combined bits MUST print the set names, not "Fault kind N" for `0x04`.
+  - `emudbg.md`, the `mem` / `peek` `--json` paragraph that lists those same numbers.
+  - Golden and command tests that lock the mask, including `DebugAbstractionsJsonGoldenTests` and `DebugCommandsTests.Json`. A test MUST fail if `Nx` is encoded as `03`, `Misaligned` as `04`, or `DeviceFault` as `05`.
+  - The `switch (fault.Kind)` formatters in `MemCommand`, `PeekCommand`, `PokeCommand`, `ReadCommand`, and `WriteCommand`, which become bit tests.
+- **Acceptance.** `None` is 0. `Unmapped` is `0x0001`. `Permission` is `0x0002`. `Nx` is `0x0004`. `Misaligned` is `0x0008`. `DeviceFault` is `0x0010`. High-byte names match section 10.2. A 65C02 `TryRead8` fault has a zero high byte. `(byte)FaultKind.Unmapped` is `0x01`. `ReadMemory` of an unmapped byte still returns a mask whose low byte is `01`, and a permission fault is `02`. An Nx fault's mask byte is `04`. `emudbg.md` and the `MemoryBlock` remarks name those flag values, not 3, 4, and 5. `emudbg --json` output for `mem` and `peek` uses that mask. The command formatters print a combined value rather than "unknown". Tests that use the enum names pass.
 - **Dependencies.** None. A4 SHOULD land after A5 so the register is born as a `ushort`.
-- **Size.** S
+- **Size.** M
 
-### A6. `SignalLine.Abort` and the two CPU reactions
+### A6. `SignalLine.Abort`, the 65C02 reactions, and the debugger switch
 
-- **Scope.** Section 11, except the 65816 vector sequence, which is specified here and implemented with that CPU. `MainBus` takes an optional `ISignalBus`. `AttentionPending` includes `Abort`. `AbortReaction` on `Cpu65C02`, default `NoOp`.
-- **Acceptance.** A latched non-debug unmapped access asserts `Abort` once. A second fault does not assert again. Clearing status deasserts. With the default `NoOp`, an unmapped fetch still sets `HaltState.Stp` and does not call `RequestStop`. With `HostBreak`, the next instruction boundary calls `RequestStop` and does not set `Stp`. A bus constructed without a signal bus latches status and does not throw. A unit test documents the 65816 vector addresses from section 11.2 without implementing a 65816.
+- **Scope.** Section 11, including section 11.1's session property and the `abort` command. The 65816 vector sequence is specified here and implemented with that CPU. `MainBus` takes an optional `ISignalBus`. `AttentionPending` includes `Abort`. `AbortReaction` on `Cpu65C02` defaults to `NoOp`. `IDebugSession.AbortReaction` and `abort noop` / `abort hostbreak` are the only way the debugger selects `HostBreak`.
+- **Acceptance.** A latched non-debug unmapped access asserts `Abort` once. A second fault does not assert again. Clearing status deasserts. With the default `NoOp`, an unmapped fetch still sets `HaltState.Stp` and does not call `RequestStop`. After `abort hostbreak` (and after setting the session property directly), the next instruction boundary calls `RequestStop` and does not set `Stp`. `abort noop` restores the default. A machine reset leaves the setting alone. `--json` on `abort` is one `emudbg/v1` envelope. Setting `HostBreak` on a session whose CPU is not a `Cpu65C02` throws `InvalidOperationException`. A bus constructed without a signal bus latches status and does not throw. A unit test documents the 65816 vector addresses from section 11.2 without implementing a 65816.
 - **Dependencies.** A4. A5 for the status type.
 - **Size.** M
 
@@ -484,17 +512,17 @@ For epic #499. This appendix does not file or edit GitHub issues. Sizes: S is on
 - **Dependencies.** A4, A5.
 - **Size.** S
 
-### A8. Mapping trace and soft-switch snapshots
+### A8. Mapping trace, soft-switch snapshots, and a slow-path range
 
-- **Scope.** Section 13. `MappingTraceEnabled`, a fixed ring, remap snapshots via `ISoftSwitchProvider.GetSoftSwitchStates`, a REPL read path on the existing bus-log command or a sibling command.
-- **Acceptance.** With the flag clear, a mix benchmark stays at 0 bytes and the fast path does not read the flag (the flag's backing field is not in the fast method; review and a test that remaps with the flag clear do not allocate a snapshot). With the flag set, a language-card switch records the `$D000` target name and physical base after the switch, plus a snapshot that includes the language-card state, and a `$C000` read records one slow-path line. A fast RAM `LDA` does not add a line. The ring does not allocate per record.
-- **Dependencies.** A1 for the rebuild hook. The REPL surface has no CPU-fast-path dependency.
+- **Scope.** Section 13 and section 13.1. `MappingTraceEnabled`, the optional range, the fixed ring, remap snapshots via `ISoftSwitchProvider.GetSoftSwitchStates`, and the `maptrace` command on `IDebugSession`. Setting or clearing the range recomputes `FastOps` for the covered pages as section 13.1 describes, including a rebuild that happens while the range is active. Default with no range stays remap-and-slow-path only.
+- **Acceptance.** With trace clear, a mix benchmark stays at 0 bytes and the fast path does not read the flag or the range. With trace on and no range, a language-card switch records the `$D000` target name and physical base after the switch, plus a snapshot that includes the language-card state, and a `$C000` read records one slow-path line. A fast RAM `LDA` outside any range does not add a line. `maptrace range $0800 $08FF` clears `FastOps` on the one 4 KB page that contains `$0800`, and an `LDA` there appends a per-access record that names the backing target. An `LDA` in the next page does not. `maptrace range clear` restores natural `FastOps` on that page and the next `LDA` there is not recorded. A language-card remap of a page inside the range leaves that page slow. `maptrace off` clears the range and restores those pages. The ring does not allocate per record. `--json` on `maptrace` is one `emudbg/v1` envelope.
+- **Dependencies.** A1 for the rebuild hook. The REPL surface has no other CPU-fast-path dependency. Forcing `FastOps` to `None` is meaningful once A2 reads `FastOps`.
 - **Size.** M
 
 ### A9. Migrate `Try*` callers without breaking tests
 
-- **Scope.** Section 14 stages 3 through 6 as they apply to `MachineDebugSession`, the debug commands, and the bus tests. MCP is a note in the session remarks pointing #337 at `IDebugSession`, not a new server. Coordinate with PR #489 instead of inventing a third memory-read shape.
-- **Acceptance.** `dotnet test` is green at each stage. `MemCommand` still prints `??` for an unmapped byte. `ReadMemory` either still throws, or, if #489 has merged, returns the section 10 low byte in the mask. No caller of `TryRead8` is deleted except the CPU hot path from A2. A grep note in the PR lists remaining `TryRead8` / `BusFault.Success(in BusAccess` call sites.
+- **Scope.** Section 14 stages 3 through 6 as they apply to `MachineDebugSession`, the debug commands, and the bus tests. MCP is a note in the session remarks pointing #337 at `IDebugSession`, not a new server. The #489 mask already exists. A5 changes its bytes. This item does not invent a third memory-read shape.
+- **Acceptance.** `dotnet test` is green at each stage. `MemCommand` still prints `??` for an unmapped byte. `ReadMemory` still returns a mask, and after A5 that mask is the section 10 low byte. No caller of `TryRead8` is deleted except the CPU hot path from A2. A grep note in the PR lists remaining `TryRead8` / `BusFault.Success(in BusAccess` call sites.
 - **Dependencies.** A5 and A7 for the flag and success-payload changes. A2 is already merged by the time the CPU drops its `Try*` calls; this row is the non-CPU callers.
 - **Size.** M
 
