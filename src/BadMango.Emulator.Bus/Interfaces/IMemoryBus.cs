@@ -137,7 +137,8 @@ public interface IMemoryBus
     /// </para>
     /// <list type="bullet">
     /// <item><description>The <see cref="AccessFlags.Decompose"/> flag (forces byte-wise cycles)</description></item>
-    /// <item><description>Whether the access crosses a page boundary (always decomposes)</description></item>
+    /// <item><description>Whether the access crosses a page boundary (always one byte at a time)</description></item>
+    /// <item><description>A same-page slot that publishes <see cref="FastPathOps.Read"/>, which is indexed instead of calling <see cref="IBusTarget.Read16"/></description></item>
     /// <item><description>The target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
     /// <item><description>The <see cref="AccessFlags.Atomic"/> flag and CPU mode defaults</description></item>
     /// </list>
@@ -163,7 +164,8 @@ public interface IMemoryBus
     /// </para>
     /// <list type="bullet">
     /// <item><description>The <see cref="AccessFlags.Decompose"/> flag (forces byte-wise cycles)</description></item>
-    /// <item><description>Whether the access crosses a page boundary (always decomposes)</description></item>
+    /// <item><description>Whether the access crosses a page boundary (always one byte at a time)</description></item>
+    /// <item><description>A same-page slot that publishes <see cref="FastPathOps.Write"/>, which is indexed instead of calling <see cref="IBusTarget.Write16"/></description></item>
     /// <item><description>The target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
     /// <item><description>The <see cref="AccessFlags.Atomic"/> flag and CPU mode defaults</description></item>
     /// </list>
@@ -189,7 +191,8 @@ public interface IMemoryBus
     /// </para>
     /// <list type="bullet">
     /// <item><description>The <see cref="AccessFlags.Decompose"/> flag (forces byte-wise cycles)</description></item>
-    /// <item><description>Whether the access crosses a page boundary (always decomposes)</description></item>
+    /// <item><description>Whether the access crosses a page boundary (always one byte at a time)</description></item>
+    /// <item><description>A same-page slot that publishes <see cref="FastPathOps.Read"/>, which is indexed instead of calling <see cref="IBusTarget.Read32"/></description></item>
     /// <item><description>The target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
     /// <item><description>The <see cref="AccessFlags.Atomic"/> flag and CPU mode defaults</description></item>
     /// </list>
@@ -215,7 +218,8 @@ public interface IMemoryBus
     /// </para>
     /// <list type="bullet">
     /// <item><description>The <see cref="AccessFlags.Decompose"/> flag (forces byte-wise cycles)</description></item>
-    /// <item><description>Whether the access crosses a page boundary (always decomposes)</description></item>
+    /// <item><description>Whether the access crosses a page boundary (always one byte at a time)</description></item>
+    /// <item><description>A same-page slot that publishes <see cref="FastPathOps.Write"/>, which is indexed instead of calling <see cref="IBusTarget.Write32"/></description></item>
     /// <item><description>The target's <see cref="TargetCaps.SupportsWide"/> capability</description></item>
     /// <item><description>The <see cref="AccessFlags.Atomic"/> flag and CPU mode defaults</description></item>
     /// </list>

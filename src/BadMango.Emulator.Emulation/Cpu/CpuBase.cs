@@ -373,8 +373,29 @@ public abstract class CpuBase : ICpu
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A same-page <see cref="MainBus"/> access that publishes <see cref="FastPathOps.Read"/>
+    /// is two indexes into the live slot and does not build a <see cref="BusAccess"/>.
+    /// An access that crosses a 4 KB page is one byte at a time: an eligible byte is indexed
+    /// and any other byte uses <see cref="IMemoryBus.TryRead8"/>. The second byte's address is
+    /// <paramref name="address"/> + 1 as a <see cref="uint"/>, so <c>$FFFF</c> on a 16-bit bus
+    /// addresses <c>$10000</c>. The first fault stops the rest of the access and returns
+    /// <c>0xFFFF</c>. <see cref="FaultKind.Unmapped"/> still sets <see cref="HaltState.Stp"/>.
+    /// A same-page access that is not eligible keeps <see cref="IMemoryBus.TryRead16"/>.
+    /// This method does not add to <see cref="Registers.TCU"/>.
+    /// </remarks>
     public virtual Word Read16(Addr address)
     {
+        if (TryReadFastWord(address, out Word fastValue))
+        {
+            return fastValue;
+        }
+
+        if (mainBus is not null && CrossesBusPage(address, 2))
+        {
+            return (Word)ReadSplit(address, 2, 0xFFFF);
+        }
+
         var access = CreateReadAccess(address, 16);
         var result = bus.TryRead16(access);
 
@@ -392,8 +413,25 @@ public abstract class CpuBase : ICpu
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A same-page store indexes when the live slot publishes <see cref="FastPathOps.Write"/>.
+    /// A <see cref="RomTarget"/> never publishes write. A 4 KB crossing stores one byte at a
+    /// time and stops at the first <see cref="IMemoryBus.TryWrite8"/> fault, leaving the bytes
+    /// already stored. That fault is the current <c>Try*</c> result. Nothing is latched here.
+    /// </remarks>
     public virtual void Write16(Addr address, Word value)
     {
+        if (TryWriteFastSpan(address, value, 2))
+        {
+            return;
+        }
+
+        if (mainBus is not null && CrossesBusPage(address, 2))
+        {
+            WriteSplit(address, value, 2);
+            return;
+        }
+
         var access = CreateWriteAccess(address, 16);
         bus.TryWrite16(access, value);
     }
@@ -508,9 +546,23 @@ public abstract class CpuBase : ICpu
     /// Reads a 32-bit value from memory.
     /// </summary>
     /// <param name="address">The address to read from.</param>
-    /// <returns>The 32-bit value at the address.</returns>
+    /// <returns>The 32-bit value at the address, or <c>0xFFFFFFFF</c> when a byte faults.</returns>
+    /// <remarks>
+    /// Same rule as <see cref="Read16(Addr)"/>: a same-page eligible access is four indexes,
+    /// a 4 KB crossing is one byte at a time, and the first fault stops the rest.
+    /// </remarks>
     protected DWord Read32(Addr address)
     {
+        if (TryReadFastSpan(address, 4, out uint fastValue))
+        {
+            return fastValue;
+        }
+
+        if (mainBus is not null && CrossesBusPage(address, 4))
+        {
+            return ReadSplit(address, 4, 0xFFFFFFFF);
+        }
+
         var access = CreateReadAccess(address, 32);
         var result = bus.TryRead32(access);
 
@@ -532,8 +584,23 @@ public abstract class CpuBase : ICpu
     /// </summary>
     /// <param name="address">The address to write to.</param>
     /// <param name="value">The 32-bit value to write.</param>
+    /// <remarks>
+    /// Same rule as <see cref="Write16(Addr, Word)"/>. A fault on a later byte leaves the
+    /// earlier bytes stored and does not latch a halt.
+    /// </remarks>
     protected void Write32(Addr address, DWord value)
     {
+        if (TryWriteFastSpan(address, value, 4))
+        {
+            return;
+        }
+
+        if (mainBus is not null && CrossesBusPage(address, 4))
+        {
+            WriteSplit(address, value, 4);
+            return;
+        }
+
         var access = CreateWriteAccess(address, 32);
         bus.TryWrite32(access, value);
     }
@@ -756,5 +823,186 @@ public abstract class CpuBase : ICpu
         backing = slot;
         index = page.FastBase + (int)page.PhysicalBase + (int)(address & fastBus.PageMask);
         return true;
+    }
+
+    /// <summary>
+    /// Reads two same-page bytes when both publish <see cref="FastPathOps.Read"/>.
+    /// </summary>
+    /// <param name="address">The address of the low byte.</param>
+    /// <param name="value">The little-endian word when this method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when both bytes were indexed.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryReadFastWord(Addr address, out Word value)
+    {
+        value = 0;
+        MainBus? fastBus = mainBus;
+        if (fastBus is null)
+        {
+            return false;
+        }
+
+        // The only 2-byte 4 KB crossing is a low byte on the last address of the page.
+        Addr mask = fastBus.PageMask;
+        if ((address & mask) == mask)
+        {
+            return false;
+        }
+
+        if (!TryReadFastByte(address, FastPathOps.Read, out byte low)
+            || !TryReadFastByte(address + 1, FastPathOps.Read, out byte high))
+        {
+            return false;
+        }
+
+        value = (Word)(low | (high << 8));
+        return true;
+    }
+
+    /// <summary>
+    /// Reads a same-page little-endian value when every byte publishes <see cref="FastPathOps.Read"/>.
+    /// </summary>
+    /// <param name="address">The address of the least-significant byte.</param>
+    /// <param name="bytes">The number of bytes. Two or four.</param>
+    /// <param name="value">The assembled value when this method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when every byte was indexed.</returns>
+    private bool TryReadFastSpan(Addr address, int bytes, out uint value)
+    {
+        value = 0;
+        if (mainBus is null || CrossesBusPage(address, bytes))
+        {
+            return false;
+        }
+
+        uint assembled = 0;
+        for (int i = 0; i < bytes; i++)
+        {
+            if (!TryReadFastByte(address + (uint)i, FastPathOps.Read, out byte piece))
+            {
+                return false;
+            }
+
+            assembled |= (uint)piece << (8 * i);
+        }
+
+        value = assembled;
+        return true;
+    }
+
+    /// <summary>
+    /// Stores a same-page little-endian value when every byte publishes <see cref="FastPathOps.Write"/>.
+    /// </summary>
+    /// <param name="address">The address of the least-significant byte.</param>
+    /// <param name="value">The little-endian value to store.</param>
+    /// <param name="bytes">The number of bytes. Two or four.</param>
+    /// <returns>
+    /// <see langword="true"/> when the store is finished. A miss on the first byte returns
+    /// <see langword="false"/> so the caller can use <c>TryWrite*</c>. A later miss keeps the
+    /// bytes already stored; a same-page slot does not change eligibility between those bytes
+    /// unless a slow path runs, and this method does not run one.
+    /// </returns>
+    private bool TryWriteFastSpan(Addr address, uint value, int bytes)
+    {
+        if (mainBus is null || CrossesBusPage(address, bytes))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < bytes; i++)
+        {
+            if (TryWriteFastByte(address + (uint)i, (byte)(value >> (8 * i))))
+            {
+                continue;
+            }
+
+            return i > 0;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Reads one byte at a time across a 4 KB boundary.
+    /// </summary>
+    /// <param name="address">The address of the least-significant byte.</param>
+    /// <param name="bytes">The number of bytes.</param>
+    /// <param name="faultValue">The value returned when a byte faults. The successful bytes are not assembled into it.</param>
+    /// <returns>The little-endian value, or <paramref name="faultValue"/>.</returns>
+    private uint ReadSplit(Addr address, int bytes, uint faultValue)
+    {
+        uint assembled = 0;
+        for (int i = 0; i < bytes; i++)
+        {
+            Addr byteAddress = address + (uint)i;
+            if (TryReadFastByte(byteAddress, FastPathOps.Read, out byte piece))
+            {
+                assembled |= (uint)piece << (8 * i);
+                continue;
+            }
+
+            var access = CreateReadAccess(byteAddress, 8);
+            var result = bus.TryRead8(access);
+            if (result.Failed)
+            {
+                if (result.Fault.Kind == FaultKind.Unmapped)
+                {
+                    haltReason = HaltState.Stp;
+                }
+
+                return faultValue;
+            }
+
+            assembled |= (uint)result.Value << (8 * i);
+        }
+
+        return assembled;
+    }
+
+    /// <summary>
+    /// Stores one byte at a time across a 4 KB boundary and stops at the first fault.
+    /// </summary>
+    /// <param name="address">The address of the least-significant byte.</param>
+    /// <param name="value">The little-endian value to store.</param>
+    /// <param name="bytes">The number of bytes.</param>
+    private void WriteSplit(Addr address, uint value, int bytes)
+    {
+        for (int i = 0; i < bytes; i++)
+        {
+            Addr byteAddress = address + (uint)i;
+            byte piece = (byte)(value >> (8 * i));
+            if (TryWriteFastByte(byteAddress, piece))
+            {
+                continue;
+            }
+
+            var access = CreateWriteAccess(byteAddress, 8);
+            var result = bus.TryWrite8(access, piece);
+            if (result.Failed)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reports whether an access of <paramref name="bytes"/> leaves its 4 KB page.
+    /// </summary>
+    /// <param name="address">The first address.</param>
+    /// <param name="bytes">The access width in bytes.</param>
+    /// <returns>
+    /// <see langword="true"/> when the bus is a <see cref="MainBus"/> and the closed interval
+    /// crosses a page. A non-<see cref="MainBus"/> returns <see langword="false"/> so the caller
+    /// keeps the single <c>Try*</c> call.
+    /// </returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool CrossesBusPage(Addr address, int bytes)
+    {
+        MainBus? fastBus = mainBus;
+        if (fastBus is null)
+        {
+            return false;
+        }
+
+        Addr mask = fastBus.PageMask;
+        return ((address & mask) + (uint)(bytes - 1)) > mask;
     }
 }

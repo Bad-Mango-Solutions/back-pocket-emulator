@@ -24,6 +24,13 @@ public sealed partial class MainBus
     private int tryWrite8CallCount;
 
     /// <summary>
+    /// Entries into a non-<c>Try</c> wide method's call to <see cref="IBusTarget.Read16"/>,
+    /// <see cref="IBusTarget.Write16"/>, <see cref="IBusTarget.Read32"/>, or
+    /// <see cref="IBusTarget.Write32"/>.
+    /// </summary>
+    private int targetWideCallCount;
+
+    /// <summary>
     /// Gets how many times <see cref="TryRead8"/> has been entered on this bus.
     /// </summary>
     /// <remarks>
@@ -40,6 +47,16 @@ public sealed partial class MainBus
     /// instead of calling the checked path. The count is not architectural bus state.
     /// </remarks>
     internal int TryWrite8CallCount => tryWrite8CallCount;
+
+    /// <summary>
+    /// Gets how many times a non-<c>Try</c> wide method called the target's wide operation.
+    /// </summary>
+    /// <remarks>
+    /// Tests use the count to prove a same-page fast index did not call
+    /// <see cref="RamTarget.Read16"/> or the other wide target methods. The <c>Try*</c> methods
+    /// do not increment it. The count is not architectural bus state.
+    /// </remarks>
+    internal int TargetWideCallCount => targetWideCallCount;
 
     /// <summary>
     /// Recomputes <see cref="PageEntry.FastBacking"/>, <see cref="PageEntry.FastBase"/>, and
