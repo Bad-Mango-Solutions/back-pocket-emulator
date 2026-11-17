@@ -29,6 +29,13 @@ using Interfaces;
 /// all pages default to Ring 0 access (no restrictions). Native mode machines may
 /// enforce privilege checking.
 /// </para>
+/// <para>
+/// <see cref="FastBacking"/>, <see cref="FastBase"/>, and <see cref="FastOps"/> are the direct
+/// <c>byte[]</c> index for a plain RAM or ROM page. <see cref="MainBus"/> recomputes them on every
+/// store, so a hand-built entry keeps the defaults until it is mapped. The byte at CPU address
+/// <c>A</c> is <c>FastBacking[FastBase + PhysicalBase + (A &amp; 0xFFF)]</c>. The CPU must read the
+/// live page-table slot; a copied <see cref="PageEntry"/> freezes those fields.
+/// </para>
 /// </remarks>
 /// <param name="DeviceId">Structural identifier of the device handling this page.</param>
 /// <param name="RegionTag">Classification of the memory region type.</param>
@@ -55,6 +62,18 @@ using Interfaces;
 /// When set to <see langword="true"/>, prevents modification of this page entry from callers running at a lower privilege level,
 /// ensuring that critical mappings (such as kernel or hypervisor pages) cannot be altered by less-privileged code.
 /// </param>
+/// <param name="FastBacking">
+/// The array behind this page, or <see langword="null"/> when the page is not eligible for the fast path.
+/// <see cref="MainBus"/> overwrites this whenever it stores the entry.
+/// </param>
+/// <param name="FastBase">
+/// Index in <see cref="FastBacking"/> of target-local physical address 0.
+/// Zero when <see cref="FastBacking"/> is <see langword="null"/>.
+/// </param>
+/// <param name="FastOps">
+/// Operations that may index <see cref="FastBacking"/>. <see cref="FastPathOps.None"/> keeps the access
+/// on the checked path.
+/// </param>
 public readonly record struct PageEntry(
     int DeviceId,
     RegionTag RegionTag,
@@ -65,7 +84,10 @@ public readonly record struct PageEntry(
     PrivilegeLevel MinReadPrivilege = PrivilegeLevel.Ring0,
     PrivilegeLevel MinWritePrivilege = PrivilegeLevel.Ring0,
     PrivilegeLevel MinExecutePrivilege = PrivilegeLevel.Ring0,
-    bool IsSealed = false)
+    bool IsSealed = false,
+    byte[]? FastBacking = null,
+    int FastBase = 0,
+    FastPathOps FastOps = FastPathOps.None)
 {
     /// <summary>
     /// Gets a value indicating whether this page supports Peek (read without side effects).

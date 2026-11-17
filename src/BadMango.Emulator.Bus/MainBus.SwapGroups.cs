@@ -105,12 +105,12 @@ public sealed partial class MainBus
 
                 // Create new entry preserving device ID and other metadata, but updating
                 // target, physical base, and permissions from the variant
-                pageTable[pageIndex] = entry with
+                pageTable[pageIndex] = WithFastPath(entry with
                 {
                     Target = variant.Target,
                     PhysicalBase = pagePhysBase,
                     Perms = variant.Perms,
-                };
+                });
             }
 
             // Update the active variant in the swap group

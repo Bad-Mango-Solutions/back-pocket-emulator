@@ -95,6 +95,24 @@ public sealed class RomTarget : IBusTarget
     /// </summary>
     public uint Size => (uint)readOnlyMemory.Length;
 
+    /// <summary>
+    /// Returns the memory slice this target reads.
+    /// </summary>
+    /// <returns>The read-only slice supplied at construction.</returns>
+    /// <remarks>
+    /// <para>
+    /// Both constructors publish the slice that <see cref="Read8"/> indexes. The
+    /// <see cref="ReadOnlyMemory{T}"/> constructor has no writable view; debug writes stay on
+    /// <see cref="Write8"/> and are not a fast-path store.
+    /// </para>
+    /// <para>
+    /// The bus recovers a <see cref="byte"/> array and an offset from this slice with
+    /// <see cref="System.Runtime.InteropServices.MemoryMarshal.TryGetArray{T}(System.ReadOnlyMemory{T}, out System.ArraySegment{T})"/>
+    /// when it publishes a page entry. It does not read private fields of this type.
+    /// </para>
+    /// </remarks>
+    public ReadOnlyMemory<byte> GetBackingSlice() => readOnlyMemory;
+
     /// <inheritdoc />
     public byte Read8(Addr offset, in BusAccess access)
     {
