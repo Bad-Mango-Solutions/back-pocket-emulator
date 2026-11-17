@@ -419,7 +419,7 @@ public partial class DebugCommandsTests
     public void FormatFault_PreservesKnownAndUnknownBits()
     {
         BusFault fault = new(
-            Kind: (FaultKind)0x0102,
+            Kind: (FaultKind)0x1002,
             Address: 0x1234,
             WidthBits: 8,
             Intent: AccessIntent.DataRead,
@@ -434,7 +434,7 @@ public partial class DebugCommandsTests
         Assert.Multiple(() =>
         {
             Assert.That(rendered, Does.Contain("Permission"));
-            Assert.That(rendered, Does.Contain("unknown 0x0100"));
+            Assert.That(rendered, Does.Contain("unknown 0x1000"));
         });
     }
 
@@ -445,7 +445,7 @@ public partial class DebugCommandsTests
     public void FormatFault_UnknownOnlyMaskIsPreserved()
     {
         BusFault fault = new(
-            Kind: (FaultKind)0x0100,
+            Kind: (FaultKind)0x1000,
             Address: 0x1234,
             WidthBits: 8,
             Intent: AccessIntent.DataRead,
@@ -457,7 +457,29 @@ public partial class DebugCommandsTests
 
         string rendered = DebugOutputRenderer.FormatFault(fault);
 
-        Assert.That(rendered, Is.EqualTo("unknown 0x0100"));
+        Assert.That(rendered, Is.EqualTo("unknown 0x1000"));
+    }
+
+    /// <summary>
+    /// High-byte flag names are rendered alongside low-byte names when present.
+    /// </summary>
+    [Test]
+    public void FormatFault_RendersKnownHighByteBits()
+    {
+        BusFault fault = new(
+            Kind: FaultKind.Permission | FaultKind.Write,
+            Address: 0x1234,
+            WidthBits: 8,
+            Intent: AccessIntent.DataRead,
+            Mode: BusAccessMode.Decomposed,
+            SourceId: 0,
+            DeviceId: 0,
+            RegionTag: RegionTag.Ram,
+            Cycle: 0);
+
+        string rendered = DebugOutputRenderer.FormatFault(fault);
+
+        Assert.That(rendered, Is.EqualTo("Permission|Write"));
     }
 
     /// <summary>

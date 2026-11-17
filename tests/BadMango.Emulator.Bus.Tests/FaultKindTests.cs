@@ -33,11 +33,15 @@ public class FaultKindTests
             Assert.That(Enum.IsDefined(FaultKind.Nx), Is.True);
             Assert.That(Enum.IsDefined(FaultKind.Misaligned), Is.True);
             Assert.That(Enum.IsDefined(FaultKind.DeviceFault), Is.True);
+            Assert.That(Enum.IsDefined(FaultKind.Write), Is.True);
+            Assert.That(Enum.IsDefined(FaultKind.Fetch), Is.True);
+            Assert.That(Enum.IsDefined(FaultKind.BankCrossing), Is.True);
+            Assert.That(Enum.IsDefined(FaultKind.Privilege), Is.True);
         });
     }
 
     /// <summary>
-    /// Verifies the enum has exactly six values and the documented mask bit values.
+    /// Verifies the enum has exactly ten values and the documented mask bit values.
     /// </summary>
     [Test]
     public void FaultKind_HasExpectedMaskValues()
@@ -50,6 +54,10 @@ public class FaultKindTests
             Assert.That((ushort)FaultKind.Nx, Is.EqualTo(0x0004));
             Assert.That((ushort)FaultKind.Misaligned, Is.EqualTo(0x0008));
             Assert.That((ushort)FaultKind.DeviceFault, Is.EqualTo(0x0010));
+            Assert.That((ushort)FaultKind.Write, Is.EqualTo(0x0100));
+            Assert.That((ushort)FaultKind.Fetch, Is.EqualTo(0x0200));
+            Assert.That((ushort)FaultKind.BankCrossing, Is.EqualTo(0x0400));
+            Assert.That((ushort)FaultKind.Privilege, Is.EqualTo(0x0800));
 
             Assert.That((byte)FaultKind.None, Is.EqualTo(0x00));
             Assert.That((byte)FaultKind.Unmapped, Is.EqualTo(0x01));
@@ -57,9 +65,13 @@ public class FaultKindTests
             Assert.That((byte)FaultKind.Nx, Is.EqualTo(0x04));
             Assert.That((byte)FaultKind.Misaligned, Is.EqualTo(0x08));
             Assert.That((byte)FaultKind.DeviceFault, Is.EqualTo(0x10));
+            Assert.That((byte)((ushort)FaultKind.Write & 0xFF), Is.EqualTo(0x00));
+            Assert.That((byte)((ushort)FaultKind.Fetch & 0xFF), Is.EqualTo(0x00));
+            Assert.That((byte)((ushort)FaultKind.BankCrossing & 0xFF), Is.EqualTo(0x00));
+            Assert.That((byte)((ushort)FaultKind.Privilege & 0xFF), Is.EqualTo(0x00));
         });
 
         var values = Enum.GetValues<FaultKind>();
-        Assert.That(values, Has.Length.EqualTo(6));
+        Assert.That(values, Has.Length.EqualTo(10));
     }
 }

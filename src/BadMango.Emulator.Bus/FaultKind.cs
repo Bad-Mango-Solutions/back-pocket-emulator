@@ -19,6 +19,7 @@ namespace BadMango.Emulator.Bus;
 /// on NX pages are allowed unless other permissions forbid it.
 /// </para>
 /// </remarks>
+[Flags]
 public enum FaultKind : ushort
 {
     /// <summary>
@@ -80,4 +81,24 @@ public enum FaultKind : ushort
     /// DMA operation.
     /// </remarks>
     DeviceFault = 0x0010,
+
+    /// <summary>
+    /// The bus fault was raised while attempting a write operation.
+    /// </summary>
+    Write = 0x0100,
+
+    /// <summary>
+    /// The bus fault was raised while attempting an instruction fetch.
+    /// </summary>
+    Fetch = 0x0200,
+
+    /// <summary>
+    /// The bus fault was raised when crossing a page bank boundary.
+    /// </summary>
+    BankCrossing = 0x0400,
+
+    /// <summary>
+    /// The bus fault was raised because the current privilege level was insufficient.
+    /// </summary>
+    Privilege = 0x0800,
 }

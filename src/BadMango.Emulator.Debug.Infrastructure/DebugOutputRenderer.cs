@@ -28,6 +28,10 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         (FaultKind.Nx, nameof(FaultKind.Nx)),
         (FaultKind.Misaligned, nameof(FaultKind.Misaligned)),
         (FaultKind.DeviceFault, nameof(FaultKind.DeviceFault)),
+        (FaultKind.Write, nameof(FaultKind.Write)),
+        (FaultKind.Fetch, nameof(FaultKind.Fetch)),
+        (FaultKind.BankCrossing, nameof(FaultKind.BankCrossing)),
+        (FaultKind.Privilege, nameof(FaultKind.Privilege)),
     ];
 
     private static readonly ushort KnownFaultMask = (ushort)(
@@ -35,7 +39,11 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         FaultKind.Permission |
         FaultKind.Nx |
         FaultKind.Misaligned |
-        FaultKind.DeviceFault);
+        FaultKind.DeviceFault |
+        FaultKind.Write |
+        FaultKind.Fetch |
+        FaultKind.BankCrossing |
+        FaultKind.Privilege);
 
     private readonly Func<DateTimeOffset> clock;
 
