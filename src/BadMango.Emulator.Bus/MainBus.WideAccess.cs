@@ -285,7 +285,7 @@ public sealed partial class MainBus
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
             Word value = page.Target.Read16(physicalAddress, access);
-            return BusResult<Word>.Success(value, access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess<Word>(value);
         }
 
         // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
@@ -299,7 +299,7 @@ public sealed partial class MainBus
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
             Word value = page.Target.Read16(physicalAddress, access);
-            return BusResult<Word>.Success(value, access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess<Word>(value);
         }
 
         return DecomposeTryRead16(access);
@@ -345,7 +345,7 @@ public sealed partial class MainBus
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
             page.Target.Write16(physicalAddress, value, access);
-            return BusResult.Success(access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess();
         }
 
         // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
@@ -359,7 +359,7 @@ public sealed partial class MainBus
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
             page.Target.Write16(physicalAddress, value, access);
-            return BusResult.Success(access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess();
         }
 
         return DecomposeTryWrite16(access, value);
@@ -405,7 +405,7 @@ public sealed partial class MainBus
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
             DWord value = page.Target.Read32(physicalAddress, access);
-            return BusResult<DWord>.Success(value, access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess<DWord>(value);
         }
 
         // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
@@ -419,7 +419,7 @@ public sealed partial class MainBus
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
             DWord value = page.Target.Read32(physicalAddress, access);
-            return BusResult<DWord>.Success(value, access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess<DWord>(value);
         }
 
         return DecomposeTryRead32(access);
@@ -465,7 +465,7 @@ public sealed partial class MainBus
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
             page.Target.Write32(physicalAddress, value, access);
-            return BusResult.Success(access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess();
         }
 
         // Decomposed mode default: decompose (Apple II expects byte-visible cycles)
@@ -479,7 +479,7 @@ public sealed partial class MainBus
         {
             Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
             page.Target.Write32(physicalAddress, value, access);
-            return BusResult.Success(access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess();
         }
 
         return DecomposeTryWrite32(access, value);

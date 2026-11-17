@@ -77,8 +77,9 @@ public sealed partial class MainBus
     /// </value>
     /// <remarks>
     /// This is not a third architectural register. The CPU slow path and every <c>Try*</c> failure
-    /// share <see cref="LatchFault"/>, which is what fills the latch. Program counter is not known
-    /// here, so a record built from the latch leaves it at zero.
+    /// share <see cref="LatchFault"/>, which is what fills the latch. Program counter is not part
+    /// of the latch. A record built only from the latch leaves <see cref="BusFault.Pc"/> at zero.
+    /// The <c>Try*</c> return copies <see cref="BusAccess.Pc"/> onto the one record it returns and records.
     /// </remarks>
     internal BusFault LatchedFault => faultStatus == FaultKind.None
         ? default
@@ -91,7 +92,8 @@ public sealed partial class MainBus
             latchedSourceId,
             latchedDeviceId,
             latchedRegionTag,
-            latchedCycle);
+            latchedCycle,
+            0);
 
     /// <inheritdoc />
     public void ClearFaultStatus()
@@ -178,15 +180,26 @@ public sealed partial class MainBus
     }
 
     /// <summary>
-    /// Latches <paramref name="fault"/> and returns it so a wide <c>Try*</c> early return
-    /// uses the same helper as <see cref="TryRead8"/>.
+    /// Latches <paramref name="fault"/>, records that same record when recording is enabled
+    /// and the access is not a debug access, and returns it.
     /// </summary>
-    /// <param name="access">The access that failed.</param>
-    /// <param name="fault">The fault to return.</param>
-    /// <returns><paramref name="fault"/>.</returns>
+    /// <param name="access">The access that failed. Debug accesses do not latch and are not recorded.</param>
+    /// <param name="fault">The fault to return. This is the record the ring receives.</param>
+    /// <returns><paramref name="fault"/>, unchanged, so the caller and the ring share one record.</returns>
+    /// <remarks>
+    /// Kept out of line so the recording and log stay off the <c>Try*</c> success path.
+    /// A successful access does not call this method.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private BusFault LatchAndReturn(in BusAccess access, BusFault fault)
     {
         LatchFault(in access, in fault);
+        if (faultRecordingEnabled && !access.IsDebugAccess)
+        {
+            faultRecorder?.Record(in fault);
+            LogFault(in fault, isSilent: false, isComposite: false);
+        }
+
         return fault;
     }
 }

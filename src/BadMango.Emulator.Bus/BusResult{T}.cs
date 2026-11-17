@@ -56,6 +56,14 @@ public readonly record struct BusResult<T>(T Value, BusFault Fault, ulong Cycles
     public static BusResult<T> Success(T value, ulong cycles = 0) => new(value, BusFault.Success(), cycles);
 
     /// <summary>
+    /// Creates a faulted result.
+    /// </summary>
+    /// <param name="fault">The fault that occurred.</param>
+    /// <param name="cycles">The number of cycles consumed before the fault.</param>
+    /// <returns>A faulted <see cref="BusResult{T}"/>.</returns>
+    public static BusResult<T> FromFault(BusFault fault, ulong cycles = 0) => new(default!, fault, cycles);
+
+    /// <summary>
     /// Creates a successful result with context.
     /// </summary>
     /// <param name="value">The value that was read.</param>
@@ -64,14 +72,10 @@ public readonly record struct BusResult<T>(T Value, BusFault Fault, ulong Cycles
     /// <param name="regionTag">The region tag of the accessed page.</param>
     /// <param name="cycles">The number of cycles consumed.</param>
     /// <returns>A successful <see cref="BusResult{T}"/>.</returns>
-    public static BusResult<T> Success(T value, in BusAccess access, int deviceId, RegionTag regionTag, ulong cycles = 0) =>
+    /// <remarks>
+    /// Test-only. <see cref="MainBus"/> success paths return a zero <see cref="BusFault"/>
+    /// and do not call this overload.
+    /// </remarks>
+    internal static BusResult<T> Success(T value, in BusAccess access, int deviceId, RegionTag regionTag, ulong cycles = 0) =>
         new(value, BusFault.Success(in access, deviceId, regionTag), cycles);
-
-    /// <summary>
-    /// Creates a faulted result.
-    /// </summary>
-    /// <param name="fault">The fault that occurred.</param>
-    /// <param name="cycles">The number of cycles consumed before the fault.</param>
-    /// <returns>A faulted <see cref="BusResult{T}"/>.</returns>
-    public static BusResult<T> FromFault(BusFault fault, ulong cycles = 0) => new(default!, fault, cycles);
 }

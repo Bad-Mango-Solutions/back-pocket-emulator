@@ -35,6 +35,11 @@ namespace BadMango.Emulator.Bus;
 /// <param name="Cycle">The current machine cycle for timing correlation.</param>
 /// <param name="Flags">Flags modifying access behavior (side effects, atomicity, endianness).</param>
 /// <param name="PrivilegeLevel">The requestor's privilege level. Defaults to Ring 0 for compat mode.</param>
+/// <param name="Pc">
+/// Program counter of a CPU caller. The bus does not know a CPU and does not read this on a
+/// successful access. A failing <c>Try*</c> copies it onto the one <see cref="BusFault"/> it
+/// returns and, when recording is enabled, records. Callers that are not a CPU leave it at 0.
+/// </param>
 public readonly record struct BusAccess(
     Addr Address,
     DWord Value,
@@ -45,7 +50,8 @@ public readonly record struct BusAccess(
     int SourceId,
     ulong Cycle,
     AccessFlags Flags,
-    PrivilegeLevel PrivilegeLevel = PrivilegeLevel.Ring0)
+    PrivilegeLevel PrivilegeLevel = PrivilegeLevel.Ring0,
+    Addr Pc = 0)
 {
     /// <summary>
     /// Gets a value indicating whether this access should suppress side effects.

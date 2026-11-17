@@ -86,10 +86,14 @@ public class CompositeTargetTests
     }
 
     /// <summary>
-    /// Verifies that TryRead8 returns correct sub-region tag from composite target.
+    /// Verifies that a successful composite read returns the byte and a zero fault.
     /// </summary>
+    /// <remarks>
+    /// The page is device 1 in <see cref="RegionTag.Io"/> and the sub-target reports
+    /// <see cref="RegionTag.Slot"/>. Those values stay off the success payload.
+    /// </remarks>
     [Test]
-    public void TryRead8_CompositeTarget_ReturnsSubRegionTag()
+    public void TryRead8_CompositeTarget_ReturnsZeroFault()
     {
         var bus = new MainBus();
 
@@ -107,7 +111,11 @@ public class CompositeTargetTests
         {
             Assert.That(result.Ok, Is.True);
             Assert.That(result.Value, Is.EqualTo(0x42));
-            Assert.That(result.Fault.RegionTag, Is.EqualTo(RegionTag.Slot), "Should use sub-region tag");
+            Assert.That(result.Fault, Is.EqualTo(default(BusFault)));
+            Assert.That(result.Fault.Kind, Is.EqualTo(FaultKind.None));
+            Assert.That(result.Fault.Address, Is.EqualTo(default(Addr)));
+            Assert.That(result.Fault.DeviceId, Is.EqualTo(0));
+            Assert.That(result.Fault.RegionTag, Is.EqualTo(default(RegionTag)));
         });
     }
 
