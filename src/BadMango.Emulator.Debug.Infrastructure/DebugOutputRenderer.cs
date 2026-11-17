@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
+using BadMango.Emulator.Bus;
 using BadMango.Emulator.Debug.Abstractions;
 
 /// <summary>
@@ -20,7 +21,34 @@ using BadMango.Emulator.Debug.Abstractions;
 /// </remarks>
 public sealed class DebugOutputRenderer : IDebugOutputRenderer
 {
+    private static readonly (FaultKind Mask, string Name)[] KnownFaultNames =
+    [
+        (FaultKind.Unmapped, nameof(FaultKind.Unmapped)),
+        (FaultKind.Permission, nameof(FaultKind.Permission)),
+        (FaultKind.Nx, nameof(FaultKind.Nx)),
+        (FaultKind.Misaligned, nameof(FaultKind.Misaligned)),
+        (FaultKind.DeviceFault, nameof(FaultKind.DeviceFault)),
+    ];
+
+    private static readonly ushort KnownFaultMask = (ushort)(
+        FaultKind.Unmapped |
+        FaultKind.Permission |
+        FaultKind.Nx |
+        FaultKind.Misaligned |
+        FaultKind.DeviceFault);
+
     private readonly Func<DateTimeOffset> clock;
+
+    /// <summary>
+    /// Gets a text renderer with no cycle budget.
+    /// </summary>
+    public static IDebugOutputRenderer PlainText { get; } = new DebugOutputRenderer();
+
+    /// <inheritdoc/>
+    public bool JsonOutput { get; }
+
+    /// <inheritdoc/>
+    public ulong? DefaultMaxCycles { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DebugOutputRenderer"/> class.
@@ -35,15 +63,44 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
     }
 
     /// <summary>
-    /// Gets a text renderer with no cycle budget.
+    /// Formats a bus fault kind as the named low-byte bitmask, preserving unknown bits.
     /// </summary>
-    public static IDebugOutputRenderer PlainText { get; } = new DebugOutputRenderer();
+    /// <param name="fault">The bus fault to format.</param>
+    /// <returns>A pipe-delimited list of known fault names and any remaining unknown mask bits.</returns>
+    public static string FormatFault(BusFault fault)
+    {
+        return FormatFaultBits((ushort)fault.Kind);
+    }
 
-    /// <inheritdoc/>
-    public bool JsonOutput { get; }
+    /// <summary>
+    /// Formats a raw fault mask as the named low-byte bitmask, preserving unknown bits.
+    /// </summary>
+    /// <param name="mask">The raw fault mask.</param>
+    /// <returns>A pipe-delimited list of known fault names and any remaining unknown mask bits.</returns>
+    public static string FormatFaultBits(ushort mask)
+    {
+        var names = new List<string>();
+        foreach ((FaultKind kind, string name) in KnownFaultNames)
+        {
+            if ((mask & (ushort)kind) != 0)
+            {
+                names.Add(name);
+            }
+        }
 
-    /// <inheritdoc/>
-    public ulong? DefaultMaxCycles { get; }
+        ushort unknownBits = (ushort)(mask & ~KnownFaultMask);
+        if (unknownBits != 0)
+        {
+            names.Add($"unknown 0x{unknownBits:X4}");
+        }
+
+        if (names.Count == 0)
+        {
+            return "No fault";
+        }
+
+        return string.Join("|", names);
+    }
 
     /// <inheritdoc/>
     public void WriteRegisters(TextWriter output, RegisterSnapshot snapshot)
@@ -98,38 +155,7 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
                 return "No fault";
             }
 
-            var names = new List<string>();
-            if ((mask & 0x01) != 0)
-            {
-                names.Add("Unmapped - no memory or device at this address");
-            }
-
-            if ((mask & 0x02) != 0)
-            {
-                names.Add("Permission denied");
-            }
-
-            if ((mask & 0x04) != 0)
-            {
-                names.Add("No execute");
-            }
-
-            if ((mask & 0x08) != 0)
-            {
-                names.Add("Misaligned access");
-            }
-
-            if ((mask & 0x10) != 0)
-            {
-                names.Add("Device fault");
-            }
-
-            if (names.Count == 0)
-            {
-                return string.Format(CultureInfo.InvariantCulture, "Fault mask {0:X2}", mask);
-            }
-
-            return string.Join("; ", names);
+            return FormatFaultKind(mask, isMasked: true, defaultName: "Fault mask");
         }
 
         var ascii = new StringBuilder();
@@ -193,7 +219,37 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
         }
     }
 
-    /// <inheritdoc/>
+    private static string FormatFaultKind(byte mask, bool isMasked, string defaultName)
+    {
+        ushort combinedMask = mask;
+        var names = new List<string>();
+        foreach ((FaultKind kind, string name) in KnownFaultNames)
+        {
+            if ((combinedMask & (ushort)kind) != 0)
+            {
+                names.Add(name);
+            }
+        }
+
+        ushort unknownBits = (ushort)(combinedMask & ~KnownFaultMask);
+        if (unknownBits != 0)
+        {
+            names.Add($"unknown 0x{unknownBits:X4}");
+        }
+
+        if (names.Count == 0)
+        {
+            return isMasked ? $"{defaultName} {mask:X2}" : $"{defaultName} {combinedMask:X4}";
+        }
+
+        return string.Join("|", names);
+    }
+
+    /// <summary>
+    /// Writes a disassembly listing.
+    /// </summary>
+    /// <param name="output">Output writer.</param>
+    /// <param name="lines">Disassembly lines to emit.</param>
     public void WriteDisassembly(TextWriter output, IReadOnlyList<DisassemblyLine> lines)
     {
         ArgumentNullException.ThrowIfNull(output);

@@ -413,6 +413,54 @@ public partial class DebugCommandsTests
     }
 
     /// <summary>
+    /// Mixed known and unknown fault bits are preserved in the formatted output.
+    /// </summary>
+    [Test]
+    public void FormatFault_PreservesKnownAndUnknownBits()
+    {
+        BusFault fault = new(
+            Kind: (FaultKind)0x0102,
+            Address: 0x1234,
+            WidthBits: 8,
+            Intent: AccessIntent.DataRead,
+            Mode: BusAccessMode.Decomposed,
+            SourceId: 0,
+            DeviceId: 0,
+            RegionTag: RegionTag.Ram,
+            Cycle: 0);
+
+        string rendered = DebugOutputRenderer.FormatFault(fault);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(rendered, Does.Contain("Permission"));
+            Assert.That(rendered, Does.Contain("unknown 0x0100"));
+        });
+    }
+
+    /// <summary>
+    /// Unknown-only masks are rendered without dropping the raw bits.
+    /// </summary>
+    [Test]
+    public void FormatFault_UnknownOnlyMaskIsPreserved()
+    {
+        BusFault fault = new(
+            Kind: (FaultKind)0x0100,
+            Address: 0x1234,
+            WidthBits: 8,
+            Intent: AccessIntent.DataRead,
+            Mode: BusAccessMode.Decomposed,
+            SourceId: 0,
+            DeviceId: 0,
+            RegionTag: RegionTag.Ram,
+            Cycle: 0);
+
+        string rendered = DebugOutputRenderer.FormatFault(fault);
+
+        Assert.That(rendered, Is.EqualTo("unknown 0x0100"));
+    }
+
+    /// <summary>
     /// Peek across the same boundary marks only the unmapped bytes.
     /// </summary>
     [Test]
@@ -475,7 +523,7 @@ public partial class DebugCommandsTests
         {
             Assert.That(result.Success, Is.True);
             Assert.That(outputWriter.ToString(), Does.Contain("Bus faults encountered"), "Should report fault");
-            Assert.That(outputWriter.ToString(), Does.Contain("Permission denied"), "Should identify as permission fault");
+            Assert.That(outputWriter.ToString(), Does.Contain("Permission"), "Should identify as permission fault");
         });
     }
 

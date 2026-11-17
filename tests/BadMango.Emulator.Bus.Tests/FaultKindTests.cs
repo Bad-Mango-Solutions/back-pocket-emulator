@@ -50,6 +50,13 @@ public class FaultKindTests
             Assert.That((ushort)FaultKind.Nx, Is.EqualTo(0x0004));
             Assert.That((ushort)FaultKind.Misaligned, Is.EqualTo(0x0008));
             Assert.That((ushort)FaultKind.DeviceFault, Is.EqualTo(0x0010));
+
+            Assert.That((byte)FaultKind.None, Is.EqualTo(0x00));
+            Assert.That((byte)FaultKind.Unmapped, Is.EqualTo(0x01));
+            Assert.That((byte)FaultKind.Permission, Is.EqualTo(0x02));
+            Assert.That((byte)FaultKind.Nx, Is.EqualTo(0x04));
+            Assert.That((byte)FaultKind.Misaligned, Is.EqualTo(0x08));
+            Assert.That((byte)FaultKind.DeviceFault, Is.EqualTo(0x10));
         });
 
         var values = Enum.GetValues<FaultKind>();

@@ -187,33 +187,7 @@ public sealed class WriteCommand : CommandHandlerBase, ICommandHelp
 
     private static string FormatFault(BusFault fault)
     {
-        var names = new List<string>();
-        if ((fault.Kind & FaultKind.Unmapped) != 0)
-        {
-            names.Add("Unmapped - no memory or device at this address");
-        }
-
-        if ((fault.Kind & FaultKind.Permission) != 0)
-        {
-            names.Add($"Permission denied - region {fault.RegionTag} does not allow write");
-        }
-
-        if ((fault.Kind & FaultKind.Nx) != 0)
-        {
-            names.Add("No execute - this fault should not occur for writes");
-        }
-
-        if ((fault.Kind & FaultKind.Misaligned) != 0)
-        {
-            names.Add("Misaligned access");
-        }
-
-        if ((fault.Kind & FaultKind.DeviceFault) != 0)
-        {
-            names.Add("Device fault - device rejected the write");
-        }
-
-        return names.Count == 0 ? $"Unknown fault kind: {fault.Kind}" : string.Join("; ", names);
+        return DebugOutputRenderer.FormatFault(fault);
     }
 
     private static bool TryParseByteValue(string value, out byte result)
