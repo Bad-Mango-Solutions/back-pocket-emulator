@@ -161,12 +161,24 @@ public class OpcodeTableDispatchTests : CpuTestBase
         }
 
         var cpu = CreateCpu();
+        cpu.Registers.E = true;
+        cpu.Registers.CP = true;
         cpu.Registers.P |= ProcessorStatusFlags.C;
+        cpu.Registers.A.SetByte(0x80);
+        cpu.Registers.X.SetByte(0x00);
         cpu.Registers.PC.SetWord(0x0200);
         cpu.Write8(0x0200, 0x18); // CLC
+        cpu.Write8(0x0201, 0xAA); // TAX
+        cpu.Step();
         cpu.Step();
 
-        Assert.That((cpu.Registers.P & ProcessorStatusFlags.C) == ProcessorStatusFlags.C, Is.False);
+        Assert.Multiple(() =>
+        {
+            Assert.That((cpu.Registers.P & ProcessorStatusFlags.C) == ProcessorStatusFlags.C, Is.False);
+            Assert.That(cpu.Registers.X.GetByte(), Is.EqualTo((byte)0x80));
+            Assert.That((cpu.Registers.P & ProcessorStatusFlags.N) == ProcessorStatusFlags.N, Is.True);
+            Assert.That(cpu.Registers.PC.GetWord(), Is.EqualTo((Word)0x0202));
+        });
     }
 
     /// <summary>
