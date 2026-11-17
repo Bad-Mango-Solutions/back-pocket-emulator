@@ -67,6 +67,17 @@ public sealed class RamTarget : IBusTarget
     /// </summary>
     public uint Size => (uint)memory.Length;
 
+    /// <summary>
+    /// Returns the memory slice this target reads and writes.
+    /// </summary>
+    /// <returns>The slice supplied at construction.</returns>
+    /// <remarks>
+    /// The bus recovers a <see cref="byte"/> array and an offset from this slice with
+    /// <see cref="System.Runtime.InteropServices.MemoryMarshal.TryGetArray{T}(System.ReadOnlyMemory{T}, out System.ArraySegment{T})"/>
+    /// when it publishes a page entry. It does not read private fields of this type.
+    /// </remarks>
+    public Memory<byte> GetBackingSlice() => memory;
+
     /// <inheritdoc />
     public byte Read8(Addr offset, in BusAccess access)
     {

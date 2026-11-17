@@ -49,7 +49,7 @@ public sealed partial class MainBus
             throw new ArgumentOutOfRangeException(nameof(pageIndex), pageIndex, $"Page index must be between 0 and {pageTable.Length - 1}.");
         }
 
-        pageTable[pageIndex] = entry;
+        pageTable[pageIndex] = WithFastPath(entry);
     }
 
     /// <inheritdoc />
@@ -81,13 +81,13 @@ public sealed partial class MainBus
         for (int i = 0; i < pageCount; i++)
         {
             Addr pagePhysBase = physicalBase + (Addr)(i * PageSize);
-            pageTable[startPage + i] = new(
+            pageTable[startPage + i] = WithFastPath(new(
                 deviceId,
                 regionTag,
                 perms,
                 caps,
                 target,
-                pagePhysBase);
+                pagePhysBase));
         }
     }
 
@@ -170,11 +170,11 @@ public sealed partial class MainBus
         }
 
         ref var entry = ref pageTable[pageIndex];
-        pageTable[pageIndex] = entry with
+        pageTable[pageIndex] = WithFastPath(entry with
         {
             Target = newTarget,
             PhysicalBase = newPhysBase,
-        };
+        });
     }
 
     /// <summary>
@@ -192,7 +192,7 @@ public sealed partial class MainBus
             throw new ArgumentOutOfRangeException(nameof(pageIndex), pageIndex, $"Page index must be between 0 and {pageTable.Length - 1}.");
         }
 
-        pageTable[pageIndex] = newEntry;
+        pageTable[pageIndex] = WithFastPath(newEntry);
     }
 
     /// <summary>
@@ -226,11 +226,11 @@ public sealed partial class MainBus
         {
             ref var entry = ref pageTable[startPage + i];
             Addr pagePhysBase = newPhysBase + (Addr)(i * PageSize);
-            pageTable[startPage + i] = entry with
+            pageTable[startPage + i] = WithFastPath(entry with
             {
                 Target = newTarget,
                 PhysicalBase = pagePhysBase,
-            };
+            });
         }
     }
 

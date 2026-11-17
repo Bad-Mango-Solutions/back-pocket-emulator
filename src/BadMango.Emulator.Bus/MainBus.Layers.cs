@@ -316,6 +316,6 @@ public sealed partial class MainBus
             }
         }
 
-        pageTable[pageIndex] = effectiveEntry;
+        pageTable[pageIndex] = WithFastPath(effectiveEntry);
     }
 }
