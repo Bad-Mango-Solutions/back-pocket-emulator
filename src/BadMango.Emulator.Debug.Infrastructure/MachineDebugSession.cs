@@ -124,7 +124,16 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         }
     }
 
+    /// <inheritdoc />
+    public ushort FaultStatus => (ushort)this.RequireBus().FaultStatus;
+
+    /// <inheritdoc />
+    public uint FaultAddress => this.RequireBus().FaultAddress;
+
     private IMachine Machine => debugContext.Machine ?? throw new InvalidOperationException(NoMachineMessage);
+
+    /// <inheritdoc />
+    public void ClearFaultStatus() => this.RequireBus().ClearFaultStatus();
 
     /// <inheritdoc />
     public RegisterSnapshot GetRegisters()
