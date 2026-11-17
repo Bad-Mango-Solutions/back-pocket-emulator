@@ -107,40 +107,40 @@ public static class Cpu65C02OpcodeTableBuilder
         // BRK - Force Break
         SetOpcode(0x00, Instructions.BRK(AddressingModes.Implied), CpuInstructions.BRK, CpuAddressingModes.Implied);
 
-        // LDA - Load Accumulator (true compositional pattern)
-        SetOpcode(0xA9, Instructions.LDA(AddressingModes.Immediate), CpuInstructions.LDA, CpuAddressingModes.Immediate);
-        SetOpcode(0xA5, Instructions.LDA(AddressingModes.ZeroPage), CpuInstructions.LDA, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xB5, Instructions.LDA(AddressingModes.ZeroPageX), CpuInstructions.LDA, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0xAD, Instructions.LDA(AddressingModes.Absolute), CpuInstructions.LDA, CpuAddressingModes.Absolute);
-        SetOpcode(0xBD, Instructions.LDA(AddressingModes.AbsoluteX), CpuInstructions.LDA, CpuAddressingModes.AbsoluteX);
-        SetOpcode(0xB9, Instructions.LDA(AddressingModes.AbsoluteY), CpuInstructions.LDA, CpuAddressingModes.AbsoluteY);
-        SetOpcode(0xA1, Instructions.LDA(AddressingModes.IndirectX), CpuInstructions.LDA, CpuAddressingModes.IndirectX);
-        SetOpcode(0xB1, Instructions.LDA(AddressingModes.IndirectY), CpuInstructions.LDA, CpuAddressingModes.IndirectY);
-        SetOpcode(0xB2, Instructions.LDA(AddressingModes.ZeroPageIndirect), CpuInstructions.LDA, CpuAddressingModes.ZeroPageIndirect); // 65C02
+        // LDA - Load Accumulator
+        SetDirectOpcode(0xA9, Instructions.LDAImmediateDispatch, CpuInstructions.LDA, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0xA5, Instructions.LDAZeroPageDispatch, CpuInstructions.LDA, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xB5, Instructions.LDAZeroPageXDispatch, CpuInstructions.LDA, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0xAD, Instructions.LDAAbsoluteDispatch, CpuInstructions.LDA, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0xBD, Instructions.LDAAbsoluteXDispatch, CpuInstructions.LDA, CpuAddressingModes.AbsoluteX);
+        SetDirectOpcode(0xB9, Instructions.LDAAbsoluteYDispatch, CpuInstructions.LDA, CpuAddressingModes.AbsoluteY);
+        SetDirectOpcode(0xA1, Instructions.LDAIndirectXDispatch, CpuInstructions.LDA, CpuAddressingModes.IndirectX);
+        SetDirectOpcode(0xB1, Instructions.LDAIndirectYDispatch, CpuInstructions.LDA, CpuAddressingModes.IndirectY);
+        SetDirectOpcode(0xB2, Instructions.LDAZeroPageIndirectDispatch, CpuInstructions.LDA, CpuAddressingModes.ZeroPageIndirect); // 65C02
 
-        // STA - Store Accumulator
-        SetOpcode(0x85, Instructions.STA(AddressingModes.ZeroPage), CpuInstructions.STA, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x95, Instructions.STA(AddressingModes.ZeroPageX), CpuInstructions.STA, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0x8D, Instructions.STA(AddressingModes.Absolute), CpuInstructions.STA, CpuAddressingModes.Absolute);
-        SetOpcode(0x9D, Instructions.STA(AddressingModes.AbsoluteXWrite), CpuInstructions.STA, CpuAddressingModes.AbsoluteX); // Write version always takes max cycles
-        SetOpcode(0x99, Instructions.STA(AddressingModes.AbsoluteYWrite), CpuInstructions.STA, CpuAddressingModes.AbsoluteY); // Write version always takes max cycles
-        SetOpcode(0x81, Instructions.STA(AddressingModes.IndirectX), CpuInstructions.STA, CpuAddressingModes.IndirectX);
-        SetOpcode(0x91, Instructions.STA(AddressingModes.IndirectYWrite), CpuInstructions.STA, CpuAddressingModes.IndirectY); // Write version always takes max cycles
-        SetOpcode(0x92, Instructions.STA(AddressingModes.ZeroPageIndirect), CpuInstructions.STA, CpuAddressingModes.ZeroPageIndirect); // 65C02
+        // STA - Store Accumulator. Indexed and (zp),Y stores use the write-cycle modes.
+        SetDirectOpcode(0x85, Instructions.STAZeroPageDispatch, CpuInstructions.STA, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x95, Instructions.STAZeroPageXDispatch, CpuInstructions.STA, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0x8D, Instructions.STAAbsoluteDispatch, CpuInstructions.STA, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x9D, Instructions.STAAbsoluteXDispatch, CpuInstructions.STA, CpuAddressingModes.AbsoluteX);
+        SetDirectOpcode(0x99, Instructions.STAAbsoluteYDispatch, CpuInstructions.STA, CpuAddressingModes.AbsoluteY);
+        SetDirectOpcode(0x81, Instructions.STAIndirectXDispatch, CpuInstructions.STA, CpuAddressingModes.IndirectX);
+        SetDirectOpcode(0x91, Instructions.STAIndirectYDispatch, CpuInstructions.STA, CpuAddressingModes.IndirectY);
+        SetDirectOpcode(0x92, Instructions.STAZeroPageIndirectDispatch, CpuInstructions.STA, CpuAddressingModes.ZeroPageIndirect); // 65C02
 
         // LDX - Load X Register
-        SetOpcode(0xA2, Instructions.LDX(AddressingModes.Immediate), CpuInstructions.LDX, CpuAddressingModes.Immediate);
-        SetOpcode(0xA6, Instructions.LDX(AddressingModes.ZeroPage), CpuInstructions.LDX, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xB6, Instructions.LDX(AddressingModes.ZeroPageY), CpuInstructions.LDX, CpuAddressingModes.ZeroPageY);
-        SetOpcode(0xAE, Instructions.LDX(AddressingModes.Absolute), CpuInstructions.LDX, CpuAddressingModes.Absolute);
-        SetOpcode(0xBE, Instructions.LDX(AddressingModes.AbsoluteY), CpuInstructions.LDX, CpuAddressingModes.AbsoluteY);
+        SetDirectOpcode(0xA2, Instructions.LDXImmediateDispatch, CpuInstructions.LDX, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0xA6, Instructions.LDXZeroPageDispatch, CpuInstructions.LDX, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xB6, Instructions.LDXZeroPageYDispatch, CpuInstructions.LDX, CpuAddressingModes.ZeroPageY);
+        SetDirectOpcode(0xAE, Instructions.LDXAbsoluteDispatch, CpuInstructions.LDX, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0xBE, Instructions.LDXAbsoluteYDispatch, CpuInstructions.LDX, CpuAddressingModes.AbsoluteY);
 
         // LDY - Load Y Register
-        SetOpcode(0xA0, Instructions.LDY(AddressingModes.Immediate), CpuInstructions.LDY, CpuAddressingModes.Immediate);
-        SetOpcode(0xA4, Instructions.LDY(AddressingModes.ZeroPage), CpuInstructions.LDY, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xB4, Instructions.LDY(AddressingModes.ZeroPageX), CpuInstructions.LDY, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0xAC, Instructions.LDY(AddressingModes.Absolute), CpuInstructions.LDY, CpuAddressingModes.Absolute);
-        SetOpcode(0xBC, Instructions.LDY(AddressingModes.AbsoluteX), CpuInstructions.LDY, CpuAddressingModes.AbsoluteX);
+        SetDirectOpcode(0xA0, Instructions.LDYImmediateDispatch, CpuInstructions.LDY, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0xA4, Instructions.LDYZeroPageDispatch, CpuInstructions.LDY, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xB4, Instructions.LDYZeroPageXDispatch, CpuInstructions.LDY, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0xAC, Instructions.LDYAbsoluteDispatch, CpuInstructions.LDY, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0xBC, Instructions.LDYAbsoluteXDispatch, CpuInstructions.LDY, CpuAddressingModes.AbsoluteX);
 
         // NOP - No Operation
         SetOpcode(0xEA, Instructions.NOP(AddressingModes.Implied), CpuInstructions.NOP, CpuAddressingModes.Implied);
@@ -229,14 +229,14 @@ public static class Cpu65C02OpcodeTableBuilder
         SetOpcode(0xFB, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
 
         // STX - Store X Register
-        SetOpcode(0x86, Instructions.STX(AddressingModes.ZeroPage), CpuInstructions.STX, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x96, Instructions.STX(AddressingModes.ZeroPageY), CpuInstructions.STX, CpuAddressingModes.ZeroPageY);
-        SetOpcode(0x8E, Instructions.STX(AddressingModes.Absolute), CpuInstructions.STX, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x86, Instructions.STXZeroPageDispatch, CpuInstructions.STX, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x96, Instructions.STXZeroPageYDispatch, CpuInstructions.STX, CpuAddressingModes.ZeroPageY);
+        SetDirectOpcode(0x8E, Instructions.STXAbsoluteDispatch, CpuInstructions.STX, CpuAddressingModes.Absolute);
 
         // STY - Store Y Register
-        SetOpcode(0x84, Instructions.STY(AddressingModes.ZeroPage), CpuInstructions.STY, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x94, Instructions.STY(AddressingModes.ZeroPageX), CpuInstructions.STY, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0x8C, Instructions.STY(AddressingModes.Absolute), CpuInstructions.STY, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x84, Instructions.STYZeroPageDispatch, CpuInstructions.STY, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x94, Instructions.STYZeroPageXDispatch, CpuInstructions.STY, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0x8C, Instructions.STYAbsoluteDispatch, CpuInstructions.STY, CpuAddressingModes.Absolute);
 
         // Flag manipulation instructions (all use Implied addressing)
         SetDirectOpcode(0x18, Instructions.CLCImpliedDispatch, CpuInstructions.CLC, CpuAddressingModes.Implied); // Clear Carry
@@ -266,10 +266,10 @@ public static class Cpu65C02OpcodeTableBuilder
         SetOpcode(0x7A, Instructions.PLY(AddressingModes.Implied), CpuInstructions.PLY, CpuAddressingModes.Implied); // Pull Y (65C02)
 
         // 65C02-Specific Instructions
-        SetOpcode(0x64, Instructions.STZ(AddressingModes.ZeroPage), CpuInstructions.STZ, CpuAddressingModes.ZeroPage); // Store Zero
-        SetOpcode(0x74, Instructions.STZ(AddressingModes.ZeroPageX), CpuInstructions.STZ, CpuAddressingModes.ZeroPageX); // Store Zero
-        SetOpcode(0x9C, Instructions.STZ(AddressingModes.Absolute), CpuInstructions.STZ, CpuAddressingModes.Absolute); // Store Zero
-        SetOpcode(0x9E, Instructions.STZ(AddressingModes.AbsoluteXWrite), CpuInstructions.STZ, CpuAddressingModes.AbsoluteX); // Store Zero
+        SetDirectOpcode(0x64, Instructions.STZZeroPageDispatch, CpuInstructions.STZ, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x74, Instructions.STZZeroPageXDispatch, CpuInstructions.STZ, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0x9C, Instructions.STZAbsoluteDispatch, CpuInstructions.STZ, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x9E, Instructions.STZAbsoluteXDispatch, CpuInstructions.STZ, CpuAddressingModes.AbsoluteX);
         SetOpcode(0x04, Instructions.TSB(AddressingModes.ZeroPage), CpuInstructions.TSB, CpuAddressingModes.ZeroPage); // Test and Set Bits
         SetOpcode(0x0C, Instructions.TSB(AddressingModes.Absolute), CpuInstructions.TSB, CpuAddressingModes.Absolute); // Test and Set Bits
         SetOpcode(0x14, Instructions.TRB(AddressingModes.ZeroPage), CpuInstructions.TRB, CpuAddressingModes.ZeroPage); // Test and Reset Bits
