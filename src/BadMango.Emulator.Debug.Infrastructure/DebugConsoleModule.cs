@@ -175,6 +175,10 @@ public class DebugConsoleModule : Module
             .As<ICommandHandler>()
             .SingleInstance();
 
+        builder.RegisterType<AbortCommand>()
+            .As<ICommandHandler>()
+            .SingleInstance();
+
         builder.RegisterType<DeviceMapCommand>()
             .As<ICommandHandler>()
             .SingleInstance();

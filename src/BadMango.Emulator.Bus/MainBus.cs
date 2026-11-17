@@ -6,6 +6,8 @@ namespace BadMango.Emulator.Bus;
 
 using System.Runtime.CompilerServices;
 
+using BadMango.Emulator.Core.Interfaces.Signaling;
+
 using Interfaces;
 
 using Serilog;
@@ -131,11 +133,21 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
     /// recorder also implements <see cref="IBusFaultRing"/>, the same instance
     /// is exposed via <see cref="FaultRing"/>.
     /// </param>
+    /// <param name="signals">
+    /// Optional signal bus. A latched non-debug fault asserts <see cref="Core.Signaling.SignalLine.Abort"/>
+    /// on this instance, and clearing status deasserts it. <see langword="null"/> still latches the
+    /// registers and drives no line. Tests that construct a bus directly may omit it.
+    /// <see cref="MachineBuilder.Build"/> passes the machine's signal bus.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// Thrown when <paramref name="addressSpaceBits"/> is less than 12 (minimum for one 4KB page)
     /// or greater than 32.
     /// </exception>
-    public MainBus(int addressSpaceBits = 16, ILogger? logger = null, IBusFaultRecorder? faultRecorder = null)
+    public MainBus(
+        int addressSpaceBits = 16,
+        ILogger? logger = null,
+        IBusFaultRecorder? faultRecorder = null,
+        ISignalBus? signals = null)
     {
         if (addressSpaceBits < DefaultPageShift)
         {
@@ -162,6 +174,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
         // do not allocate a disposable logger per bus.
         this.logger = logger?.ForContext<MainBus>() ?? Serilog.Core.Logger.None;
         this.faultRecorder = faultRecorder;
+        this.signals = signals;
         FaultRing = faultRecorder as IBusFaultRing;
     }
 

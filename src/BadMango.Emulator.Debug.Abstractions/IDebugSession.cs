@@ -4,11 +4,28 @@
 
 namespace BadMango.Emulator.Debug.Abstractions;
 
+using BadMango.Emulator.Core.Cpu;
+
 /// <summary>
 /// Defines the core contract for a debug session that can query and control emulator state.
 /// </summary>
 public interface IDebugSession
 {
+    /// <summary>
+    /// Gets or sets how the attached 65C02 treats <c>SignalLine.Abort</c>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The setter throws when the attached CPU is not a 65C02 and the new value is
+    /// <see cref="AbortReaction.HostBreak"/>. A 65816 uses its abort vector instead of a host stop.
+    /// </exception>
+    /// <remarks>
+    /// The getter returns <see cref="AbortReaction.NoOp"/> when the CPU is not a 65C02.
+    /// Setting <see cref="AbortReaction.NoOp"/> on that CPU does not throw. A machine reset
+    /// does not change the value. This property is the only debugger path that selects
+    /// <see cref="AbortReaction.HostBreak"/>; it does not pulse the abort line.
+    /// </remarks>
+    AbortReaction AbortReaction { get; set; }
+
     /// <summary>
     /// Gets the current register snapshot for the active machine.
     /// </summary>

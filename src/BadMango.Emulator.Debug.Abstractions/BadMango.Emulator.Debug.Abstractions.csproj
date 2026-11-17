@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageVersion Update="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.403" />
   </ItemGroup>
 

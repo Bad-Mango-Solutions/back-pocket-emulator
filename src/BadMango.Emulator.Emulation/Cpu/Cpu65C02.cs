@@ -89,6 +89,12 @@ public sealed class Cpu65C02 : CpuBase
     private bool resetHeld;
 
     /// <summary>
+    /// How this CPU treats <see cref="SignalLine.Abort"/>. Defaults to <see cref="AbortReaction.NoOp"/>.
+    /// A machine reset does not change it.
+    /// </summary>
+    private AbortReaction abortReaction;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="Cpu65C02"/> class with an event context.
     /// </summary>
     /// <param name="context">The event context providing access to the memory bus, signal bus, and scheduler.</param>
@@ -142,13 +148,42 @@ public sealed class Cpu65C02 : CpuBase
         }
     }
 
+    /// <summary>
+    /// Gets or sets how this CPU treats an asserted <see cref="SignalLine.Abort"/>.
+    /// </summary>
+    /// <value>
+    /// <see cref="AbortReaction.NoOp"/> unless the debugger selects <see cref="AbortReaction.HostBreak"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// <see cref="AbortReaction.NoOp"/> ignores the line. Fault status stays latched and an
+    /// unmapped fetch still sets <see cref="HaltState.Stp"/>. <see cref="AbortReaction.HostBreak"/>
+    /// calls <see cref="CpuBase.RequestStop"/> at the next instruction boundary and does not set
+    /// <see cref="HaltState.Stp"/>, push a vector, or change registers.
+    /// </para>
+    /// <para>
+    /// The debugger is the only writer of <see cref="AbortReaction.HostBreak"/>. Reset of this
+    /// CPU, including the reset a machine performs, does not change the property.
+    /// </para>
+    /// </remarks>
+    public AbortReaction AbortReaction
+    {
+        get => abortReaction;
+        set
+        {
+            abortReaction = value;
+            SetHaltOnUnmapped(value != AbortReaction.HostBreak);
+        }
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// This is the immediate power-on reset: registers are initialized to their power-on
     /// values and PC is loaded from the reset vector through the current bus mapping. It
     /// replaces the signal-driven reset sequence, so any pending RESET hold or release edge
     /// is discarded. The RESET signal path (hold while the line is low, sequence on release)
-    /// is handled in <see cref="Step"/>.
+    /// is handled in <see cref="Step"/>. <see cref="AbortReaction"/> is a host setting and is
+    /// left unchanged.
     /// </remarks>
     public override void Reset()
     {
@@ -169,9 +204,11 @@ public sealed class Cpu65C02 : CpuBase
         // Clear TCU at the start of each instruction
         Registers.TCU = Cycle.Zero;
 
-        // Instruction-boundary attention: machine service requests, RESET hold/release
-        // and interrupts. With the concrete SignalBus a single cached flag covers all of
-        // them, so the common path costs one field read and one branch.
+        // Instruction-boundary attention: machine service requests, RESET hold/release,
+        // interrupts, and ABORT. With the concrete SignalBus a single cached flag covers all
+        // of them, so the common path costs one field read and one branch. ABORT is part of
+        // that flag. A NoOp reaction ignores the line inside the boundary, which is not on
+        // this path.
         if ((concreteSignals is null || concreteSignals.AttentionPending) && TryServiceBoundary(out var boundaryResult))
         {
             return boundaryResult;
@@ -387,7 +424,7 @@ public sealed class Cpu65C02 : CpuBase
 
     /// <summary>
     /// Handles everything that can need the CPU's attention at an instruction boundary:
-    /// pending machine service requests, the RESET line and interrupts.
+    /// pending machine service requests, the RESET line, ABORT, and interrupts.
     /// </summary>
     /// <param name="result">The step result when the boundary consumed the step.</param>
     /// <returns>
@@ -416,6 +453,15 @@ public sealed class Cpu65C02 : CpuBase
         if (resetHeld || releaseEdge)
         {
             result = ProcessResetReleaseSequence();
+            return true;
+        }
+
+        // Host-break stops before the instruction and before any interrupt entry, so the
+        // reaction does not push a vector or change registers. NoOp falls through.
+        if (abortReaction == AbortReaction.HostBreak && Signals.IsAsserted(SignalLine.Abort))
+        {
+            RequestStop();
+            result = new(CpuRunState.Stopped, Cycle.Zero);
             return true;
         }
 

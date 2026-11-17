@@ -25,6 +25,7 @@ public class SignalLineTests
             Assert.That(Enum.IsDefined(SignalLine.Reset), Is.True);
             Assert.That(Enum.IsDefined(SignalLine.RDY), Is.True);
             Assert.That(Enum.IsDefined(SignalLine.DmaReq), Is.True);
+            Assert.That(Enum.IsDefined(SignalLine.Abort), Is.True);
         });
     }
 
@@ -41,16 +42,17 @@ public class SignalLineTests
             Assert.That((byte)SignalLine.Reset, Is.EqualTo(2));
             Assert.That((byte)SignalLine.RDY, Is.EqualTo(3));
             Assert.That((byte)SignalLine.DmaReq, Is.EqualTo(4));
+            Assert.That((byte)SignalLine.Abort, Is.EqualTo(5));
         });
     }
 
     /// <summary>
-    /// Verifies the enum has exactly five values.
+    /// Verifies the enum has exactly six values.
     /// </summary>
     [Test]
-    public void SignalLine_HasFiveValues()
+    public void SignalLine_HasSixValues()
     {
         var values = Enum.GetValues<SignalLine>();
-        Assert.That(values, Has.Length.EqualTo(5));
+        Assert.That(values, Has.Length.EqualTo(6));
     }
 }
