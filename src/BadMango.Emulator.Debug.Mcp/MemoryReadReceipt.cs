@@ -16,7 +16,7 @@ using BadMango.Emulator.Debug.Abstractions;
 /// <param name="Data">The bytes, as an uppercase hex string. A faulted byte is 0.</param>
 /// <param name="Faults">
 /// The low byte of each fault mask, as an uppercase hex string of the same length as <paramref name="Data"/>.
-/// Omitted when every byte was readable.
+/// Omitted when every byte is <c>00</c>.
 /// </param>
 /// <param name="ReportedFaults">Faults formatted with the shared <c>FaultKind</c> bitmask formatter.</param>
 public sealed record MemoryReadReceipt(

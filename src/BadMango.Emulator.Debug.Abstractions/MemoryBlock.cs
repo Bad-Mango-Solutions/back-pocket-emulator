@@ -18,7 +18,7 @@ using System.Text.Json.Serialization;
 /// <param name="Label">An optional display label.</param>
 /// <param name="Faults">
 /// Parallel mask, one byte per <paramref name="Data"/> byte, serialized as an uppercase hex string
-/// of the same length. Omitted when every byte was readable.
+/// of the same length. Omitted when every byte is <c>00</c>.
 /// <c>00</c> means the data byte is valid. Any non-zero value is a bus fault mask; the session stores
 /// the low byte of the fault bitmask into this byte array, so only the
 /// low-byte bits <c>0x01</c> Unmapped, <c>0x02</c> Permission, <c>0x04</c> Nx, <c>0x08</c>

@@ -39,7 +39,7 @@ emudbg --headless --max-cycles 100000 --exec "run-until --until-cycles=1000;exit
 
 `abort` shows or sets how a 65C02 treats `SignalLine.Abort`. With no argument it prints the current reaction. `abort noop` selects `NoOp` (the default: the line is ignored and an unmapped fetch still stops with STP). `abort hostbreak` selects `HostBreak` (the next instruction boundary requests a host stop and does not set STP). The command does not pulse the line. A machine reset does not clear the setting. `HostBreak` is rejected when the attached CPU is not a 65C02. With `--json`, the result is one `emudbg/v1` envelope whose payload is `{ "reaction": "NoOp" }` or `{ "reaction": "HostBreak" }`.
 
-`mem` and `peek` keep going across bus faults. Text shows `??` for each unreadable byte. JSON adds a `faults` hex mask beside `data`: `00` means that data byte is valid, and any non-zero byte is a bitmask of fault flags (`0x01` Unmapped, `0x02` Permission, `0x04` Nx, `0x08` Misaligned, `0x10` DeviceFault). A faulted data byte is 0 and is not memory contents. The mask is omitted when every byte was readable.
+`mem` and `peek` keep going across bus faults. Text shows `??` for each unreadable byte. JSON adds a `faults` hex mask beside `data`: `00` means that data byte is valid, and any non-zero byte is a bitmask of fault flags (`0x01` Unmapped, `0x02` Permission, `0x04` Nx, `0x08` Misaligned, `0x10` DeviceFault). A faulted data byte is 0 and is not memory contents. The mask is omitted when every byte is `00`.
 
 JSON for those commands looks like:
 
