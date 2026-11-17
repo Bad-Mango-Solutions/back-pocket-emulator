@@ -164,7 +164,8 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <see cref="MemoryBlock.Faults"/> and that data byte stays 0. The mask is omitted when
     /// every byte is <c>00</c>. A zero low byte keeps the data byte, including a high-byte-only
     /// kind. The read continues. The bus reports the fault as a result, so a large unmapped span
-    /// does not throw once per byte.
+    /// does not throw once per byte. A debug read does not latch fault status and does not
+    /// enter the fault ring.
     /// </remarks>
     public MemoryBlock ReadMemory(uint address, int length)
     {
@@ -577,6 +578,10 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// When the machine has no main-memory provider, each text byte is a debug <c>TryRead8</c>.
+    /// That read does not latch fault status and does not enter the fault ring.
+    /// </remarks>
     public ScreenTextSnapshot GetScreenText() => GetScreenText(Machine);
 
     /// <inheritdoc />
