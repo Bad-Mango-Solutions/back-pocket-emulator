@@ -6,6 +6,7 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.Interfaces;
 
@@ -40,12 +41,27 @@ using BadMango.Emulator.Devices.Interfaces;
 /// </remarks>
 public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
 {
+    private readonly IDebugSession? session;
+    private readonly IDebugOutputRenderer renderer;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ResetCommand"/> class.
     /// </summary>
     public ResetCommand()
+        : this(null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ResetCommand"/> class that resets the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    public ResetCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
         : base("reset", "Reset the CPU (soft or hard)")
     {
+        this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -140,7 +156,8 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
             }
             else
             {
-                machine.Reset(hardReset);
+                // No keyboard to pulse. The shared session owns machine reset.
+                DebugSessions.Require(this.session, debugContext).Reset(hardReset ? ResetKind.Hard : ResetKind.Warm);
             }
 
             if (machine.State == MachineState.Running)
@@ -163,16 +180,13 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
         }
 
         var pc = debugContext.Cpu.GetPC();
-        debugContext.Output.WriteLine($"CPU reset. PC = ${pc:X4}");
-
-        if (hardReset)
-        {
-            debugContext.Output.WriteLine("Hard reset completed.");
-        }
-        else
-        {
-            debugContext.Output.WriteLine("Soft reset completed.");
-        }
+        string text = hardReset
+            ? $"CPU reset. PC = ${pc:X4}{Environment.NewLine}Hard reset completed."
+            : $"CPU reset. PC = ${pc:X4}{Environment.NewLine}Soft reset completed.";
+        this.renderer.WriteReset(
+            debugContext.Output,
+            new ResetReceipt(hardReset ? ResetKind.Hard : ResetKind.Warm, pc),
+            text);
 
         return CommandResult.Ok();
     }

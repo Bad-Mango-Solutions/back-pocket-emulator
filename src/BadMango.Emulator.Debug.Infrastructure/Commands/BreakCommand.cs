@@ -5,6 +5,9 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using System.Globalization;
+using System.Text;
+
+using BadMango.Emulator.Debug.Abstractions;
 
 /// <summary>
 /// Manages execution breakpoints backed by the trap registry.
@@ -18,12 +21,27 @@ using System.Globalization;
 /// </remarks>
 public sealed class BreakCommand : CommandHandlerBase, ICommandHelp
 {
+    private readonly IDebugSession? session;
+    private readonly IDebugOutputRenderer renderer;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="BreakCommand"/> class.
     /// </summary>
     public BreakCommand()
+        : this(null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BreakCommand"/> class that uses the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    public BreakCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
         : base("bp", "Manage execution breakpoints")
     {
+        this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -97,42 +115,45 @@ public sealed class BreakCommand : CommandHandlerBase, ICommandHelp
         };
     }
 
-    private static CommandResult Add(IDebugContext context, string[] args)
+    private CommandResult Add(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {
-            return CommandResult.Error("Usage: bp add <address> [label]");
+            return CommandResult.UsageError("Usage: bp add <address> [label]");
         }
 
         if (!AddressParser.TryParse(args[1], context.Machine, out uint address))
         {
-            return CommandResult.Error($"Invalid address: '{args[1]}'.");
+            return CommandResult.UsageError($"Invalid address: '{args[1]}'.");
         }
 
         string? label = args.Length > 2 ? string.Join(' ', args, 2, args.Length - 2) : null;
-
-        if (!context.Breakpoints.Add(address, label))
+        IDebugSession active = DebugSessions.Require(this.session, context);
+        if (active.GetBreakpoints().Any(item => item.Address == address))
         {
             return CommandResult.Error($"Breakpoint at ${address:X4} already exists.");
         }
 
-        context.Output.WriteLine($"Breakpoint set at ${address:X4}{(label is null ? string.Empty : $"  ; {label}")}.");
+        active.AddBreakpoint(address, label);
+        Breakpoint added = active.GetBreakpoints().First(item => item.Address == address);
+        string text = $"Breakpoint set at ${address:X4}{(label is null ? string.Empty : $"  ; {label}")}.";
+        this.renderer.WriteBreakpoint(context.Output, added, text);
         return CommandResult.Ok();
     }
 
-    private static CommandResult Remove(IDebugContext context, string[] args)
+    private CommandResult Remove(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {
-            return CommandResult.Error("Usage: bp remove <address>");
+            return CommandResult.UsageError("Usage: bp remove <address>");
         }
 
         if (!AddressParser.TryParse(args[1], context.Machine, out uint address))
         {
-            return CommandResult.Error($"Invalid address: '{args[1]}'.");
+            return CommandResult.UsageError($"Invalid address: '{args[1]}'.");
         }
 
-        if (!context.Breakpoints.Remove(address))
+        if (!DebugSessions.Require(this.session, context).RemoveBreakpoint(address))
         {
             return CommandResult.Error($"No breakpoint at ${address:X4}.");
         }
@@ -141,15 +162,16 @@ public sealed class BreakCommand : CommandHandlerBase, ICommandHelp
         return CommandResult.Ok();
     }
 
-    private static CommandResult Clear(IDebugContext context)
+    private CommandResult Clear(IDebugContext context)
     {
-        int count = context.Breakpoints.GetAll().Count;
-        context.Breakpoints.Clear();
+        IDebugSession active = DebugSessions.Require(this.session, context);
+        int count = active.GetBreakpoints().Count;
+        active.ClearBreakpoints();
         context.Output.WriteLine($"Cleared {count} breakpoint(s).");
         return CommandResult.Ok();
     }
 
-    private static CommandResult SetEnabled(IDebugContext context, string[] args, bool enabled)
+    private CommandResult SetEnabled(IDebugContext context, string[] args, bool enabled)
     {
         if (args.Length < 2)
         {
@@ -170,44 +192,50 @@ public sealed class BreakCommand : CommandHandlerBase, ICommandHelp
         return CommandResult.Ok();
     }
 
-    private static CommandResult List(IDebugContext context)
+    private CommandResult List(IDebugContext context)
     {
-        var all = context.Breakpoints.GetAll();
+        IDebugSession active = DebugSessions.Require(this.session, context);
+        IReadOnlyList<Breakpoint> all = active.GetBreakpoints();
+        var text = new StringBuilder();
         if (all.Count == 0)
         {
-            context.Output.WriteLine("No breakpoints set.");
-            var last = context.Breakpoints.LastHitAddress;
+            text.Append("No breakpoints set.");
+            uint? last = context.Breakpoints.LastHitAddress;
             if (last is not null)
             {
-                context.Output.WriteLine($"Last hit (before clear): ${last.Value:X4}");
+                text.AppendLine();
+                text.Append(string.Format(CultureInfo.InvariantCulture, "Last hit (before clear): ${0:X4}", last.Value));
+            }
+        }
+        else
+        {
+            text.Append("ADDR   EN  HITS       LABEL");
+            foreach (Breakpoint bp in all)
+            {
+                text.AppendLine();
+                text.Append(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "${0:X4}  {1}   {2,-9}  {3}",
+                    bp.Address,
+                    bp.Enabled ? "Y" : "n",
+                    bp.HitCount,
+                    bp.Label ?? string.Empty));
             }
 
-            return CommandResult.Ok();
+            uint? lastHit = context.Breakpoints.LastHitAddress;
+            if (lastHit is not null)
+            {
+                text.AppendLine();
+                text.AppendLine();
+                text.Append(string.Format(CultureInfo.InvariantCulture, "Last hit: ${0:X4}", lastHit.Value));
+            }
         }
 
-        context.Output.WriteLine("ADDR   EN  HITS       LABEL");
-        foreach (var bp in all)
-        {
-            context.Output.WriteLine(string.Format(
-                CultureInfo.InvariantCulture,
-                "${0:X4}  {1}   {2,-9}  {3}",
-                bp.Address,
-                bp.Enabled ? "Y" : "n",
-                bp.Hits,
-                bp.Label ?? string.Empty));
-        }
-
-        var lastHit = context.Breakpoints.LastHitAddress;
-        if (lastHit is not null)
-        {
-            context.Output.WriteLine();
-            context.Output.WriteLine($"Last hit: ${lastHit.Value:X4}");
-        }
-
+        this.renderer.WriteBreakpoints(context.Output, all, text.ToString());
         return CommandResult.Ok();
     }
 
-    private static CommandResult Save(IDebugContext context, string[] args)
+    private CommandResult Save(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {
@@ -241,7 +269,7 @@ public sealed class BreakCommand : CommandHandlerBase, ICommandHelp
         }
     }
 
-    private static CommandResult Load(IDebugContext context, string[] args)
+    private CommandResult Load(IDebugContext context, string[] args)
     {
         if (args.Length < 2)
         {

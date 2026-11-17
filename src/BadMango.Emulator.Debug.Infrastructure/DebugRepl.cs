@@ -21,6 +21,7 @@ public sealed class DebugRepl
     private readonly TextReader input;
     private readonly string prompt;
     private readonly IDebugContext debugContext;
+    private readonly EmudbgOptions? options;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DebugRepl"/> class.
@@ -29,7 +30,8 @@ public sealed class DebugRepl
     /// <param name="context">The command context.</param>
     /// <param name="input">The input reader.</param>
     /// <param name="prompt">The prompt string to display.</param>
-    public DebugRepl(ICommandDispatcher dispatcher, ICommandContext context, TextReader input, string prompt = "> ")
+    /// <param name="options">Startup options used to decide whether the session is interactive.</param>
+    public DebugRepl(ICommandDispatcher dispatcher, ICommandContext context, TextReader input, string prompt = "> ", EmudbgOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(context);
@@ -40,6 +42,7 @@ public sealed class DebugRepl
         this.context = context;
         this.input = input;
         this.prompt = prompt;
+        this.options = options;
         this.debugContext = context as IDebugContext ?? throw new ArgumentException("Context must implement IDebugContext.", nameof(context));
     }
 
@@ -61,6 +64,12 @@ public sealed class DebugRepl
     /// <summary>
     /// Gets or sets whether this REPL should be treated as interactive.
     /// </summary>
+    /// <remarks>
+    /// When this is <see langword="null"/>, <see cref="Run"/> derives it. Startup options that request
+    /// a batch or JSON session are non-interactive. Otherwise a console input reader follows
+    /// <see cref="Console.IsInputRedirected"/>, and any other reader (a test double or a script reader)
+    /// stays interactive so the caller that supplied it still sees prompts unless it sets this property.
+    /// </remarks>
     public bool? IsInteractive { get; set; }
 
     /// <summary>
@@ -97,7 +106,7 @@ public sealed class DebugRepl
     /// </summary>
     public void Run()
     {
-        bool isInteractiveInput = this.IsInteractive ?? true;
+        bool isInteractiveInput = this.ResolveInteractive();
         bool effectiveShowBanner = this.ShowBanner && isInteractiveInput;
         bool effectiveShowPrompt = this.ShowPrompt && isInteractiveInput;
         bool effectivePrintExit = this.PrintExitMessage && isInteractiveInput;
@@ -191,6 +200,26 @@ public sealed class DebugRepl
         }
 
         return result;
+    }
+
+    private bool ResolveInteractive()
+    {
+        if (this.IsInteractive is bool setByCaller)
+        {
+            return setByCaller;
+        }
+
+        if (this.options is { IsNonInteractive: true } or { JsonOutput: true })
+        {
+            return false;
+        }
+
+        if (!ReferenceEquals(this.input, Console.In))
+        {
+            return true;
+        }
+
+        return !Console.IsInputRedirected;
     }
 
     private void DisplayBanner()

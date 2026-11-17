@@ -112,7 +112,10 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error(error!);
         }
 
-        IMachineIoSession io = this.session ?? new MachineDebugSession((IDebugContext)context);
+        IMachineIoSession io = this.session
+            ?? (context is DebugContext debug && debug.GetSharedSession() is IMachineIoSession shared
+                ? shared
+                : throw new InvalidOperationException("No machine I/O session is available."));
         IReadOnlyList<DiskControllerSnapshot> controllers = io.ListDisks();
         if (emitJson)
         {

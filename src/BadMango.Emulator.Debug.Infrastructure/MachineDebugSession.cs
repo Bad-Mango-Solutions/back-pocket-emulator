@@ -10,6 +10,8 @@ using System.Text.RegularExpressions;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
+using BadMango.Emulator.Core.Cpu;
+using BadMango.Emulator.Core.Interfaces.Cpu;
 using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
 using BadMango.Emulator.Devices;
@@ -35,8 +37,10 @@ using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
 /// Stop the background run first.
 /// </para>
 /// <para>
-/// The attached machine is read from the debug context on every call. A null machine throws
-/// <see cref="InvalidOperationException"/>. Replacing the machine while a background run is active
+/// The attached machine is read from the debug context on every call. Run, reset, and background
+/// runs throw <see cref="InvalidOperationException"/> when no machine is attached. Register, memory,
+/// and single-step calls fall back to the context CPU and bus so a CPU-only debug context still works.
+/// Replacing the machine while a background run is active
 /// cancels that run without further calls on the detached instance. Calls made before the run
 /// observes the replacement still see an active background run.
 /// </para>
@@ -70,6 +74,7 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     private readonly Lock backgroundRunLock = new();
     private readonly IDebugContext debugContext;
     private readonly ILogger logger;
+    private readonly ulong? defaultCycleBudget;
     private readonly Dictionary<Guid, BackgroundRunState> backgroundRuns = [];
     private readonly Dictionary<Guid, RunResult> completedRuns = [];
     private Guid? activeRunId;
@@ -79,12 +84,17 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// </summary>
     /// <param name="debugContext">The attached debug context.</param>
     /// <param name="logger">The logger for mount rollback and unmount failures. A silent logger is used when omitted.</param>
+    /// <param name="defaultCycleBudget">
+    /// Optional cycle cap applied by <see cref="Step"/>. <see langword="null"/> does not cap stepping.
+    /// This is the process <c>--max-cycles</c> budget.
+    /// </param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="debugContext"/> is <see langword="null"/>.</exception>
-    public MachineDebugSession(IDebugContext debugContext, ILogger? logger = null)
+    public MachineDebugSession(IDebugContext debugContext, ILogger? logger = null, ulong? defaultCycleBudget = null)
     {
         ArgumentNullException.ThrowIfNull(debugContext);
         this.debugContext = debugContext;
         this.logger = logger ?? Serilog.Core.Logger.None;
+        this.defaultCycleBudget = defaultCycleBudget;
     }
 
     private IMachine Machine => debugContext.Machine ?? throw new InvalidOperationException(NoMachineMessage);
@@ -92,9 +102,10 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <inheritdoc />
     public RegisterSnapshot GetRegisters()
     {
-        var registers = Machine.Cpu.GetRegisters();
+        var cpu = this.RequireCpu();
+        var registers = cpu.GetRegisters();
         return new RegisterSnapshot(
-            CpuType: debugContext.MachineInfo?.CpuType ?? Machine.Cpu.GetType().Name,
+            CpuType: debugContext.MachineInfo?.CpuType ?? cpu.GetType().Name,
             ProgramCounter: registers.PC.GetAddr(),
             Accumulator: registers.A.GetDWord(),
             XRegister: registers.X.GetDWord(),
@@ -112,11 +123,12 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     public MemoryBlock ReadMemory(uint address, int length)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
+        var bus = this.RequireBus();
         byte[] data = new byte[length];
         for (int offset = 0; offset < length; offset++)
         {
             var access = CreateDebugReadAccess(address + (uint)offset);
-            var read = Machine.Bus.TryRead8(access);
+            var read = bus.TryRead8(access);
             if (read.Failed)
             {
                 throw new InvalidOperationException($"Failed to read memory at ${access.Address:X8}: {read.Fault.Kind}.");
@@ -186,8 +198,13 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         }
 
         ThrowIfBackgroundRunActive();
-        IMachine bound = Machine;
+        if (debugContext.Machine is not IMachine bound)
+        {
+            return this.StepCpu(count, cancellationToken);
+        }
+
         ulong executed = 0;
+        ulong cycles = 0;
         lock (executionLock)
         {
             ThrowIfBackgroundRunActive();
@@ -195,13 +212,28 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 EnsureStillAttached(bound);
-                if (bound.Cpu.Halted)
+                if (this.CycleBudgetExhausted(cycles) || this.StopForHalt(bound.Cpu))
                 {
                     break;
                 }
 
-                bound.Step();
+                var stepped = bound.Step();
                 executed++;
+                cycles += stepped.CyclesConsumed.Value;
+                if (stepped.State == CpuRunState.WaitingForInterrupt)
+                {
+                    if (bound.Scheduler.JumpToNextEventAndDispatch())
+                    {
+                        continue;
+                    }
+
+                    break;
+                }
+
+                if (stepped.State is CpuRunState.Halted or CpuRunState.Stopped)
+                {
+                    break;
+                }
             }
         }
 
@@ -259,20 +291,36 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
                     return Finish(bound, StopReason.Budget, instructionCount, cycleCount, stopwatch.Elapsed, "Cycle budget exhausted.", stopMachine: false);
                 }
 
-                if (bound.Cpu.Halted)
+                if (this.StopForHalt(bound.Cpu))
                 {
-                    return Finish(bound, StopReason.Halted, instructionCount, cycleCount, stopwatch.Elapsed, "CPU halted.", stopMachine: false);
+                    return Finish(bound, StopReason.Halted, instructionCount, cycleCount, stopwatch.Elapsed, $"CPU halted ({bound.Cpu.HaltReason}).", stopMachine: false);
                 }
 
+                CpuStepResult stepResult;
                 try
                 {
-                    var stepResult = bound.Step();
+                    stepResult = bound.Step();
                     instructionCount++;
                     cycleCount += stepResult.CyclesConsumed.Value;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException && !IsCriticalException(ex))
                 {
                     return Finish(bound, StopReason.Fault, instructionCount, cycleCount, stopwatch.Elapsed, ex.Message, stopMachine: true);
+                }
+
+                if (stepResult.State == CpuRunState.WaitingForInterrupt)
+                {
+                    if (bound.Scheduler.JumpToNextEventAndDispatch())
+                    {
+                        continue;
+                    }
+
+                    return Finish(bound, StopReason.Halted, instructionCount, cycleCount, stopwatch.Elapsed, "CPU waiting for interrupt.", stopMachine: false);
+                }
+
+                if (stepResult.State is CpuRunState.Halted or CpuRunState.Stopped)
+                {
+                    return Finish(bound, StopReason.Halted, instructionCount, cycleCount, stopwatch.Elapsed, $"CPU halted ({bound.Cpu.HaltReason}).", stopMachine: false);
                 }
 
                 if (Replaced(bound, instructionCount, cycleCount, stopwatch.Elapsed) is RunResult replacedAfterStep)
@@ -853,10 +901,6 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         {
             case RunConditionKind.ProgramCounter when condition.Address is null:
                 throw new ArgumentException("ProgramCounter condition requires Address.", nameof(condition));
-            case RunConditionKind.Breakpoint when condition.BreakpointAddress is null && condition.Address is null:
-                throw new ArgumentException("Breakpoint condition requires BreakpointAddress or Address.", nameof(condition));
-            case RunConditionKind.Watchpoint when condition.WatchAddress is null && condition.Address is null:
-                throw new ArgumentException("Watchpoint condition requires WatchAddress or Address.", nameof(condition));
             case RunConditionKind.MemoryEquals when condition.MemoryAddress is null || condition.MemoryValue is null:
                 throw new ArgumentException("MemoryEquals condition requires MemoryAddress and MemoryValue.", nameof(condition));
             case RunConditionKind.CycleCount when condition.CycleLimit is null:
@@ -1171,6 +1215,72 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             default:
                 return false;
         }
+    }
+
+    private ICpu RequireCpu()
+    {
+        if (debugContext.Machine?.Cpu is ICpu machineCpu)
+        {
+            return machineCpu;
+        }
+
+        // Only a real debug context may be read without a machine. A mock that
+        // has detached the machine must still throw, without touching other members.
+        if (debugContext is Commands.DebugContext concrete && concrete.Cpu is ICpu cpu)
+        {
+            return cpu;
+        }
+
+        throw new InvalidOperationException("No CPU attached to debug context.");
+    }
+
+    private IMemoryBus RequireBus()
+    {
+        if (debugContext.Machine?.Bus is IMemoryBus machineBus)
+        {
+            return machineBus;
+        }
+
+        if (debugContext is Commands.DebugContext concrete && concrete.Bus is IMemoryBus bus)
+        {
+            return bus;
+        }
+
+        throw new InvalidOperationException(NoMachineMessage);
+    }
+
+    private bool CycleBudgetExhausted(ulong cycles) =>
+        this.defaultCycleBudget is ulong budget && cycles >= budget;
+
+    private bool StopForHalt(ICpu cpu) =>
+        cpu.Halted && !cpu.IsWaitingForInterrupt;
+
+    private ulong StepCpu(int count, CancellationToken cancellationToken)
+    {
+        var cpu = this.RequireCpu();
+        ulong executed = 0;
+        ulong cycles = 0;
+        lock (executionLock)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (this.CycleBudgetExhausted(cycles) || this.StopForHalt(cpu))
+                {
+                    break;
+                }
+
+                var stepped = cpu.Step();
+                executed++;
+                cycles += stepped.CyclesConsumed.Value;
+                if (stepped.State is CpuRunState.Halted or CpuRunState.Stopped or CpuRunState.WaitingForInterrupt)
+                {
+                    break;
+                }
+            }
+        }
+
+        return executed;
     }
 
     private sealed class BackgroundRunState(CancellationTokenSource cancellationTokenSource)

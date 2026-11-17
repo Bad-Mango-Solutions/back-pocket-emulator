@@ -4,9 +4,24 @@
 
 namespace BadMango.Emulator.Debug;
 
+using BadMango.Emulator.Debug.Infrastructure;
+
 /// <summary>
 /// Host flags consumed before the generic host and the REPL see the command line.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Emudbg options are removed so later configuration parsing does not treat them as keys or bind
+/// the following argument as a value. <see cref="HeadlessOption"/> and <see cref="DumpAssembliesOption"/>
+/// are host flags. <see cref="DumpAssembliesOption"/> is a diagnostic used by the headless smoke test:
+/// it writes one loaded-assembly line after the REPL exits, which is how the test proves Avalonia
+/// stayed unloaded.
+/// </para>
+/// <para>
+/// The names come from <see cref="EmudbgOptionTable"/> and use that table's case-insensitive comparison,
+/// the same comparison <see cref="EmudbgOptions"/> uses.
+/// </para>
+/// </remarks>
 internal static class DebugHostArguments
 {
     /// <summary>
@@ -28,13 +43,13 @@ internal static class DebugHostArguments
     /// Returns a value indicating whether <paramref name="args"/> contains <paramref name="option"/>.
     /// </summary>
     /// <param name="args">The process arguments.</param>
-    /// <param name="option">The flag to look for, compared case-insensitively.</param>
+    /// <param name="option">The flag to look for, compared with <see cref="EmudbgOptionTable.Comparison"/>.</param>
     /// <returns><see langword="true"/> when the flag is present.</returns>
     public static bool Has(string[] args, string option)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrEmpty(option);
-        return args.Any(arg => arg.Equals(option, StringComparison.OrdinalIgnoreCase));
+        return args.Any(arg => arg.Equals(option, EmudbgOptionTable.Comparison));
     }
 
     /// <summary>
@@ -50,14 +65,9 @@ internal static class DebugHostArguments
         for (int i = 0; i < args.Length; i++)
         {
             string arg = args[i];
-
-            if (IsValueOption(arg, "--profile", "-p") ||
-                IsValueOption(arg, "--exec", "-e") ||
-                IsValueOption(arg, "--file", "-f") ||
-                IsValueOption(arg, "--max-cycles", null) ||
-                IsValueOption(arg, "--seed", null))
+            if (EmudbgOptionTable.TryMatchValueOption(arg, out _, out string? inline))
             {
-                if (NeedsSeparateValue(arg) && i + 1 < args.Length)
+                if (inline is null && i + 1 < args.Length)
                 {
                     i++;
                 }
@@ -65,17 +75,7 @@ internal static class DebugHostArguments
                 continue;
             }
 
-            if (IsFlagOption(arg, "--no-banner") ||
-                IsFlagOption(arg, "--json") ||
-                IsFlagOption(arg, "-j") ||
-                IsFlagOption(arg, "--agent") ||
-                IsFlagOption(arg, "--agent-mode") ||
-                IsFlagOption(arg, "--help") ||
-                IsFlagOption(arg, "-h") ||
-                IsFlagOption(arg, "-?") ||
-                IsFlagOption(arg, "/?") ||
-                IsFlagOption(arg, HeadlessOption) ||
-                IsFlagOption(arg, DumpAssembliesOption))
+            if (EmudbgOptionTable.IsFlag(arg))
             {
                 continue;
             }
@@ -96,30 +96,4 @@ internal static class DebugHostArguments
             Console.WriteLine(LoadedAssemblyPrefix + assembly.GetName().Name);
         }
     }
-
-    private static bool IsFlagOption(string arg, string option)
-        => arg.Equals(option, StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsValueOption(string arg, string longName, string? shortName)
-    {
-        if (arg.Equals(longName, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (!string.IsNullOrEmpty(shortName) && arg.Equals(shortName, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (arg.StartsWith(longName + "=", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return !string.IsNullOrEmpty(shortName) && arg.StartsWith(shortName + "=", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool NeedsSeparateValue(string arg)
-        => !arg.Contains('=', StringComparison.Ordinal);
 }

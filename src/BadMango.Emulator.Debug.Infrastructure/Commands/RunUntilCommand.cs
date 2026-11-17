@@ -15,12 +15,27 @@ public sealed class RunUntilCommand : CommandHandlerBase, ICommandHelp
 {
     private const ulong DefaultMaxCycles = 10_000_000;
 
+    private readonly IDebugSession? session;
+    private readonly IDebugOutputRenderer renderer;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="RunUntilCommand"/> class.
     /// </summary>
     public RunUntilCommand()
+        : this(null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="RunUntilCommand"/> class that runs the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    public RunUntilCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
         : base("run-until", "Run until a stop condition is reached")
     {
+        this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -74,11 +89,12 @@ public sealed class RunUntilCommand : CommandHandlerBase, ICommandHelp
 
         if (args.Length == 0)
         {
-            return CommandResult.Error($"Usage: {this.Usage}");
+            return CommandResult.UsageError($"Usage: {this.Usage}");
         }
 
         RunCondition? condition = null;
-        ulong maxCycles = DefaultMaxCycles;
+        ulong? commandBudget = null;
+        bool budgetSpecified = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -86,21 +102,25 @@ public sealed class RunUntilCommand : CommandHandlerBase, ICommandHelp
 
             if (arg.StartsWith("--max-cycles=", StringComparison.OrdinalIgnoreCase))
             {
-                if (ulong.TryParse(arg["--max-cycles=".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsedMaxCycles))
+                if (!ulong.TryParse(arg["--max-cycles=".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsedMaxCycles))
                 {
-                    maxCycles = parsedMaxCycles;
+                    return CommandResult.UsageError($"Invalid --max-cycles value: '{arg}'.");
                 }
 
+                commandBudget = parsedMaxCycles;
+                budgetSpecified = true;
                 continue;
             }
 
-            if (arg.Equals("--max-cycles", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            if (arg.Equals("--max-cycles", StringComparison.OrdinalIgnoreCase))
             {
-                if (ulong.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsedMaxCycles))
+                if (i + 1 >= args.Length || !ulong.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsedMaxCycles))
                 {
-                    maxCycles = parsedMaxCycles;
+                    return CommandResult.UsageError("Invalid --max-cycles value.");
                 }
 
+                commandBudget = parsedMaxCycles;
+                budgetSpecified = true;
                 continue;
             }
 
@@ -108,7 +128,7 @@ public sealed class RunUntilCommand : CommandHandlerBase, ICommandHelp
             {
                 if (!ulong.TryParse(arg["--until-cycles=".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong cycleLimit))
                 {
-                    return CommandResult.Error($"Invalid cycle value: '{arg}'.");
+                    return CommandResult.UsageError($"Invalid cycle value: '{arg}'.");
                 }
 
                 condition = new(RunConditionKind.CycleCount, CycleLimit: cycleLimit);
@@ -131,56 +151,60 @@ public sealed class RunUntilCommand : CommandHandlerBase, ICommandHelp
             {
                 if (i + 2 >= args.Length)
                 {
-                    return CommandResult.Error("Usage: run-until mem <address> <byte>");
+                    return CommandResult.UsageError("Usage: run-until mem <address> <byte>");
                 }
 
                 if (!AddressParser.TryParse(args[++i], debugContext.Machine, out uint memoryAddress))
                 {
-                    return CommandResult.Error($"Invalid memory address: '{args[i]}'.");
+                    return CommandResult.UsageError($"Invalid memory address: '{args[i]}'.");
                 }
 
                 if (!TryParseByte(args[++i], out byte expectedByte))
                 {
-                    return CommandResult.Error($"Invalid byte value: '{args[i]}'.");
+                    return CommandResult.UsageError($"Invalid byte value: '{args[i]}'.");
                 }
 
                 condition = new(RunConditionKind.MemoryEquals, MemoryAddress: memoryAddress, MemoryValue: [expectedByte]);
                 continue;
             }
 
-            if (!arg.StartsWith("-", StringComparison.Ordinal))
+            if (arg.StartsWith("-", StringComparison.Ordinal))
             {
-                if (!AddressParser.TryParse(arg, debugContext.Machine, out uint programCounter))
-                {
-                    return CommandResult.Error($"Invalid run-until condition: '{arg}'.");
-                }
-
-                condition = new(RunConditionKind.ProgramCounter, Address: programCounter);
+                return CommandResult.UsageError($"Unknown run-until option: '{arg}'.");
             }
+
+            if (!AddressParser.TryParse(arg, debugContext.Machine, out uint programCounter))
+            {
+                return CommandResult.UsageError($"Invalid run-until condition: '{arg}'.");
+            }
+
+            condition = new(RunConditionKind.ProgramCounter, Address: programCounter);
         }
 
         if (condition is null)
         {
-            return CommandResult.Error("Run condition required.");
+            return CommandResult.UsageError("Run condition required.");
         }
 
-        var session = new MachineDebugSession(debugContext);
-        RunResult result;
+        ulong maxCycles = budgetSpecified
+            ? commandBudget.GetValueOrDefault()
+            : this.renderer.DefaultMaxCycles ?? DefaultMaxCycles;
+
         try
         {
-            result = session.RunUntil(condition, new RunBudget(MaxCycles: maxCycles));
+            RunResult result = DebugSessions.Require(this.session, debugContext)
+                .RunUntil(condition, new RunBudget(MaxCycles: maxCycles));
+            this.renderer.WriteRun(debugContext.Output, result);
+            return CommandResult.Ok();
         }
         catch (InvalidOperationException ex)
         {
             return CommandResult.Error(ex.Message);
         }
-
-        debugContext.Output.WriteLine($"Stopped: {result.StopReason}");
-        debugContext.Output.WriteLine($"  Instructions executed: {result.InstructionCount:N0}");
-        debugContext.Output.WriteLine($"  Cycles consumed: {result.CycleCount:N0}");
-        debugContext.Output.WriteLine($"  Final PC = ${result.ProgramCounter:X4}");
-
-        return CommandResult.Ok();
+        catch (ArgumentException ex)
+        {
+            return CommandResult.UsageError(ex.Message);
+        }
     }
 
     private static bool TryParseByte(string value, out byte parsed)

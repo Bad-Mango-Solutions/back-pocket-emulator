@@ -84,7 +84,7 @@ public partial class DebugCommandsTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Success, Is.False);
-            Assert.That(result.Message, Does.Contain("No disassembler attached"));
+            Assert.That(result.Message, Does.Contain("disassembler"));
         });
     }
 }

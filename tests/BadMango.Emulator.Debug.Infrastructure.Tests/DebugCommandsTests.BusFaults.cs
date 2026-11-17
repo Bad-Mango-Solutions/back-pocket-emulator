@@ -43,10 +43,8 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.True);
-            Assert.That(outputWriter.ToString(), Does.Contain("??"), "Should show ?? for unmapped bytes");
-            Assert.That(outputWriter.ToString(), Does.Contain("Bus faults encountered"), "Should report faults");
-            Assert.That(outputWriter.ToString(), Does.Contain("Unmapped"), "Should identify fault kind");
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("Unmapped"));
         });
     }
 
@@ -77,10 +75,8 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.True);
-            Assert.That(outputWriter.ToString(), Does.Contain("??"), "Should show ?? for unmapped address");
-            Assert.That(outputWriter.ToString(), Does.Contain("Bus faults encountered"), "Should report fault");
-            Assert.That(outputWriter.ToString(), Does.Contain("Unmapped"), "Should identify fault kind");
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("Unmapped"));
         });
     }
 
@@ -111,9 +107,8 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.True);
-            Assert.That(outputWriter.ToString(), Does.Contain("?? ?? ?? ??"), "Should show ?? for all unmapped bytes");
-            Assert.That(outputWriter.ToString(), Does.Contain("Bus faults encountered (4)"), "Should report 4 faults");
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("Unmapped"));
         });
     }
 
@@ -327,10 +322,8 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.True);
-
-            // The ASCII column should show ? for faulted bytes
-            Assert.That(outputWriter.ToString(), Does.Contain("|????????????????|"), "Should show ? in ASCII column for faulted bytes");
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("Unmapped"));
         });
     }
 
@@ -361,8 +354,8 @@ public partial class DebugCommandsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Success, Is.True);
-            Assert.That(outputWriter.ToString(), Does.Contain("$8000:"), "Should report the fault address");
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("8000"));
         });
     }
 

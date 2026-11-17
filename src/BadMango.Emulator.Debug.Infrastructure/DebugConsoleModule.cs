@@ -35,6 +35,10 @@ public class DebugConsoleModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         // Register the command dispatcher as singleton
+        builder.Register(ctx => new DebugOutputRenderer(ctx.ResolveOptional<EmudbgOptions>()))
+            .As<IDebugOutputRenderer>()
+            .SingleInstance();
+
         builder.RegisterType<CommandDispatcher>()
             .As<ICommandDispatcher>()
             .SingleInstance();
@@ -285,9 +289,20 @@ public class DebugConsoleModule : Module
         .As<ICommandContext>()
         .SingleInstance();
 
-        builder.Register(ctx => new MachineDebugSession(
-                ctx.Resolve<IDebugContext>(),
-                ctx.ResolveOptional<ILogger>()))
+        builder.Register(ctx =>
+            {
+                var context = ctx.Resolve<IDebugContext>();
+                var session = new MachineDebugSession(
+                    context,
+                    ctx.ResolveOptional<ILogger>(),
+                    ctx.ResolveOptional<EmudbgOptions>()?.MaxCycles);
+                if (context is DebugContext concrete)
+                {
+                    concrete.BindSession(session);
+                }
+
+                return session;
+            })
             .As<IDebugSession>()
             .As<IMachineIoSession>()
             .SingleInstance();
@@ -305,7 +320,7 @@ public class DebugConsoleModule : Module
                 dispatcher.Register(handler);
             }
 
-            return new DebugRepl(dispatcher, context, Console.In);
+            return new DebugRepl(dispatcher, context, Console.In, "> ", ctx.ResolveOptional<EmudbgOptions>());
         })
         .AsSelf()
         .SingleInstance();

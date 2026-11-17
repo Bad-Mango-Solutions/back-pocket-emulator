@@ -17,8 +17,11 @@ using System.Globalization;
 /// <param name="JsonOutput">When true, enables JSON output mode.</param>
 /// <param name="Headless">When true, starts without loading the interactive UI.</param>
 /// <param name="AgentMode">When true, implies headless + JSON + non-interactive behavior.</param>
-/// <param name="MaxCycles">Optional maximum cycle budget used by batch execution.</param>
-/// <param name="Seed">Optional deterministic seed for scripted workflows.</param>
+/// <param name="MaxCycles">Optional maximum cycle budget used by run, run-until, and step.</param>
+/// <param name="Seed">Reserved for a future seeded RNG. Parsing rejects <c>--seed</c> today.</param>
+/// <remarks>
+/// Names are matched by <see cref="EmudbgOptionTable"/> using case-insensitive comparison.
+/// </remarks>
 public sealed record EmudbgOptions(
     string? Profile = null,
     string? ExecCommands = null,
@@ -44,8 +47,30 @@ public sealed record EmudbgOptions(
     /// </summary>
     /// <param name="args">The process arguments.</param>
     /// <returns>The parsed options.</returns>
+    /// <exception cref="EmudbgUsageException">The arguments are not valid usage.</exception>
     public static EmudbgOptions Parse(string[] args)
     {
+        if (!TryParse(args, out EmudbgOptions? options, out string? error))
+        {
+            throw new EmudbgUsageException(error ?? "Invalid arguments.");
+        }
+
+        return options!;
+    }
+
+    /// <summary>
+    /// Parses process arguments.
+    /// </summary>
+    /// <param name="args">The process arguments.</param>
+    /// <param name="options">The parsed options when the method returns <see langword="true"/>.</param>
+    /// <param name="error">The usage error when the method returns <see langword="false"/>.</param>
+    /// <returns><see langword="true"/> when <paramref name="args"/> is valid usage.</returns>
+    public static bool TryParse(string[] args, out EmudbgOptions? options, out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        options = null;
+        error = null;
+
         string? profile = null;
         string? exec = null;
         string? file = null;
@@ -55,78 +80,92 @@ public sealed record EmudbgOptions(
         bool headless = false;
         bool agentMode = false;
         ulong? maxCycles = null;
-        int? seed = null;
 
         for (int i = 0; i < args.Length; i++)
         {
             string arg = args[i];
-
-            if (TryReadValue(args, ref i, arg, "--profile", "-p", out string? profileValue))
+            if (EmudbgOptionTable.TryMatchValueOption(arg, out string name, out string? inline))
             {
-                profile = profileValue;
-                continue;
-            }
-
-            if (TryReadValue(args, ref i, arg, "--exec", "-e", out string? execValue))
-            {
-                exec = execValue;
-                continue;
-            }
-
-            if (TryReadValue(args, ref i, arg, "--file", "-f", out string? fileValue))
-            {
-                file = fileValue;
-                continue;
-            }
-
-            if (TryReadValue(args, ref i, arg, "--max-cycles", null, out string? maxCyclesValue))
-            {
-                if (ulong.TryParse(maxCyclesValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsedMaxCycles))
+                if (!TryTakeValue(args, ref i, name, inline, out string? value, out error))
                 {
-                    maxCycles = parsedMaxCycles;
+                    return false;
+                }
+
+                if (IsName(name, "--profile"))
+                {
+                    profile = value;
+                }
+                else if (IsName(name, "--exec"))
+                {
+                    exec = value;
+                }
+                else if (IsName(name, "--file"))
+                {
+                    file = value;
+                }
+                else if (IsName(name, "--max-cycles"))
+                {
+                    if (!ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsed) || value!.StartsWith('-'))
+                    {
+                        error = $"error: invalid --max-cycles value '{value}'. Expected a non-negative integer.";
+                        return false;
+                    }
+
+                    maxCycles = parsed;
+                }
+                else if (IsName(name, "--seed"))
+                {
+                    if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                    {
+                        error = $"error: invalid --seed value '{value}'. Expected an integer.";
+                        return false;
+                    }
+
+                    error = "error: --seed cannot be applied because the machine has no seeded random-number source.";
+                    return false;
                 }
 
                 continue;
             }
 
-            if (TryReadValue(args, ref i, arg, "--seed", null, out string? seedValue))
+            if (EmudbgOptionTable.IsFlag(arg))
             {
-                if (int.TryParse(seedValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedSeed))
+                if (IsName(arg, "--no-banner"))
                 {
-                    seed = parsedSeed;
-                }
-
-                continue;
-            }
-
-            switch (arg)
-            {
-                case "--no-banner":
                     noBanner = true;
-                    break;
-                case "--json":
-                case "-j":
+                }
+                else if (IsName(arg, "--json") || IsName(arg, "-j"))
+                {
                     jsonOutput = true;
-                    break;
-                case "--headless":
+                }
+                else if (IsName(arg, "--headless"))
+                {
                     headless = true;
-                    break;
-                case "--agent":
-                case "--agent-mode":
+                }
+                else if (IsName(arg, "--agent") || IsName(arg, "--agent-mode"))
+                {
                     agentMode = true;
                     headless = true;
                     jsonOutput = true;
-                    break;
-                case "--help":
-                case "-h":
-                case "-?":
-                case "/?":
+                    noBanner = true;
+                }
+                else if (IsName(arg, "--help") || IsName(arg, "-h") || IsName(arg, "-?") || IsName(arg, "/?"))
+                {
                     showHelp = true;
-                    break;
+                }
+
+                continue;
+            }
+
+            if (arg.StartsWith('-'))
+            {
+                error = $"error: unknown option '{arg}'.";
+                return false;
             }
         }
 
-        return new EmudbgOptions(profile, exec, file, noBanner, showHelp, jsonOutput, headless, agentMode, maxCycles, seed);
+        options = new EmudbgOptions(profile, exec, file, noBanner, showHelp, jsonOutput, headless, agentMode, maxCycles, null);
+        return true;
     }
 
     /// <summary>
@@ -148,32 +187,35 @@ public sealed record EmudbgOptions(
             .ToArray();
     }
 
-    private static bool TryReadValue(string[] args, ref int index, string arg, string longName, string? shortName, out string? value)
+    private static bool TryTakeValue(string[] args, ref int index, string name, string? inline, out string? value, out string? error)
     {
-        value = null;
-
-        if (arg.StartsWith(longName + "=", StringComparison.Ordinal))
+        error = null;
+        if (inline is not null)
         {
-            value = arg[(longName.Length + 1)..];
+            value = inline;
             return true;
         }
 
-        if (!string.IsNullOrEmpty(shortName) && arg.StartsWith(shortName + "=", StringComparison.Ordinal))
+        if (index + 1 >= args.Length)
         {
-            value = arg[(shortName.Length + 1)..];
-            return true;
+            value = null;
+            error = $"error: missing value for {name}.";
+            return false;
         }
 
-        if (arg.Equals(longName, StringComparison.Ordinal) || (!string.IsNullOrEmpty(shortName) && arg.Equals(shortName, StringComparison.Ordinal)))
+        string next = args[index + 1];
+        if (!EmudbgOptionTable.IsNumericValue(name) && next.StartsWith('-'))
         {
-            if (index + 1 < args.Length)
-            {
-                value = args[++index];
-            }
-
-            return true;
+            value = null;
+            error = $"error: missing value for {name}.";
+            return false;
         }
 
-        return false;
+        index++;
+        value = next;
+        return true;
     }
+
+    private static bool IsName(string arg, string name) =>
+        arg.Equals(name, EmudbgOptionTable.Comparison);
 }

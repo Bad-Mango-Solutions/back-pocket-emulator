@@ -47,10 +47,15 @@ This repository is a .NET emulator for the WDC 65C02 (an Apple IIe-class Pocket2
 
 ### Debug Console
 
-- The existing `emudbg` debug console is designed for interactive human use.
-- It exposes a REPL interface for issuing commands and inspecting emulator state in real time.
+- The existing `emudbg` debug console is a REPL for interactive use and a scriptable host for agents.
+- Startup options are parsed by `EmudbgOptions` from one table (`EmudbgOptionTable`). Names are case-insensitive.
+- `--exec` / `-e` and `--file` / `-f` run a batch and exit. The process exit code is the last command's result: 0 success, 1 failure, 2 usage error. Errors go to stderr.
+- `--json` writes `regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, and `reset` as an `emudbg/v1` envelope from `DebugSessionJsonContext`. Do not add anonymous-object or reflection JSON for those commands.
+- `--agent` means headless + JSON + non-interactive. `--max-cycles` is the default `RunBudget` for `run`, `run-until`, and `step`. `--seed` is rejected until the machine has a seeded RNG.
+- `--headless` must not load Avalonia or `BadMango.Emulator.Debug.UI`.
+- Those commands call the shared `IDebugSession` / `IMachineIoSession` from DI. Do not construct a new `MachineDebugSession` per command.
 - It also exposes the local keyboard, video, and audio devices for direct interaction with the emulated machine.
-- It will include debugging tools such as register/memory inspection, breakpoints, watchpoints, tracing, and disk state management.
+- It includes register/memory inspection, breakpoints, watchpoints, tracing, and disk state management.
 - The ultimate goal is to reuse this infrastructure for a user-friendly application that can host multiple instances of an emulator.
 - We will use this debug console as we move towards the 65816 emulator and, eventually, our speculative 32-bit "65832" processor, so it must be designed with future extensibility in mind.
 

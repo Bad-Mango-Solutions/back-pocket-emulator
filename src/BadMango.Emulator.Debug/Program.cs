@@ -22,13 +22,14 @@ using Serilog.Sinks.File;
 // .MinimumLevel.Override("BadMango.Emulator.Devices", LogEventLevel.Verbose)
 var debugLogEventStream = new DebugLogEventStream();
 
-var options = EmudbgOptions.Parse(args);
-bool dumpAssemblies = DebugHostArguments.Has(args, DebugHostArguments.DumpAssembliesOption);
-
-if (options.AgentMode)
+if (!EmudbgOptions.TryParse(args, out EmudbgOptions? parsed, out string? usageError))
 {
-    options = options with { Headless = true, JsonOutput = true, NoBanner = true };
+    Console.Error.WriteLine(usageError);
+    return 2;
 }
+
+EmudbgOptions options = parsed!;
+bool dumpAssemblies = DebugHostArguments.Has(args, DebugHostArguments.DumpAssembliesOption);
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()
@@ -60,7 +61,7 @@ try
 
     if (!string.IsNullOrWhiteSpace(options.ScriptFile) && !File.Exists(options.ScriptFile))
     {
-        Console.WriteLine($"Error: Script file not found: {options.ScriptFile}");
+        Console.Error.WriteLine($"Error: Script file not found: {options.ScriptFile}");
         return 1;
     }
 
@@ -132,12 +133,12 @@ try
     }
 
     logger.Information("Debug console exited normally");
-    return lastResult.Success ? 0 : 1;
+    return lastResult.ExitCode;
 }
 catch (Exception ex)
 {
     Log.Fatal(ex, "Debug console terminated unexpectedly");
-    Console.WriteLine($"Fatal error: {ex.Message}");
+    Console.Error.WriteLine($"Fatal error: {ex.Message}");
     return 1;
 }
 finally
@@ -166,8 +167,8 @@ static void PrintUsage()
           --json, -j                Enable JSON output mode
           --agent                   Agent mode (headless + json + non-interactive)
           --headless                Disable interactive UI loading
-          --max-cycles <n>          Optional script cycle budget hint
-          --seed <n>                Optional deterministic seed for scripts
+          --max-cycles <n>          Default cycle budget for run, run-until, and step
+          --seed <n>                Rejected: the machine has no seeded random-number source
           -h, --help                Show this help and exit
 
         Examples:

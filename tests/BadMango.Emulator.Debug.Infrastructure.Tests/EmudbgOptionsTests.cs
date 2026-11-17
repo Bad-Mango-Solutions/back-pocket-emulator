@@ -42,9 +42,8 @@ public sealed class EmudbgOptionsTests
             "--profile", "pocket2e",
             "--exec", "boot;regs",
             "--no-banner",
-            "--json",
+            "--JSON",
             "--max-cycles", "1234",
-            "--seed=42",
         ]);
 
         Assert.Multiple(() =>
@@ -53,9 +52,37 @@ public sealed class EmudbgOptionsTests
             Assert.That(options.ExecCommands, Is.EqualTo("boot;regs"));
             Assert.That(options.NoBanner, Is.True);
             Assert.That(options.JsonOutput, Is.True);
-            Assert.That(options.MaxCycles, Is.EqualTo(1234));
-            Assert.That(options.Seed, Is.EqualTo(42));
+            Assert.That(options.MaxCycles, Is.EqualTo(1234UL));
+            Assert.That(options.Seed, Is.Null);
         });
+    }
+
+    /// <summary>
+    /// Verifies that a supplied seed is rejected because the machine has no RNG hook.
+    /// </summary>
+    [Test]
+    public void TryParse_Seed_IsUsageError()
+    {
+        bool parsed = EmudbgOptions.TryParse(["--seed", "42"], out _, out string? error);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(parsed, Is.False);
+            Assert.That(error, Does.Contain("no seeded random-number source"));
+        });
+    }
+
+    /// <summary>
+    /// Verifies missing values, bad numbers, and unknown flags.
+    /// </summary>
+    [Test]
+    public void TryParse_InvalidArguments_AreUsageErrors()
+    {
+        AssertUsage(["--exec"], "missing value");
+        AssertUsage(["--file"], "missing value");
+        AssertUsage(["--max-cycles", "nope"], "invalid --max-cycles");
+        AssertUsage(["--seed", "nope"], "invalid --seed");
+        AssertUsage(["--bogus"], "unknown option");
     }
 
     /// <summary>
@@ -97,6 +124,16 @@ public sealed class EmudbgOptionsTests
             Assert.That(new EmudbgOptions(ScriptFile: "commands.txt").IsNonInteractive, Is.True);
             Assert.That(new EmudbgOptions(AgentMode: true).IsNonInteractive, Is.True);
             Assert.That(new EmudbgOptions().IsNonInteractive, Is.False);
+        });
+    }
+
+    private static void AssertUsage(string[] args, string expected)
+    {
+        bool parsed = EmudbgOptions.TryParse(args, out _, out string? error);
+        Assert.Multiple(() =>
+        {
+            Assert.That(parsed, Is.False);
+            Assert.That(error, Does.Contain(expected));
         });
     }
 }

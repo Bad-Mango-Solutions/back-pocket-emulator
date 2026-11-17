@@ -4,8 +4,7 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
-using BadMango.Emulator.Bus;
-using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Debug.Abstractions;
 
 /// <summary>
 /// Reads memory without side effects (debug/peek access).
@@ -28,12 +27,27 @@ public sealed class PeekCommand : CommandHandlerBase, ICommandHelp
     private const int DefaultByteCount = 1;
     private const int MaxByteCount = 256;
 
+    private readonly IDebugSession? session;
+    private readonly IDebugOutputRenderer renderer;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="PeekCommand"/> class.
     /// </summary>
     public PeekCommand()
+        : this(null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PeekCommand"/> class that reads the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    public PeekCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
         : base("peek", "Read memory without side effects (hex output)")
     {
+        this.session = session;
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
@@ -83,11 +97,6 @@ public sealed class PeekCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error("Debug context required for this command.");
         }
 
-        if (debugContext.Bus is null)
-        {
-            return CommandResult.Error("No memory bus attached to debug context.");
-        }
-
         if (args.Length == 0)
         {
             return CommandResult.Error("Address required. Usage: peek <address> [count]");
@@ -106,95 +115,29 @@ public sealed class PeekCommand : CommandHandlerBase, ICommandHelp
 
         count = Math.Clamp(count, 1, MaxByteCount);
 
-        var bus = debugContext.Bus;
-        var pageSize = 1 << bus.PageShift;
-        uint memorySize = (uint)(bus.PageCount * pageSize);
-
-        if (address >= memorySize)
+        if (debugContext.Bus is { } bus)
         {
-            return CommandResult.Error($"Address ${address:X4} is out of range (memory size: ${memorySize:X4}).");
-        }
-
-        // Adjust count if it would exceed memory bounds
-        if (address + (uint)count > memorySize)
-        {
-            count = (int)(memorySize - address);
-        }
-
-        var bytes = new List<string>(count);
-        var faults = new List<(uint Address, BusFault Fault)>();
-
-        for (int i = 0; i < count; i++)
-        {
-            var result = ReadByteWithFault(bus, address + (uint)i);
-            if (result.Fault.IsFault)
+            uint memorySize = (uint)bus.PageCount << bus.PageShift;
+            if (address >= memorySize)
             {
-                faults.Add((address + (uint)i, result.Fault));
-                bytes.Add("??"); // Indicate fault with ??
+                return CommandResult.Error($"Address ${address:X4} is out of range (memory size: ${memorySize:X4}).");
             }
-            else
+
+            if (address + (uint)count > memorySize)
             {
-                bytes.Add($"{result.Value:X2}");
+                count = (int)(memorySize - address);
             }
         }
 
-        if (count == 1)
+        try
         {
-            debugContext.Output.WriteLine($"${address:X4}: {bytes[0]}");
+            MemoryBlock block = DebugSessions.Require(this.session, debugContext).ReadMemory(address, count);
+            this.renderer.WriteMemory(debugContext.Output, block);
+            return CommandResult.Ok();
         }
-        else
+        catch (InvalidOperationException ex)
         {
-            // Output in groups of 16 bytes per line
-            for (int i = 0; i < bytes.Count; i += 16)
-            {
-                uint lineAddr = address + (uint)i;
-                int lineCount = Math.Min(16, bytes.Count - i);
-                string hexLine = string.Join(" ", bytes.Skip(i).Take(lineCount));
-                debugContext.Output.WriteLine($"${lineAddr:X4}: {hexLine}");
-            }
+            return CommandResult.Error(ex.Message);
         }
-
-        // Report any faults
-        if (faults.Count > 0)
-        {
-            debugContext.Output.WriteLine();
-            debugContext.Output.WriteLine($"Bus faults encountered ({faults.Count}):");
-            foreach (var (faultAddr, fault) in faults)
-            {
-                debugContext.Output.WriteLine($"  ${faultAddr:X4}: {FormatFault(fault)}");
-            }
-        }
-
-        return CommandResult.Ok();
-    }
-
-    private static BusResult<byte> ReadByteWithFault(IMemoryBus bus, uint address)
-    {
-        // Use DebugRead intent for side-effect-free read
-        var access = new BusAccess(
-            Address: address,
-            Value: 0,
-            WidthBits: 8,
-            Mode: BusAccessMode.Decomposed,
-            EmulationFlag: true,
-            Intent: AccessIntent.DebugRead,
-            SourceId: 0,
-            Cycle: 0,
-            Flags: AccessFlags.NoSideEffects);
-
-        return bus.TryRead8(access);
-    }
-
-    private static string FormatFault(BusFault fault)
-    {
-        return fault.Kind switch
-        {
-            FaultKind.Unmapped => "Unmapped - no memory or device at this address",
-            FaultKind.Permission => $"Permission denied - region {fault.RegionTag} does not allow read",
-            FaultKind.Nx => "No execute - attempted instruction fetch from non-executable region",
-            FaultKind.Misaligned => "Misaligned access",
-            FaultKind.DeviceFault => "Device fault - device rejected the access",
-            _ => $"Unknown fault kind: {fault.Kind}",
-        };
     }
 }
