@@ -25,7 +25,8 @@ public class BusFaultTests
             SourceId: 1,
             DeviceId: 5,
             RegionTag: RegionTag.Io,
-            Cycle: 12345ul);
+            Cycle: 12345ul,
+            Pc: 0x3000u);
 
         Assert.Multiple(() =>
         {
@@ -38,6 +39,7 @@ public class BusFaultTests
             Assert.That(fault.DeviceId, Is.EqualTo(5));
             Assert.That(fault.RegionTag, Is.EqualTo(RegionTag.Io));
             Assert.That(fault.Cycle, Is.EqualTo(12345ul));
+            Assert.That(fault.Pc, Is.EqualTo(0x3000u));
         });
     }
 
@@ -133,7 +135,7 @@ public class BusFaultTests
     [Test]
     public void BusFault_SuccessWithContext_HasCorrectValues()
     {
-        var access = CreateTestAccess();
+        var access = CreateTestAccess() with { Pc = 0x2222 };
         var fault = BusFault.Success(in access, 5, RegionTag.Ram);
 
         Assert.Multiple(() =>
@@ -142,6 +144,7 @@ public class BusFaultTests
             Assert.That(fault.Address, Is.EqualTo(access.Address));
             Assert.That(fault.DeviceId, Is.EqualTo(5));
             Assert.That(fault.RegionTag, Is.EqualTo(RegionTag.Ram));
+            Assert.That(fault.Pc, Is.EqualTo(access.Pc));
         });
     }
 
@@ -159,6 +162,7 @@ public class BusFaultTests
             Assert.That(fault.Kind, Is.EqualTo(FaultKind.Unmapped));
             Assert.That(fault.DeviceId, Is.EqualTo(-1));
             Assert.That(fault.RegionTag, Is.EqualTo(RegionTag.Unmapped));
+            Assert.That(fault.Pc, Is.EqualTo(access.Pc));
         });
     }
 

@@ -139,6 +139,9 @@ public sealed class FaultCommand : CommandHandlerBase, ICommandHelp
         debugContext.Output.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
             $"  Cycle:      {f.Cycle}"));
+        debugContext.Output.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"  Pc:         ${f.Pc:X4}"));
 
         return CommandResult.Ok();
     }

@@ -317,19 +317,19 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
                     RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: true);
                 }
 
-                return BusResult<byte>.Success(0xFF, access, page.DeviceId, page.RegionTag, cycles: 1);
+                return ZeroSuccess((byte)0xFF);
             }
 
             Addr physicalAddress = page.PhysicalBase + offset;
             byte value = subTarget.Read8(physicalAddress, access);
-            return BusResult<byte>.Success(value, access, page.DeviceId, composite.GetSubRegionTag(offset), cycles: 1);
+            return ZeroSuccess<byte>(value);
         }
 
         // Perform the read
         Addr physAddr = page.PhysicalBase + (access.Address & PageMask);
         byte readValue = page.Target.Read8(physAddr, access);
 
-        return BusResult<byte>.Success(readValue, access, page.DeviceId, page.RegionTag, cycles: 1);
+        return ZeroSuccess<byte>(readValue);
     }
 
     /// <inheritdoc />
@@ -381,15 +381,40 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
                 }
             }
 
-            return BusResult.Success(access, page.DeviceId, page.RegionTag, cycles: 1);
+            return ZeroSuccess();
         }
 
         // Perform the write
         Addr physAddr = page.PhysicalBase + (access.Address & PageMask);
         page.Target.Write8(physAddr, value, access);
 
-        return BusResult.Success(access, page.DeviceId, page.RegionTag, cycles: 1);
+        return ZeroSuccess();
     }
+
+    /// <summary>
+    /// Returns a successful read whose fault is the zero <see cref="BusFault"/>.
+    /// </summary>
+    /// <typeparam name="T">The read width.</typeparam>
+    /// <param name="value">The value that was read.</param>
+    /// <param name="cycles">The cycles charged to the result. Defaults to one bus cycle.</param>
+    /// <returns>A successful result. <see cref="BusFault.Kind"/> is <see cref="FaultKind.None"/> and every other fault field is its default.</returns>
+    /// <remarks>
+    /// This does not call <see cref="BusFault.Success(in BusAccess, int, RegionTag)"/>.
+    /// A success does not construct a fault payload and does not touch the ring.
+    /// </remarks>
+    private static BusResult<T> ZeroSuccess<T>(T value, ulong cycles = 1)
+        where T : struct
+        => new(value, default, cycles);
+
+    /// <summary>
+    /// Returns a successful write whose fault is the zero <see cref="BusFault"/>.
+    /// </summary>
+    /// <param name="cycles">The cycles charged to the result. Defaults to one bus cycle.</param>
+    /// <returns>A successful result. <see cref="BusFault.Kind"/> is <see cref="FaultKind.None"/> and every other fault field is its default.</returns>
+    /// <remarks>
+    /// This does not call <see cref="BusFault.Success(in BusAccess, int, RegionTag)"/>.
+    /// </remarks>
+    private static BusResult ZeroSuccess(ulong cycles = 1) => new(default, cycles);
 
     /// <summary>
     /// Records a fault into the recorder (if recording is enabled) and emits
@@ -406,14 +431,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
     [MethodImpl(MethodImplOptions.NoInlining)]
     private BusResult<byte> RecordAndReturnFault(in BusAccess access, in BusFault fault)
     {
-        LatchFault(in access, in fault);
-        if (faultRecordingEnabled && !access.IsDebugAccess)
-        {
-            faultRecorder?.Record(in fault);
-            LogFault(in fault, isSilent: false, isComposite: false);
-        }
-
-        return fault;
+        return LatchAndReturn(in access, fault);
     }
 
     /// <summary>
@@ -431,14 +449,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
     [MethodImpl(MethodImplOptions.NoInlining)]
     private BusResult RecordAndReturnFaultVoid(in BusAccess access, in BusFault fault)
     {
-        LatchFault(in access, in fault);
-        if (faultRecordingEnabled && !access.IsDebugAccess)
-        {
-            faultRecorder?.Record(in fault);
-            LogFault(in fault, isSilent: false, isComposite: false);
-        }
-
-        return BusResult.FromFault(fault);
+        return BusResult.FromFault(LatchAndReturn(in access, fault));
     }
 
     /// <summary>
@@ -480,7 +491,8 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
             access.SourceId,
             deviceId,
             regionTag,
-            access.Cycle);
+            access.Cycle,
+            access.Pc);
 
         faultRecorder?.Record(in enriched);
         LogFault(in enriched, isSilent: true, isComposite: isComposite);

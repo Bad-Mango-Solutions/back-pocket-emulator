@@ -612,6 +612,10 @@ public abstract class CpuBase : ICpu
     /// <param name="address">The address being accessed.</param>
     /// <param name="widthBits">The width of the access in bits.</param>
     /// <returns>A configured <see cref="BusAccess"/> for reading.</returns>
+    /// <remarks>
+    /// <see cref="BusAccess.Pc"/> is this CPU's program counter. The indexed fast path does not
+    /// call this method, does not latch a fault, and does not construct a <see cref="BusFault"/>.
+    /// </remarks>
     protected BusAccess CreateReadAccess(Addr address, byte widthBits)
     {
         return new(
@@ -623,7 +627,8 @@ public abstract class CpuBase : ICpu
             Intent: AccessIntent.DataRead,
             SourceId: CpuSourceId,
             Cycle: context.Now + registers.TCU,
-            Flags: AccessFlags.None);
+            Flags: AccessFlags.None,
+            Pc: registers.PC.GetAddr());
     }
 
     /// <summary>
@@ -643,7 +648,8 @@ public abstract class CpuBase : ICpu
             Intent: AccessIntent.DataWrite,
             SourceId: CpuSourceId,
             Cycle: context.Now + registers.TCU,
-            Flags: AccessFlags.None);
+            Flags: AccessFlags.None,
+            Pc: registers.PC.GetAddr());
     }
 
     /// <summary>
@@ -668,7 +674,8 @@ public abstract class CpuBase : ICpu
             Intent: AccessIntent.InstructionFetch,
             SourceId: CpuSourceId,
             Cycle: context.Now + registers.TCU,
-            Flags: AccessFlags.None);
+            Flags: AccessFlags.None,
+            Pc: registers.PC.GetAddr());
     }
 
     /// <summary>
@@ -691,7 +698,8 @@ public abstract class CpuBase : ICpu
             Intent: AccessIntent.DebugRead,
             SourceId: CpuSourceId,
             Cycle: context.Now,
-            Flags: AccessFlags.NoSideEffects);
+            Flags: AccessFlags.NoSideEffects,
+            Pc: registers.PC.GetAddr());
     }
 
     /// <summary>
@@ -714,7 +722,8 @@ public abstract class CpuBase : ICpu
             Intent: AccessIntent.DebugWrite,
             SourceId: CpuSourceId,
             Cycle: context.Now,
-            Flags: AccessFlags.NoSideEffects);
+            Flags: AccessFlags.NoSideEffects,
+            Pc: registers.PC.GetAddr());
     }
 
     /// <summary>

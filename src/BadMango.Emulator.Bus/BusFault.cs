@@ -28,6 +28,11 @@ namespace BadMango.Emulator.Bus;
 /// <param name="DeviceId">The device ID from the page entry, or -1 if unmapped.</param>
 /// <param name="RegionTag">The region tag from the page entry, if available.</param>
 /// <param name="Cycle">The machine cycle when the fault occurred.</param>
+/// <param name="Pc">
+/// Program counter supplied by the caller. A CPU sets this from its PC when it builds the
+/// access that asks for the record. The bus does not read a CPU register. A caller that
+/// leaves it unset stores <c>0</c>. The private fault latch does not keep this field.
+/// </param>
 public readonly record struct BusFault(
     FaultKind Kind,
     Addr Address,
@@ -37,7 +42,8 @@ public readonly record struct BusFault(
     int SourceId,
     int DeviceId,
     RegionTag RegionTag,
-    ulong Cycle)
+    ulong Cycle,
+    Addr Pc = 0)
 {
     /// <summary>
     /// Gets a value indicating whether this represents no fault (success).
@@ -97,17 +103,7 @@ public readonly record struct BusFault(
     /// Creates a success (no fault) result.
     /// </summary>
     /// <returns>A <see cref="BusFault"/> with <see cref="Kind"/> set to <see cref="FaultKind.None"/>.</returns>
-    public static BusFault Success() => new(FaultKind.None, 0, 0, AccessIntent.DataRead, BusAccessMode.Atomic, 0, 0, RegionTag.Unknown, 0);
-
-    /// <summary>
-    /// Creates a success (no fault) result with context from an access.
-    /// </summary>
-    /// <param name="access">The bus access that succeeded.</param>
-    /// <param name="deviceId">The device ID that handled the access.</param>
-    /// <param name="regionTag">The region tag of the accessed page.</param>
-    /// <returns>A <see cref="BusFault"/> with <see cref="Kind"/> set to <see cref="FaultKind.None"/>.</returns>
-    public static BusFault Success(in BusAccess access, int deviceId, RegionTag regionTag) =>
-        new(FaultKind.None, access.Address, access.WidthBits, access.Intent, access.Mode, access.SourceId, deviceId, regionTag, access.Cycle);
+    public static BusFault Success() => new(FaultKind.None, 0, 0, AccessIntent.DataRead, BusAccessMode.Atomic, 0, 0, RegionTag.Unknown, 0, 0);
 
     /// <summary>
     /// Creates an unmapped fault.
@@ -115,7 +111,7 @@ public readonly record struct BusFault(
     /// <param name="access">The bus access that faulted.</param>
     /// <returns>A <see cref="BusFault"/> with <see cref="Kind"/> set to <see cref="FaultKind.Unmapped"/>.</returns>
     public static BusFault Unmapped(in BusAccess access) =>
-        new(FaultKind.Unmapped, access.Address, access.WidthBits, access.Intent, access.Mode, access.SourceId, -1, RegionTag.Unmapped, access.Cycle);
+        FromAccess(FaultKind.Unmapped, in access, deviceId: -1, RegionTag.Unmapped);
 
     /// <summary>
     /// Creates a permission fault.
@@ -125,7 +121,7 @@ public readonly record struct BusFault(
     /// <param name="regionTag">The region tag from the page entry.</param>
     /// <returns>A <see cref="BusFault"/> with <see cref="Kind"/> set to <see cref="FaultKind.Permission"/>.</returns>
     public static BusFault PermissionDenied(in BusAccess access, int deviceId, RegionTag regionTag) =>
-        new(FaultKind.Permission, access.Address, access.WidthBits, access.Intent, access.Mode, access.SourceId, deviceId, regionTag, access.Cycle);
+        FromAccess(FaultKind.Permission, in access, deviceId, regionTag);
 
     /// <summary>
     /// Creates an NX (no execute) fault.
@@ -135,7 +131,7 @@ public readonly record struct BusFault(
     /// <param name="regionTag">The region tag from the page entry.</param>
     /// <returns>A <see cref="BusFault"/> with <see cref="Kind"/> set to <see cref="FaultKind.Nx"/>.</returns>
     public static BusFault NoExecute(in BusAccess access, int deviceId, RegionTag regionTag) =>
-        new(FaultKind.Nx, access.Address, access.WidthBits, access.Intent, access.Mode, access.SourceId, deviceId, regionTag, access.Cycle);
+        FromAccess(FaultKind.Nx, in access, deviceId, regionTag);
 
     /// <summary>
     /// Creates a misaligned access fault.
@@ -145,7 +141,7 @@ public readonly record struct BusFault(
     /// <param name="regionTag">The region tag from the page entry.</param>
     /// <returns>A <see cref="BusFault"/> with <see cref="Kind"/> set to <see cref="FaultKind.Misaligned"/>.</returns>
     public static BusFault Misaligned(in BusAccess access, int deviceId, RegionTag regionTag) =>
-        new(FaultKind.Misaligned, access.Address, access.WidthBits, access.Intent, access.Mode, access.SourceId, deviceId, regionTag, access.Cycle);
+        FromAccess(FaultKind.Misaligned, in access, deviceId, regionTag);
 
     /// <summary>
     /// Creates a device fault.
@@ -155,5 +151,30 @@ public readonly record struct BusFault(
     /// <param name="regionTag">The region tag from the page entry.</param>
     /// <returns>A <see cref="BusFault"/> with <see cref="Kind"/> set to <see cref="FaultKind.DeviceFault"/>.</returns>
     public static BusFault Device(in BusAccess access, int deviceId, RegionTag regionTag) =>
-        new(FaultKind.DeviceFault, access.Address, access.WidthBits, access.Intent, access.Mode, access.SourceId, deviceId, regionTag, access.Cycle);
+        FromAccess(FaultKind.DeviceFault, in access, deviceId, regionTag);
+
+    /// <summary>
+    /// Creates a success (no fault) result with context from an access.
+    /// </summary>
+    /// <param name="access">The bus access that succeeded.</param>
+    /// <param name="deviceId">The device ID that handled the access.</param>
+    /// <param name="regionTag">The region tag of the accessed page.</param>
+    /// <returns>A <see cref="BusFault"/> with <see cref="Kind"/> set to <see cref="FaultKind.None"/>.</returns>
+    /// <remarks>
+    /// Kept for the named-factory tests. <see cref="MainBus"/> success paths do not call it.
+    /// A successful bus result uses a zero <see cref="BusFault"/> instead.
+    /// </remarks>
+    internal static BusFault Success(in BusAccess access, int deviceId, RegionTag regionTag) =>
+        FromAccess(FaultKind.None, in access, deviceId, regionTag);
+
+    /// <summary>
+    /// Builds one fault record from an access, including the caller's program counter.
+    /// </summary>
+    /// <param name="kind">The fault kind.</param>
+    /// <param name="access">The access that faulted. <see cref="BusAccess.Pc"/> is copied onto the record.</param>
+    /// <param name="deviceId">The device id to store.</param>
+    /// <param name="regionTag">The region tag to store.</param>
+    /// <returns>The fault record.</returns>
+    private static BusFault FromAccess(FaultKind kind, in BusAccess access, int deviceId, RegionTag regionTag) =>
+        new(kind, access.Address, access.WidthBits, access.Intent, access.Mode, access.SourceId, deviceId, regionTag, access.Cycle, access.Pc);
 }

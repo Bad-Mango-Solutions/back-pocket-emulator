@@ -165,6 +165,65 @@ public class CpuFaultRegisterTests
         });
     }
 
+    /// <summary>
+    /// A CPU slow-path fault records one <see cref="BusFault"/> whose <see cref="BusFault.Pc"/>
+    /// is the CPU's program counter. A debug peek of another unmapped address does not enter the ring.
+    /// </summary>
+    [Test]
+    public void Read8_Unmapped_RecordsCpuProgramCounter_PeekDoesNotRecord()
+    {
+        var ring = new BusFaultRing();
+        var bus = new MainBus(16, faultRecorder: ring) { FaultRecordingEnabled = true };
+        var cpu = CreateCpu(bus);
+        const Addr pc = 0x4321;
+        cpu.SetPC(pc);
+
+        byte value = cpu.Read8(0x1800);
+        cpu.Peek8(0x1900);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(value, Is.EqualTo(0xFF));
+            Assert.That(cpu.GetPC(), Is.EqualTo(pc));
+            Assert.That(ring.Count, Is.EqualTo(1));
+            Assert.That(ring.Last, Is.Not.Null);
+            Assert.That(ring.Last!.Value.Pc, Is.EqualTo(pc));
+            Assert.That(ring.Last.Value.Kind, Is.EqualTo(FaultKind.Unmapped));
+            Assert.That(ring.Last.Value.Address, Is.EqualTo(0x1800u));
+            Assert.That(bus.LatchedFault.Pc, Is.EqualTo(0u));
+        });
+    }
+
+    /// <summary>
+    /// An indexed RAM read does not call <c>Try*</c>, does not latch, and does not enter the ring.
+    /// </summary>
+    [Test]
+    public void FastRamRead_DoesNotRecordAFault()
+    {
+        var raw = new byte[0x1000];
+        raw[0x0010] = 0x5A;
+        var ring = new BusFaultRing();
+        var bus = new MainBus(16, faultRecorder: ring) { FaultRecordingEnabled = true };
+        bus.MapPage(0, new(0, RegionTag.Ram, PagePerms.All, TargetCaps.SupportsPeek | TargetCaps.SupportsPoke, new RamTarget(raw, "ram"), 0));
+        var cpu = CreateCpu(bus);
+        cpu.SetPC(0x1111);
+        int reads = bus.TryRead8CallCount;
+
+        byte value = cpu.Read8(0x0010);
+        cpu.Write8(0x0011, 0x17);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(value, Is.EqualTo(0x5A));
+            Assert.That(raw[0x0011], Is.EqualTo(0x17));
+            Assert.That(bus.TryRead8CallCount, Is.EqualTo(reads));
+            Assert.That(bus.TryWrite8CallCount, Is.EqualTo(0));
+            Assert.That(bus.FaultStatus, Is.EqualTo(FaultKind.None));
+            Assert.That(ring.Count, Is.Zero);
+            Assert.That(ring.TotalFaults, Is.Zero);
+        });
+    }
+
     private static Cpu65C02 CreateCpu(MainBus bus) =>
         new(new EventContext(new Scheduler(), new SignalBus(), bus));
 
