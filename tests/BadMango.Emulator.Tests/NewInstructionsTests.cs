@@ -634,8 +634,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.ASLa(AddressingModes.Accumulator);
-        handler(Cpu);
+        ExecuteOpcode(0x0A);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x84));
@@ -652,8 +651,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x80, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.ASLa(AddressingModes.Accumulator);
-        handler(Cpu);
+        ExecuteOpcode(0x0A);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x00));
@@ -671,8 +669,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.LSRa(AddressingModes.Accumulator);
-        handler(Cpu);
+        ExecuteOpcode(0x4A);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x21));
@@ -689,8 +686,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, p: FlagC, cycles: 10);
 
         // Act
-        var handler = Instructions.ROLa(AddressingModes.Accumulator);
-        handler(Cpu);
+        ExecuteOpcode(0x2A);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0x85)); // 0x42 << 1 | 1
@@ -707,8 +703,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, p: FlagC, cycles: 10);
 
         // Act
-        var handler = Instructions.RORa(AddressingModes.Accumulator);
-        handler(Cpu);
+        ExecuteOpcode(0x6A);
 
         // Assert
         Assert.That(Cpu.Registers.A.GetByte(), Is.EqualTo(0xA1)); // 0x80 | (0x42 >> 1)

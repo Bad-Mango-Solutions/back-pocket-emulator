@@ -212,6 +212,36 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
+    /// Shift and rotate opcodes use direct dispatch and leave the legacy slot null.
+    /// </summary>
+    [Test]
+    public void Build_ShiftOpcodes_UseDirectDispatchWithNullLegacyHandlers()
+    {
+        var table = Cpu65C02OpcodeTableBuilder.Build();
+        int converted = 0;
+
+        Assert.Multiple(() =>
+        {
+            for (int opcode = 0; opcode < 256; opcode++)
+            {
+                CpuInstructions instruction = table.GetMetadata((byte)opcode).Instruction;
+                if (!IsShift(instruction))
+                {
+                    continue;
+                }
+
+                converted++;
+                Assert.That(
+                    table.GetHandler((byte)opcode),
+                    Is.Null,
+                    $"${opcode:X2} {instruction} legacy handler");
+            }
+
+            Assert.That(converted, Is.EqualTo(20), "converted opcode count");
+        });
+    }
+
+    /// <summary>
     /// Reports whether an instruction belongs to the logical, arithmetic, or compare families.
     /// </summary>
     /// <param name="instruction">The opcode mnemonic.</param>
@@ -235,6 +265,19 @@ public class OpcodeTableDispatchTests : CpuTestBase
             or CpuInstructions.CMP
             or CpuInstructions.CPX
             or CpuInstructions.CPY;
+    }
+
+    /// <summary>
+    /// Reports whether an instruction belongs to the shift and rotate family.
+    /// </summary>
+    /// <param name="instruction">The opcode mnemonic.</param>
+    /// <returns><see langword="true"/> when the mnemonic is ASL, LSR, ROL, or ROR.</returns>
+    private static bool IsShift(CpuInstructions instruction)
+    {
+        return instruction is CpuInstructions.ASL
+            or CpuInstructions.LSR
+            or CpuInstructions.ROL
+            or CpuInstructions.ROR;
     }
 
     /// <summary>

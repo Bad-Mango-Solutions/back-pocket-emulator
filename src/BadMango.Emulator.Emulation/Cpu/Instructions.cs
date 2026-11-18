@@ -29,7 +29,7 @@ using Core.Interfaces.Cpu;
 /// <item><description><c>Instructions.Branch.cs</c> - Branches (BCC, BCS, BEQ, BNE, BMI, BPL, BVC, BVS, BRA)</description></item>
 /// <item><description><c>Instructions.Arithmetic.cs</c> - Arithmetic direct dispatch (ADC, SBC, INC, DEC, INX, INY, DEX, DEY, INA, DEA)</description></item>
 /// <item><description><c>Instructions.Logical.cs</c> - Logical direct dispatch (AND, ORA, EOR, BIT)</description></item>
-/// <item><description><c>Instructions.Shift.cs</c> - Shifts and rotates (ASL, LSR, ROL, ROR)</description></item>
+/// <item><description><c>Instructions.Shift.cs</c> - Shift direct dispatch (ASL, LSR, ROL, ROR)</description></item>
 /// <item><description><c>Instructions.Compare.cs</c> - Comparison direct dispatch (CMP, CPX, CPY)</description></item>
 /// <item><description><c>Instructions.65C02.cs</c> - 65C02-specific (TSB, TRB, WAI, STP). STZ lives with the other stores.</description></item>
 /// </list>
