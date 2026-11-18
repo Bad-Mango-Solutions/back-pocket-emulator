@@ -959,8 +959,10 @@ public sealed partial class MachineBuilder
             ? cpuFactory(tempContext)
             : CreateDefaultCpu(cpuFamily, tempContext);
 
-        // Create machine
+        // Create machine. Remap snapshots read the soft-switch providers this machine
+        // already has. The delegate runs only while mapping trace is on.
         var machine = new Machine(cpu, bus, scheduler, signals, devices, logger);
+        bus.SetSoftSwitchSource(() => machine.GetComponents<ISoftSwitchProvider>());
 
         // Configure clock speed for CPU throttling
         machine.ClockSpeedHz = clockSpeedHz;

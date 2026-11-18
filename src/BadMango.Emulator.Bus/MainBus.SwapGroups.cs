@@ -91,26 +91,36 @@ public sealed partial class MainBus
             // Get the variant to select (this validates the variant exists)
             var variant = swapGroup.GetVariant(variantName);
 
-            // Atomically update all page entries for the swap group's address range
+            // Atomically update all page entries for the swap group's address range.
+            // One snapshot covers every page this rebuild stores.
             int startPage = swapGroup.GetStartPage(PageShift);
             int pageCount = swapGroup.GetPageCount(PageShift);
-
-            for (int i = 0; i < pageCount; i++)
+            int batch = BeginTraceBatch();
+            try
             {
-                int pageIndex = startPage + i;
-                ref var entry = ref pageTable[pageIndex];
-
-                // Calculate the physical address for this page within the variant
-                Addr pagePhysBase = variant.PhysBase + (Addr)(i * PageSize);
-
-                // Create new entry preserving device ID and other metadata, but updating
-                // target, physical base, and permissions from the variant
-                pageTable[pageIndex] = WithFastPath(entry with
+                for (int i = 0; i < pageCount; i++)
                 {
-                    Target = variant.Target,
-                    PhysicalBase = pagePhysBase,
-                    Perms = variant.Perms,
-                });
+                    int pageIndex = startPage + i;
+                    ref var entry = ref pageTable[pageIndex];
+
+                    // Calculate the physical address for this page within the variant
+                    Addr pagePhysBase = variant.PhysBase + (Addr)(i * PageSize);
+
+                    // Create new entry preserving device ID and other metadata, but updating
+                    // target, physical base, and permissions from the variant
+                    pageTable[pageIndex] = WithFastPath(
+                        entry with
+                        {
+                            Target = variant.Target,
+                            PhysicalBase = pagePhysBase,
+                            Perms = variant.Perms,
+                        },
+                        pageIndex);
+                }
+            }
+            finally
+            {
+                EndTraceBatch(batch);
             }
 
             // Update the active variant in the swap group

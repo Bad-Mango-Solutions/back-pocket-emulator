@@ -87,44 +87,6 @@ public sealed partial class MainBus
     internal int Write8CallCount => write8CallCount;
 
     /// <summary>
-    /// Recomputes <see cref="PageEntry.FastBacking"/>, <see cref="PageEntry.FastBase"/>, and
-    /// <see cref="PageEntry.FastOps"/> from the entry's target, window, permissions, and privilege.
-    /// </summary>
-    /// <param name="entry">The entry about to be stored. Caller-supplied fast-path fields are ignored.</param>
-    /// <returns>The entry with fast-path fields that match the published target.</returns>
-    /// <remarks>
-    /// <para>
-    /// Every method that stores a <see cref="PageEntry"/> calls this before the store returns.
-    /// <see cref="Clear"/> does not. The method takes no lock; <see cref="SelectSwapVariant"/>
-    /// already holds <c>swapGroupLock</c>, and the CPU fast path must not take it.
-    /// </para>
-    /// <para>
-    /// An active mapping-trace range (spec section 13.1) forces <see cref="FastPathOps.None"/>
-    /// on covered pages inside this same function, so a remap cannot put a covered page back
-    /// on the fast path. That range is not implemented yet.
-    /// </para>
-    /// </remarks>
-    private static PageEntry WithFastPath(PageEntry entry)
-    {
-        if (!TryGetFastSlice(entry, out ArraySegment<byte> segment))
-        {
-            return entry with
-            {
-                FastBacking = null,
-                FastBase = 0,
-                FastOps = FastPathOps.None,
-            };
-        }
-
-        return entry with
-        {
-            FastBacking = segment.Array,
-            FastBase = segment.Offset,
-            FastOps = ComputeFastOps(entry),
-        };
-    }
-
-    /// <summary>
     /// Resolves an array-backed window that contains the page's closed target-offset interval.
     /// </summary>
     /// <param name="entry">The entry being published.</param>
@@ -225,5 +187,60 @@ public sealed partial class MainBus
         }
 
         return ops;
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="PageEntry.FastBacking"/>, <see cref="PageEntry.FastBase"/>, and
+    /// <see cref="PageEntry.FastOps"/> from the entry's target, window, permissions, and privilege.
+    /// </summary>
+    /// <param name="entry">The entry about to be stored. Caller-supplied fast-path fields are ignored.</param>
+    /// <param name="pageIndex">The page index being stored. The range test uses it and nothing else.</param>
+    /// <returns>The entry with fast-path fields that match the published target.</returns>
+    /// <remarks>
+    /// <para>
+    /// Every method that stores a <see cref="PageEntry"/> calls this before the store returns.
+    /// <see cref="Clear"/> does not. The method takes no lock; <see cref="SelectSwapVariant"/>
+    /// already holds <c>swapGroupLock</c>, and the CPU fast path must not take it.
+    /// </para>
+    /// <para>
+    /// An active mapping-trace range forces <see cref="FastPathOps.None"/> on a covered page
+    /// after the natural operations are computed. <see cref="PageEntry.FastBacking"/> and
+    /// <see cref="PageEntry.FastBase"/> stay in place so a slow-path trace record can still
+    /// name the array. The CPU fast path reads only the published <see cref="PageEntry.FastOps"/>
+    /// and does not load the trace flag or the range.
+    /// </para>
+    /// </remarks>
+    private PageEntry WithFastPath(PageEntry entry, int pageIndex)
+    {
+        PageEntry published;
+        FastPathOps natural;
+        if (!TryGetFastSlice(entry, out ArraySegment<byte> segment))
+        {
+            natural = FastPathOps.None;
+            published = entry with
+            {
+                FastBacking = null,
+                FastBase = 0,
+                FastOps = FastPathOps.None,
+            };
+        }
+        else
+        {
+            natural = ComputeFastOps(entry);
+            FastPathOps ops = PageInTraceRange(pageIndex) ? FastPathOps.None : natural;
+            published = entry with
+            {
+                FastBacking = segment.Array,
+                FastBase = segment.Offset,
+                FastOps = ops,
+            };
+        }
+
+        if (mappingTraceEnabled)
+        {
+            RecordMappingChange(pageIndex, published, natural);
+        }
+
+        return published;
     }
 }

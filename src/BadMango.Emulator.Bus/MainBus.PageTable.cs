@@ -67,7 +67,15 @@ public sealed partial class MainBus
             throw new ArgumentOutOfRangeException(nameof(pageIndex), pageIndex, $"Page index must be between 0 and {pageTable.Length - 1}.");
         }
 
-        pageTable[pageIndex] = WithFastPath(entry);
+        int batch = BeginTraceBatch();
+        try
+        {
+            pageTable[pageIndex] = WithFastPath(entry, pageIndex);
+        }
+        finally
+        {
+            EndTraceBatch(batch);
+        }
     }
 
     /// <inheritdoc />
@@ -96,16 +104,26 @@ public sealed partial class MainBus
             throw new ArgumentOutOfRangeException(nameof(pageCount), pageCount, $"Page range ({startPage} + {pageCount}) exceeds address space ({pageTable.Length} pages).");
         }
 
-        for (int i = 0; i < pageCount; i++)
+        int batch = BeginTraceBatch();
+        try
         {
-            Addr pagePhysBase = physicalBase + (Addr)(i * PageSize);
-            pageTable[startPage + i] = WithFastPath(new(
-                deviceId,
-                regionTag,
-                perms,
-                caps,
-                target,
-                pagePhysBase));
+            for (int i = 0; i < pageCount; i++)
+            {
+                Addr pagePhysBase = physicalBase + (Addr)(i * PageSize);
+                pageTable[startPage + i] = WithFastPath(
+                    new(
+                        deviceId,
+                        regionTag,
+                        perms,
+                        caps,
+                        target,
+                        pagePhysBase),
+                    startPage + i);
+            }
+        }
+        finally
+        {
+            EndTraceBatch(batch);
         }
     }
 
@@ -188,11 +206,21 @@ public sealed partial class MainBus
         }
 
         ref var entry = ref pageTable[pageIndex];
-        pageTable[pageIndex] = WithFastPath(entry with
+        int batch = BeginTraceBatch();
+        try
         {
-            Target = newTarget,
-            PhysicalBase = newPhysBase,
-        });
+            pageTable[pageIndex] = WithFastPath(
+                entry with
+                {
+                    Target = newTarget,
+                    PhysicalBase = newPhysBase,
+                },
+                pageIndex);
+        }
+        finally
+        {
+            EndTraceBatch(batch);
+        }
     }
 
     /// <summary>
@@ -210,7 +238,15 @@ public sealed partial class MainBus
             throw new ArgumentOutOfRangeException(nameof(pageIndex), pageIndex, $"Page index must be between 0 and {pageTable.Length - 1}.");
         }
 
-        pageTable[pageIndex] = WithFastPath(newEntry);
+        int batch = BeginTraceBatch();
+        try
+        {
+            pageTable[pageIndex] = WithFastPath(newEntry, pageIndex);
+        }
+        finally
+        {
+            EndTraceBatch(batch);
+        }
     }
 
     /// <summary>
@@ -240,15 +276,25 @@ public sealed partial class MainBus
             throw new ArgumentOutOfRangeException(nameof(pageCount), pageCount, $"Page range ({startPage} + {pageCount}) exceeds address space ({pageTable.Length} pages).");
         }
 
-        for (int i = 0; i < pageCount; i++)
+        int batch = BeginTraceBatch();
+        try
         {
-            ref var entry = ref pageTable[startPage + i];
-            Addr pagePhysBase = newPhysBase + (Addr)(i * PageSize);
-            pageTable[startPage + i] = WithFastPath(entry with
+            for (int i = 0; i < pageCount; i++)
             {
-                Target = newTarget,
-                PhysicalBase = pagePhysBase,
-            });
+                ref var entry = ref pageTable[startPage + i];
+                Addr pagePhysBase = newPhysBase + (Addr)(i * PageSize);
+                pageTable[startPage + i] = WithFastPath(
+                    entry with
+                    {
+                        Target = newTarget,
+                        PhysicalBase = pagePhysBase,
+                    },
+                    startPage + i);
+            }
+        }
+        finally
+        {
+            EndTraceBatch(batch);
         }
     }
 

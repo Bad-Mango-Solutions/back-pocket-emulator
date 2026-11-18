@@ -179,6 +179,10 @@ public class DebugConsoleModule : Module
             .As<ICommandHandler>()
             .SingleInstance();
 
+        builder.RegisterType<MapTraceCommand>()
+            .As<ICommandHandler>()
+            .SingleInstance();
+
         builder.RegisterType<DeviceMapCommand>()
             .As<ICommandHandler>()
             .SingleInstance();

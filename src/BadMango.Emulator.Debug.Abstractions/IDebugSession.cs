@@ -46,6 +46,19 @@ public interface IDebugSession
     ushort FaultStatus { get; }
 
     /// <summary>
+    /// Gets or sets whether the bus records remaps and slow-path byte accesses.
+    /// </summary>
+    /// <remarks>
+    /// The default is off, with an empty range. Setting <see langword="true"/> enables
+    /// remap-and-slow-path logging and does not change an existing range. Setting
+    /// <see langword="false"/> does not clear a range; <c>maptrace off</c> calls
+    /// <see cref="ClearMappingTraceRange"/> and then sets this to <see langword="false"/>.
+    /// The CPU fast path does not read this flag.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">No bus is attached.</exception>
+    bool MappingTraceEnabled { get; set; }
+
+    /// <summary>
     /// Gets the address of the byte that latched <see cref="FaultStatus"/>.
     /// </summary>
     /// <value>The faulting address, or zero when <see cref="FaultStatus"/> is zero.</value>
@@ -215,4 +228,37 @@ public interface IDebugSession
     /// </summary>
     /// <returns>The machine information.</returns>
     MachineInfo GetMachineInfo();
+
+    /// <summary>
+    /// Turns mapping trace on and forces every 4 KB page intersecting the inclusive address
+    /// range onto the slow path.
+    /// </summary>
+    /// <param name="start">The first CPU address.</param>
+    /// <param name="endInclusive">The last CPU address.</param>
+    /// <remarks>
+    /// <c>maptrace range $start $end</c> calls this method. Pages outside the range keep
+    /// their natural fast-path operations. A later remap of a covered page stays slow.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">No bus is attached.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The range is empty or starts outside the address space.</exception>
+    void SetMappingTraceRange(uint start, uint endInclusive);
+
+    /// <summary>
+    /// Clears the trace range and restores natural fast-path operations on the pages it covered.
+    /// </summary>
+    /// <remarks>
+    /// Does not turn trace off. <c>maptrace range clear</c> and <c>maptrace off</c> both call this.
+    /// <c>maptrace off</c> then disables trace.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">No bus is attached.</exception>
+    void ClearMappingTraceRange();
+
+    /// <summary>
+    /// Reads the active trace range.
+    /// </summary>
+    /// <param name="start">The first CPU address when this method returns <see langword="true"/>.</param>
+    /// <param name="endInclusive">The last CPU address when this method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when a range is active.</returns>
+    /// <exception cref="InvalidOperationException">No bus is attached.</exception>
+    bool TryGetMappingTraceRange(out uint start, out uint endInclusive);
 }
