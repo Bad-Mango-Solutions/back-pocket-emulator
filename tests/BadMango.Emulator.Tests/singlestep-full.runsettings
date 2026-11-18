@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <!-- Selects the Explicit SingleStepFull cases. A VSTest category filter does not. -->
+  <NUnit>
+    <Where>cat == SingleStepFull</Where>
+  </NUnit>
+</RunSettings>
