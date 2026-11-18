@@ -112,40 +112,22 @@ public sealed class Cpu65C02HardwareVectorTests
         switch (opcode)
         {
             case 0x28:
-                reason = "Tracked by #570";
-                return true;
             case 0x40:
-                reason = "Tracked by #571";
+                reason = "Tracked by #570";
                 return true;
             case 0x5C:
                 reason = "Tracked by #572";
                 return true;
             case 0xE1:
-                reason = "Tracked by #573";
-                return true;
             case 0xE5:
-                reason = "Tracked by #574";
-                return true;
             case 0xE9:
-                reason = "Tracked by #575";
-                return true;
             case 0xED:
-                reason = "Tracked by #576";
-                return true;
             case 0xF1:
-                reason = "Tracked by #577";
-                return true;
             case 0xF2:
-                reason = "Tracked by #578";
-                return true;
             case 0xF5:
-                reason = "Tracked by #579";
-                return true;
             case 0xF9:
-                reason = "Tracked by #580";
-                return true;
             case 0xFD:
-                reason = "Tracked by #581";
+                reason = "Tracked by #573";
                 return true;
             default:
                 reason = string.Empty;
