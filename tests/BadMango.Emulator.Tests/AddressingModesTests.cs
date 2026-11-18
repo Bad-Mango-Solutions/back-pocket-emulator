@@ -807,7 +807,7 @@ public class AddressingModesTests : CpuTestBase
     /// Verifies that <see cref="RelativeMode"/> matches <see cref="AddressingModes.Relative"/>
     /// for a taken forward branch and a taken backward branch, each with and without a page cross.
     /// The mode returns the branch target and charges the offset fetch. The taken and page-cross
-    /// cycles are applied by the branch instruction, checked here with <c>BEQ</c> while Z is set.
+    /// cycles are applied by <c>BEQ</c> through the opcode table while Z is set.
     /// </summary>
     /// <param name="startPc">The program counter where the offset byte is fetched.</param>
     /// <param name="offset">The raw relative offset byte.</param>
@@ -840,25 +840,13 @@ public class AddressingModesTests : CpuTestBase
             (Word)expectedModePc,
             (ulong)expectedModeCycles);
 
-        OpcodeHandler legacy = Instructions.BEQ(AddressingModes.Relative);
-        OpcodeHandler viaStruct = Instructions.BEQ(static cpu => RelativeMode.Resolve(cpu));
-
         arrange();
-        legacy(Cpu);
-        Word legacyPc = Cpu.Registers.PC.GetWord();
-        ulong legacyCycles = Cpu.GetCycles();
-
-        arrange();
-        viaStruct(Cpu);
-        Word structPc = Cpu.Registers.PC.GetWord();
-        ulong structCycles = Cpu.GetCycles();
+        Cpu65C02OpcodeTableBuilder.Build().Execute(0xF0, Cpu);
 
         Assert.Multiple(() =>
         {
-            Assert.That(structPc, Is.EqualTo(legacyPc));
-            Assert.That(structCycles, Is.EqualTo(legacyCycles));
-            Assert.That(structPc, Is.EqualTo((Word)expectedTarget));
-            Assert.That(structCycles, Is.EqualTo((ulong)expectedTakenCycles));
+            Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo((Word)expectedTarget));
+            Assert.That(Cpu.GetCycles(), Is.EqualTo((ulong)expectedTakenCycles));
         });
     }
 
