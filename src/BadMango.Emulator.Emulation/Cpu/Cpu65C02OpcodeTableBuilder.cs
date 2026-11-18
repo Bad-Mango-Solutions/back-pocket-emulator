@@ -432,29 +432,29 @@ public static class Cpu65C02OpcodeTableBuilder
         SetDirectOpcode(0x89, Instructions.BITImmediateDispatch, CpuInstructions.BIT, CpuAddressingModes.Immediate); // 65C02
 
         // Shift and Rotate Operations
-        SetOpcode(0x0A, Instructions.ASLa(AddressingModes.Accumulator), CpuInstructions.ASL, CpuAddressingModes.Accumulator);
-        SetOpcode(0x06, Instructions.ASL(AddressingModes.ZeroPage), CpuInstructions.ASL, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x16, Instructions.ASL(AddressingModes.ZeroPageX), CpuInstructions.ASL, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0x0E, Instructions.ASL(AddressingModes.Absolute), CpuInstructions.ASL, CpuAddressingModes.Absolute);
-        SetOpcode(0x1E, Instructions.ASL(AddressingModes.AbsoluteX), CpuInstructions.ASL, CpuAddressingModes.AbsoluteX);
+        SetDirectOpcode(0x0A, Instructions.ASLAccumulatorDispatch, CpuInstructions.ASL, CpuAddressingModes.Accumulator);
+        SetDirectOpcode(0x06, Instructions.ASLZeroPageDispatch, CpuInstructions.ASL, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x16, Instructions.ASLZeroPageXDispatch, CpuInstructions.ASL, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0x0E, Instructions.ASLAbsoluteDispatch, CpuInstructions.ASL, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x1E, Instructions.ASLAbsoluteXDispatch, CpuInstructions.ASL, CpuAddressingModes.AbsoluteX);
 
-        SetOpcode(0x4A, Instructions.LSRa(AddressingModes.Accumulator), CpuInstructions.LSR, CpuAddressingModes.Accumulator);
-        SetOpcode(0x46, Instructions.LSR(AddressingModes.ZeroPage), CpuInstructions.LSR, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x56, Instructions.LSR(AddressingModes.ZeroPageX), CpuInstructions.LSR, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0x4E, Instructions.LSR(AddressingModes.Absolute), CpuInstructions.LSR, CpuAddressingModes.Absolute);
-        SetOpcode(0x5E, Instructions.LSR(AddressingModes.AbsoluteX), CpuInstructions.LSR, CpuAddressingModes.AbsoluteX);
+        SetDirectOpcode(0x4A, Instructions.LSRAccumulatorDispatch, CpuInstructions.LSR, CpuAddressingModes.Accumulator);
+        SetDirectOpcode(0x46, Instructions.LSRZeroPageDispatch, CpuInstructions.LSR, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x56, Instructions.LSRZeroPageXDispatch, CpuInstructions.LSR, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0x4E, Instructions.LSRAbsoluteDispatch, CpuInstructions.LSR, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x5E, Instructions.LSRAbsoluteXDispatch, CpuInstructions.LSR, CpuAddressingModes.AbsoluteX);
 
-        SetOpcode(0x2A, Instructions.ROLa(AddressingModes.Accumulator), CpuInstructions.ROL, CpuAddressingModes.Accumulator);
-        SetOpcode(0x26, Instructions.ROL(AddressingModes.ZeroPage), CpuInstructions.ROL, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x36, Instructions.ROL(AddressingModes.ZeroPageX), CpuInstructions.ROL, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0x2E, Instructions.ROL(AddressingModes.Absolute), CpuInstructions.ROL, CpuAddressingModes.Absolute);
-        SetOpcode(0x3E, Instructions.ROL(AddressingModes.AbsoluteX), CpuInstructions.ROL, CpuAddressingModes.AbsoluteX);
+        SetDirectOpcode(0x2A, Instructions.ROLAccumulatorDispatch, CpuInstructions.ROL, CpuAddressingModes.Accumulator);
+        SetDirectOpcode(0x26, Instructions.ROLZeroPageDispatch, CpuInstructions.ROL, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x36, Instructions.ROLZeroPageXDispatch, CpuInstructions.ROL, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0x2E, Instructions.ROLAbsoluteDispatch, CpuInstructions.ROL, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x3E, Instructions.ROLAbsoluteXDispatch, CpuInstructions.ROL, CpuAddressingModes.AbsoluteX);
 
-        SetOpcode(0x6A, Instructions.RORa(AddressingModes.Accumulator), CpuInstructions.ROR, CpuAddressingModes.Accumulator);
-        SetOpcode(0x66, Instructions.ROR(AddressingModes.ZeroPage), CpuInstructions.ROR, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x76, Instructions.ROR(AddressingModes.ZeroPageX), CpuInstructions.ROR, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0x6E, Instructions.ROR(AddressingModes.Absolute), CpuInstructions.ROR, CpuAddressingModes.Absolute);
-        SetOpcode(0x7E, Instructions.ROR(AddressingModes.AbsoluteX), CpuInstructions.ROR, CpuAddressingModes.AbsoluteX);
+        SetDirectOpcode(0x6A, Instructions.RORAccumulatorDispatch, CpuInstructions.ROR, CpuAddressingModes.Accumulator);
+        SetDirectOpcode(0x66, Instructions.RORZeroPageDispatch, CpuInstructions.ROR, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x76, Instructions.RORZeroPageXDispatch, CpuInstructions.ROR, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0x6E, Instructions.RORAbsoluteDispatch, CpuInstructions.ROR, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x7E, Instructions.RORAbsoluteXDispatch, CpuInstructions.ROR, CpuAddressingModes.AbsoluteX);
 
         return new(handlers, metadata, dispatchTargets);
     }
