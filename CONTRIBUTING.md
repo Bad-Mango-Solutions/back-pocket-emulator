@@ -109,8 +109,7 @@ back-pocket-emulator/
 │   ├── BadMango.Emulator.TextEditor/           # Avalonia editor with syntax highlighting
 │   ├── BadMango.Emulator.Debug.Infrastructure/ # REPL, commands, breakpoints, trace
 │   ├── BadMango.Emulator.Debug.UI/             # Avalonia windows for the console debugger
-│   ├── BadMango.Emulator.Debug/                # Console host, assembly name emudbg
-│   └── BadMango.Emulator.Interop/              # Reserved for native and Rust interop
+│   └── BadMango.Emulator.Debug/                # Console host, assembly name emudbg
 ├── tests/
 │   ├── BadMango.Unit.Components/                        # Shared NUnit and Serilog test helpers
 │   ├── BadMango.Emulator.Tests/                         # CPU, machine, and cross-project tests
@@ -158,7 +157,6 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | `BadMango.Emulator.Debug` | `emudbg` console host. Configures Serilog and starts the REPL | Core, Bus, Emulation, Debug.Infrastructure, Debug.UI |
 | `BadMango.Emulator.UI.Abstractions` | Theme, settings, and pop-out contracts shared without taking a dependency on the GUI executable | Configuration, Infrastructure |
 | `BadMango.Emulator.UI` | `bpui` Avalonia application (MVVM, Autofac, generic host). Configures Serilog at startup | Core, Infrastructure, UI.Abstractions |
-| `BadMango.Emulator.Interop` | Leaf project reserved for native and Rust interop | Core |
 | `BadMango.Unit.Components` | Test support only: `Generator` (including `Generator.Log()`), NUnit Serilog sink, performance-test helper. Every test project references it | none |
 | `BadMango.Emulator.Tests` | CPU, disassembler, machine-builder, profile, device, storage, and debug-infrastructure tests. This is the test project for Emulation, Systems, and Core | Unit.Components, Bus, Core, Debug.Infrastructure, Devices, Emulation, Storage, Systems |
 | `BadMango.Emulator.Bus.Tests` | Bus, memory map, and device-registry tests | Unit.Components, Bus |
@@ -173,7 +171,7 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | `BadMango.Emulator.TextEditor.Tests` | Editor and syntax-highlighting tests | Unit.Components, Debug.Infrastructure, TextEditor |
 | `BadMango.Emulator.UI.Tests` | Avalonia headless tests for the GUI host | Unit.Components, Configuration, Infrastructure, UI.Abstractions, UI |
 
-`BadMango.Emulator.Emulation`, `BadMango.Emulator.Systems`, and `BadMango.Emulator.Core` are covered by `BadMango.Emulator.Tests`. `BadMango.Emulator.Interop` is the library project without a paired test project.
+`BadMango.Emulator.Emulation`, `BadMango.Emulator.Systems`, and `BadMango.Emulator.Core` are covered by `BadMango.Emulator.Tests`.
 
 ### How the projects relate
 
@@ -188,7 +186,7 @@ Machine construction runs from the contracts outward:
 
 Solution virtual folders, for orientation in an IDE:
 
-- `/src/emulator/`: Bus, Devices, Interop, Systems
+- `/src/emulator/`: Bus, Devices, Systems
 - `/src/emulator/infrastructure/`: Configuration, Core, Debug.Infrastructure, Emulation, Infrastructure, Rendering, Storage, TextEditor, UI.Abstractions
 - `/src/emulator/ui/`: Debug, Debug.UI, UI
 - `/tests/`: every test project, including `BadMango.Unit.Components`

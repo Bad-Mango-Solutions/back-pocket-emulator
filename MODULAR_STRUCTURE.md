@@ -21,7 +21,6 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 | `BadMango.Emulator.TextEditor` | Avalonia text editor |
 | `BadMango.Emulator.Debug.Infrastructure` | REPL, commands, breakpoints, trace |
 | `BadMango.Emulator.Debug.UI` | Avalonia windows hosted by the console debugger |
-| `BadMango.Emulator.Interop` | Leaf project reserved for native and Rust interop. References `Core` |
 
 ## Hosts
 
@@ -32,7 +31,7 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 
 ## Tests
 
-`tests/BadMango.Unit.Components` is the shared test library. Every `tests/BadMango.Emulator.*.Tests` project references it and the library it covers. `BadMango.Emulator.Tests` is the cross-project suite for the CPU, machine builder, Emulation, Systems, and Core. `BadMango.Emulator.Interop` has no paired test project.
+`tests/BadMango.Unit.Components` is the shared test library. Every `tests/BadMango.Emulator.*.Tests` project references it and the library it covers. `BadMango.Emulator.Tests` is the cross-project suite for the CPU, machine builder, Emulation, Systems, and Core.
 
 ## Naming
 

@@ -104,7 +104,6 @@
   <Folder Name="/src/emulator/">
     <Project Path="src/BadMango.Emulator.Bus/BadMango.Emulator.Bus.csproj" />
     <Project Path="src/BadMango.Emulator.Devices/BadMango.Emulator.Devices.csproj" />
-    <Project Path="src/BadMango.Emulator.Interop/BadMango.Emulator.Interop.csproj" />
     <Project Path="src/BadMango.Emulator.Systems/BadMango.Emulator.Systems.csproj" />
   </Folder>
   <Folder Name="/src/emulator/infrastructure/">
