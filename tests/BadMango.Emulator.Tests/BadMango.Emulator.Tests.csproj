@@ -21,6 +21,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="Vectors\wdc65c02-subset.bin.gz" />
+    <EmbeddedResource Include="Vectors\wdc65c02-subset.bin.gz">
+      <LogicalName>wdc65c02-subset.bin.gz</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageVersion Update="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.403" />
   </ItemGroup>
 

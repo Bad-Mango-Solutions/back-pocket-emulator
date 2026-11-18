@@ -9,6 +9,8 @@ dotnet build BackPocketEmulator.slnx -c Release -warnaserror
 dotnet test BackPocketEmulator.slnx -c Release
 ```
 
+The 65C02 SingleStepTests full category (`SingleStepFull`) is not part of that test command. CI runs it with `tests/BadMango.Emulator.Tests/singlestep-full.runsettings`.
+
 The debug host project is `src/BadMango.Emulator.Debug`. Its assembly name is `emudbg`.
 
 The stdio MCP host is `src/BadMango.Emulator.Debug.Mcp`. Its assembly name is `emudbg-mcp`. stdout is the protocol. Serilog writes to stderr and `logs/debug-mcp-.log` under the application directory. Sandbox roots are the `DebugMcp:SandboxRoots` list of absolute directories. An empty list denies sandboxed file access. Part 3 uses that list for disk paths.

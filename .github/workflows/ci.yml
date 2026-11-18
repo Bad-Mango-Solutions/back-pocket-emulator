@@ -66,6 +66,9 @@ jobs:
     - name: Run tests
       run: dotnet test BackPocketEmulator.slnx --configuration Release --no-restore --verbosity normal --logger trx --results-directory ./test-results --collect "XPlat Code Coverage"
 
+    - name: Run full SingleStepTests 65C02 vectors
+      run: dotnet test tests/BadMango.Emulator.Tests/BadMango.Emulator.Tests.csproj --configuration Release --no-restore --verbosity minimal --settings tests/BadMango.Emulator.Tests/singlestep-full.runsettings
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v7
