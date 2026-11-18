@@ -10,32 +10,35 @@ using BadMango.Emulator.Core.Signaling;
 using BadMango.Emulator.Emulation.Cpu;
 
 using Core.Cpu;
+using Core.Interfaces.Cpu;
 
 using TestHelpers;
 
 /// <summary>
-/// Dispatch tests for the hybrid <see cref="OpcodeTable"/> entry and trampoline.
+/// Dispatch tests for <see cref="OpcodeTable"/> entries.
 /// </summary>
 [TestFixture]
 public class OpcodeTableDispatchTests : CpuTestBase
 {
+    private static readonly OpcodeDispatch UnusedDispatch = static (ICpu cpu, in OpcodeEntry entry) => { };
+
     /// <summary>
-    /// Every opcode slot invokes its own legacy handler through <see cref="OpcodeTable.Execute"/>.
+    /// Every opcode slot invokes its own dispatch delegate through <see cref="OpcodeTable.Execute"/>.
     /// </summary>
     [Test]
-    public void Execute_RoutesEachOpcodeToItsOwnLegacyHandler()
+    public void Execute_RoutesEachOpcodeToItsOwnDispatch()
     {
         var hits = new int[256];
-        var handlers = new OpcodeHandler[256];
+        var dispatch = new OpcodeDispatch[256];
         var metadata = new OpcodeInfo[256];
         for (int opcode = 0; opcode < 256; opcode++)
         {
             int captured = opcode;
-            handlers[opcode] = _ => hits[captured]++;
+            dispatch[opcode] = (ICpu cpu, in OpcodeEntry entry) => hits[captured]++;
             metadata[opcode] = new(CpuInstructions.NOP, CpuAddressingModes.Implied, 0, (byte)opcode);
         }
 
-        var table = new OpcodeTable(handlers, metadata);
+        var table = new OpcodeTable(dispatch, metadata);
         for (int opcode = 0; opcode < 256; opcode++)
         {
             table.Execute((byte)opcode, Cpu);
@@ -46,37 +49,37 @@ public class OpcodeTableDispatchTests : CpuTestBase
             for (int opcode = 0; opcode < 256; opcode++)
             {
                 Assert.That(hits[opcode], Is.EqualTo(1), $"${opcode:X2} ran {hits[opcode]} times");
-                Assert.That(table.GetHandler((byte)opcode), Is.SameAs(handlers[opcode]), $"${opcode:X2} handler");
+                Assert.That(table.GetDispatch((byte)opcode), Is.SameAs(dispatch[opcode]), $"${opcode:X2} dispatch");
                 Assert.That(table.GetMetadata((byte)opcode).BaseCycles, Is.EqualTo((byte)opcode), $"${opcode:X2} metadata");
             }
         });
     }
 
     /// <summary>
-    /// Two tables on one thread, including a handler that re-enters the other table,
-    /// each run only their own legacy handler.
+    /// Two tables on one thread, including a dispatch delegate that re-enters the other table,
+    /// each run only their own dispatch delegate.
     /// </summary>
     [Test]
     public void Execute_InterleavedTablesOnOneThread_DoNotCrossTalk()
     {
         var order = new List<string>();
         var metadata = new OpcodeInfo[256];
-        var handlersA = new OpcodeHandler[256];
-        var handlersB = new OpcodeHandler[256];
+        var dispatchA = FilledDispatch();
+        var dispatchB = FilledDispatch();
         OpcodeTable? tableB = null;
 
-        handlersA[0x10] = cpu =>
+        dispatchA[0x10] = (ICpu cpu, in OpcodeEntry entry) =>
         {
             order.Add("A10-enter");
             tableB!.Execute(0x20, cpu);
             order.Add("A10-exit");
         };
-        handlersA[0x11] = _ => order.Add("A11");
-        handlersB[0x20] = _ => order.Add("B20");
-        handlersB[0x21] = _ => order.Add("B21");
+        dispatchA[0x11] = (ICpu cpu, in OpcodeEntry entry) => order.Add("A11");
+        dispatchB[0x20] = (ICpu cpu, in OpcodeEntry entry) => order.Add("B20");
+        dispatchB[0x21] = (ICpu cpu, in OpcodeEntry entry) => order.Add("B21");
 
-        var tableA = new OpcodeTable(handlersA, metadata);
-        tableB = new OpcodeTable(handlersB, metadata);
+        var tableA = new OpcodeTable(dispatchA, metadata);
+        tableB = new OpcodeTable(dispatchB, metadata);
 
         tableA.Execute(0x10, Cpu);
         tableB.Execute(0x21, Cpu);
@@ -119,33 +122,24 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
-    /// A null legacy handler still throws <see cref="NullReferenceException"/> from <see cref="OpcodeTable.Execute"/>.
+    /// A null dispatch slot is rejected when the table is built.
     /// </summary>
     [Test]
-    public void Execute_NullHandler_ThrowsNullReferenceException()
+    public void Constructor_NullDispatchSlot_ThrowsArgumentException()
     {
-        var handlers = new OpcodeHandler[256];
-        bool neighborRan = false;
-        handlers[0x01] = _ => neighborRan = true;
-        var table = new OpcodeTable(handlers, new OpcodeInfo[256]);
+        var dispatch = FilledDispatch();
+        dispatch[0x00] = null!;
 
-        Assert.Throws<NullReferenceException>(() => table.Execute(0x00, Cpu));
-        table.Execute(0x01, Cpu);
-        Assert.Throws<NullReferenceException>(() => table.Execute(0x00, Cpu));
+        var error = Assert.Throws<ArgumentException>(() => new OpcodeTable(dispatch, new OpcodeInfo[256]));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(neighborRan, Is.True);
-            Assert.That(table.GetHandler(0x00), Is.Null);
-            Assert.That(table.GetHandler(0x01), Is.SameAs(handlers[0x01]));
-        });
+        Assert.That(error!.ParamName, Is.EqualTo("dispatchTargets"));
     }
 
     /// <summary>
-    /// Flags and transfer opcodes use direct dispatch and do not require legacy delegates.
+    /// Flags and transfer opcodes each have a dispatch delegate.
     /// </summary>
     [Test]
-    public void Build_FlagsAndTransferOpcodes_UseDirectDispatchWithNullLegacyHandlers()
+    public void Build_FlagsAndTransferOpcodes_UseDirectDispatch()
     {
         var table = Cpu65C02OpcodeTableBuilder.Build();
 
@@ -157,7 +151,7 @@ public class OpcodeTableDispatchTests : CpuTestBase
 
         foreach (byte opcode in convertedOpcodes)
         {
-            Assert.That(table.GetHandler(opcode), Is.Null, $"${opcode:X2} expected null legacy handler");
+            Assert.That(table.GetDispatch(opcode), Is.Not.Null, $"${opcode:X2} dispatch");
         }
 
         var cpu = CreateCpu();
@@ -182,10 +176,10 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
-    /// Logical, arithmetic, and compare opcodes use direct dispatch and leave the legacy slot null.
+    /// Logical, arithmetic, and compare opcodes each have a dispatch delegate.
     /// </summary>
     [Test]
-    public void Build_LogicalArithmeticAndCompareOpcodes_UseDirectDispatchWithNullLegacyHandlers()
+    public void Build_LogicalArithmeticAndCompareOpcodes_UseDirectDispatch()
     {
         var table = Cpu65C02OpcodeTableBuilder.Build();
         int converted = 0;
@@ -202,9 +196,9 @@ public class OpcodeTableDispatchTests : CpuTestBase
 
                 converted++;
                 Assert.That(
-                    table.GetHandler((byte)opcode),
-                    Is.Null,
-                    $"${opcode:X2} {instruction} legacy handler");
+                    table.GetDispatch((byte)opcode),
+                    Is.Not.Null,
+                    $"${opcode:X2} {instruction} dispatch");
             }
 
             Assert.That(converted, Is.EqualTo(79), "converted opcode count");
@@ -212,10 +206,10 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
-    /// Shift and rotate opcodes use direct dispatch and leave the legacy slot null.
+    /// Shift and rotate opcodes each have a dispatch delegate.
     /// </summary>
     [Test]
-    public void Build_ShiftOpcodes_UseDirectDispatchWithNullLegacyHandlers()
+    public void Build_ShiftOpcodes_UseDirectDispatch()
     {
         var table = Cpu65C02OpcodeTableBuilder.Build();
         int converted = 0;
@@ -232,9 +226,9 @@ public class OpcodeTableDispatchTests : CpuTestBase
 
                 converted++;
                 Assert.That(
-                    table.GetHandler((byte)opcode),
-                    Is.Null,
-                    $"${opcode:X2} {instruction} legacy handler");
+                    table.GetDispatch((byte)opcode),
+                    Is.Not.Null,
+                    $"${opcode:X2} {instruction} dispatch");
             }
 
             Assert.That(converted, Is.EqualTo(20), "converted opcode count");
@@ -242,10 +236,10 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
-    /// Branch, jump, and stack opcodes use direct dispatch and leave the legacy slot null.
+    /// Branch, jump, and stack opcodes each have a dispatch delegate.
     /// </summary>
     [Test]
-    public void Build_BranchJumpAndStackOpcodes_UseDirectDispatchWithNullLegacyHandlers()
+    public void Build_BranchJumpAndStackOpcodes_UseDirectDispatch()
     {
         var table = Cpu65C02OpcodeTableBuilder.Build();
         int converted = 0;
@@ -262,9 +256,9 @@ public class OpcodeTableDispatchTests : CpuTestBase
 
                 converted++;
                 Assert.That(
-                    table.GetHandler((byte)opcode),
-                    Is.Null,
-                    $"${opcode:X2} {instruction} legacy handler");
+                    table.GetDispatch((byte)opcode),
+                    Is.Not.Null,
+                    $"${opcode:X2} {instruction} dispatch");
             }
 
             Assert.That(converted, Is.EqualTo(23), "converted opcode count");
@@ -272,10 +266,10 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
-    /// Bit and remaining 65C02-only opcodes use direct dispatch and leave the legacy slot null.
+    /// Bit and remaining 65C02-only opcodes each have a dispatch delegate.
     /// </summary>
     [Test]
-    public void Build_BitAnd65C02Opcodes_UseDirectDispatchWithNullLegacyHandlers()
+    public void Build_BitAnd65C02Opcodes_UseDirectDispatch()
     {
         var table = Cpu65C02OpcodeTableBuilder.Build();
         int converted = 0;
@@ -292,12 +286,47 @@ public class OpcodeTableDispatchTests : CpuTestBase
 
                 converted++;
                 Assert.That(
-                    table.GetHandler((byte)opcode),
-                    Is.Null,
-                    $"${opcode:X2} {instruction} legacy handler");
+                    table.GetDispatch((byte)opcode),
+                    Is.Not.Null,
+                    $"${opcode:X2} {instruction} dispatch");
             }
 
             Assert.That(converted, Is.EqualTo(38), "converted opcode count");
+        });
+    }
+
+    /// <summary>
+    /// Every 65C02 slot has a dispatch delegate, and none remain on the illegal default.
+    /// Opcode $42 uses its own handler, separate from the other immediate NOPs.
+    /// </summary>
+    [Test]
+    public void Build_EveryOpcode_HasDirectDispatch_AndOpcode42IsSeparate()
+    {
+        var table = Cpu65C02OpcodeTableBuilder.Build();
+        OpcodeDispatch wdm = table.GetDispatch(0x42);
+
+        Assert.Multiple(() =>
+        {
+            for (int opcode = 0; opcode < 256; opcode++)
+            {
+                OpcodeDispatch dispatch = table.GetDispatch((byte)opcode);
+                Assert.That(dispatch, Is.Not.Null, $"${opcode:X2} dispatch");
+                Assert.That(dispatch.Method.Name, Is.Not.EqualTo("DispatchIllegalOpcode"), $"${opcode:X2} illegal default");
+            }
+
+            Assert.That(table.GetDispatch(0x00).Method.Name, Is.EqualTo("DispatchBRKImplied"));
+            Assert.That(table.GetDispatch(0xEA).Method.Name, Is.EqualTo("DispatchNopImplied"));
+            Assert.That(wdm.Method.Name, Is.EqualTo("DispatchWdm"));
+            Assert.That(table.GetMetadata(0x42).Instruction, Is.EqualTo(CpuInstructions.NOP));
+            Assert.That(table.GetMetadata(0x42).AddressingMode, Is.EqualTo(CpuAddressingModes.Immediate));
+            Assert.That(table.GetMetadata(0x42).BaseCycles, Is.EqualTo((byte)2));
+            Assert.That(table.GetMetadata(0x42).OperandLength, Is.EqualTo((byte)1));
+
+            foreach (byte opcode in new byte[] { 0x02, 0x22, 0x62, 0x82, 0xC2, 0xE2, 0xEA })
+            {
+                Assert.That(wdm, Is.Not.SameAs(table.GetDispatch(opcode)), $"$42 shares the ${opcode:X2} delegate");
+                Assert.That(wdm.Method, Is.Not.EqualTo(table.GetDispatch(opcode).Method), $"$42 shares the ${opcode:X2} method");
+            }
         });
     }
 
@@ -385,6 +414,21 @@ public class OpcodeTableDispatchTests : CpuTestBase
             or CpuInstructions.SMB
             or CpuInstructions.BBR
             or CpuInstructions.BBS;
+    }
+
+    /// <summary>
+    /// Fills a 256-slot dispatch array with a delegate that does nothing.
+    /// </summary>
+    /// <returns>An array the table constructor will accept.</returns>
+    private static OpcodeDispatch[] FilledDispatch()
+    {
+        var dispatch = new OpcodeDispatch[256];
+        for (int opcode = 0; opcode < dispatch.Length; opcode++)
+        {
+            dispatch[opcode] = UnusedDispatch;
+        }
+
+        return dispatch;
     }
 
     /// <summary>

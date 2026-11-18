@@ -1154,7 +1154,7 @@ public class NewInstructionsTests : CpuTestBase
 
     /// <summary>
     /// Executes one opcode through the 65C02 opcode table.
-    /// A direct-dispatch opcode runs its cached delegate and has no legacy handler.
+    /// The opcode runs its cached dispatch delegate.
     /// </summary>
     /// <param name="opcode">The opcode byte.</param>
     private void ExecuteOpcode(byte opcode)

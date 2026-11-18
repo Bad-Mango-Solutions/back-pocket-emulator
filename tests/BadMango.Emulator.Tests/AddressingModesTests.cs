@@ -991,7 +991,7 @@ public class AddressingModesTests : CpuTestBase
     /// <param name="legacyHandler">The existing delegate-based handler.</param>
     /// <param name="arrange">The shared setup action to apply before each execution.</param>
     /// <returns>The generic resolver's address, program counter, and cycles.</returns>
-    private ModeExecutionResult AssertStructMatchesLegacy<TMode>(AddressingModeHandler legacyHandler, Action arrange)
+    private ModeExecutionResult AssertStructMatchesLegacy<TMode>(Func<ICpu, Addr> legacyHandler, Action arrange)
         where TMode : struct, IAddressingMode
     {
         var legacyResult = ExecuteMode(cpu => legacyHandler(cpu), arrange);
@@ -1017,7 +1017,7 @@ public class AddressingModesTests : CpuTestBase
     /// <param name="expectedProgramCounter">The program counter both resolvers must leave.</param>
     /// <param name="expectedCycles">The cycle counter both resolvers must leave.</param>
     private void AssertParity<TMode>(
-        AddressingModeHandler legacyHandler,
+        Func<ICpu, Addr> legacyHandler,
         Action arrange,
         Addr expectedAddress,
         Word expectedProgramCounter,

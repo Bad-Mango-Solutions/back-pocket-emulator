@@ -20,46 +20,35 @@ using Interfaces.Cpu;
 /// <para>
 /// Each slot is an <see cref="OpcodeEntry"/>. <see cref="Execute"/> always calls
 /// <see cref="OpcodeEntry.Fn"/> and passes that same entry by readonly reference.
-/// Unconverted opcodes share <see cref="SharedLegacyTrampoline"/>, one static readonly delegate,
-/// which invokes <see cref="OpcodeEntry.Legacy"/>. A direct-dispatch opcode stores its own
-/// cached delegate and leaves <see cref="OpcodeEntry.Legacy"/> null. Nothing is stored in a mutable
-/// static field.
+/// Every slot stores its own <see cref="OpcodeDispatch"/> delegate. Nothing is stored
+/// in a mutable static field.
 /// </para>
 /// </remarks>
 public class OpcodeTable
 {
-    /// <summary>
-    /// The single legacy trampoline instance. Converted opcodes use the same cache
-    /// shape: one static readonly <see cref="OpcodeDispatch"/> per static method.
-    /// </summary>
-    private static readonly OpcodeDispatch SharedLegacyTrampoline = LegacyTrampoline;
-
     private readonly OpcodeEntry[] entries;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OpcodeTable"/> class.
     /// </summary>
-    /// <param name="handlers">The array of opcode handlers. Must be exactly 256 elements.</param>
+    /// <param name="dispatchTargets">The per-opcode dispatch delegates. Must be exactly 256 elements, none null.</param>
     /// <param name="metadata">The per-opcode metadata array. Must be exactly 256 elements.</param>
-    /// <param name="dispatchTargets">
-    /// Optional per-opcode dispatch targets. When null for an opcode slot, the shared legacy trampoline is used.
-    /// </param>
     /// <remarks>
-    /// The metadata array is copied. Later changes to the caller's array do not
+    /// The metadata array is copied into each entry. Later changes to the caller's array do not
     /// affect the table. The table is built once, so the copy is not on the dispatch path.
     /// </remarks>
-    /// <exception cref="ArgumentNullException">Thrown when handlers or metadata is null.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when dispatch targets or metadata is null.</exception>
     /// <exception cref="ArgumentException">
-    /// Thrown when handlers, metadata, or dispatchTargets arrays are not exactly 256 elements.
+    /// Thrown when either array is not exactly 256 elements, or when a dispatch slot is null.
     /// </exception>
-    public OpcodeTable(OpcodeHandler?[] handlers, OpcodeInfo[] metadata, OpcodeDispatch?[]? dispatchTargets = null)
+    public OpcodeTable(OpcodeDispatch[] dispatchTargets, OpcodeInfo[] metadata)
     {
-        ArgumentNullException.ThrowIfNull(handlers);
+        ArgumentNullException.ThrowIfNull(dispatchTargets);
         ArgumentNullException.ThrowIfNull(metadata);
 
-        if (handlers.Length != 256)
+        if (dispatchTargets.Length != 256)
         {
-            throw new ArgumentException("Opcode table must have exactly 256 entries.", nameof(handlers));
+            throw new ArgumentException("Opcode dispatch table must have exactly 256 entries.", nameof(dispatchTargets));
         }
 
         if (metadata.Length != 256)
@@ -67,15 +56,15 @@ public class OpcodeTable
             throw new ArgumentException("Opcode metadata table must have exactly 256 entries.", nameof(metadata));
         }
 
-        if (dispatchTargets is not null && dispatchTargets.Length != 256)
-        {
-            throw new ArgumentException("Opcode dispatch table must have exactly 256 entries.", nameof(dispatchTargets));
-        }
-
         entries = new OpcodeEntry[256];
-        for (int i = 0; i < handlers.Length; i++)
+        for (int i = 0; i < dispatchTargets.Length; i++)
         {
-            entries[i] = new(dispatchTargets?[i] ?? SharedLegacyTrampoline, handlers[i], metadata[i]);
+            if (dispatchTargets[i] is null)
+            {
+                throw new ArgumentException("Every opcode slot requires a dispatch delegate.", nameof(dispatchTargets));
+            }
+
+            entries[i] = new(dispatchTargets[i], metadata[i]);
         }
     }
 
@@ -92,17 +81,14 @@ public class OpcodeTable
     }
 
     /// <summary>
-    /// Gets the handler for the specified opcode.
+    /// Gets the dispatch delegate for the specified opcode.
     /// </summary>
-    /// <param name="opcode">The opcode to get the handler for (0x00-0xFF).</param>
-    /// <returns>
-    /// The legacy handler for the specified opcode, or <see langword="null"/> for a
-    /// direct-dispatch opcode that has no legacy delegate.
-    /// </returns>
+    /// <param name="opcode">The opcode to get the delegate for (0x00-0xFF).</param>
+    /// <returns>The cached dispatch delegate for the specified opcode.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public OpcodeHandler? GetHandler(byte opcode)
+    public OpcodeDispatch GetDispatch(byte opcode)
     {
-        return entries[opcode].Legacy;
+        return entries[opcode].Fn;
     }
 
     /// <summary>
@@ -114,15 +100,5 @@ public class OpcodeTable
     public OpcodeInfo GetMetadata(byte opcode)
     {
         return entries[opcode].Metadata;
-    }
-
-    /// <summary>
-    /// Invokes the legacy delegate on the entry <see cref="Execute"/> passed in.
-    /// </summary>
-    /// <param name="cpu">The CPU instance to pass to the legacy delegate.</param>
-    /// <param name="entry">The opcode entry whose <see cref="OpcodeEntry.Legacy"/> delegate runs.</param>
-    private static void LegacyTrampoline(ICpu cpu, in OpcodeEntry entry)
-    {
-        entry.Legacy!(cpu);
     }
 }

@@ -224,8 +224,7 @@ public class InstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, x: 0x12, y: 0x34, sp: 0xFD, p: FlagZ | FlagN, cycles: 10);
 
         // Act
-        var handler = Instructions.NOP(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xEA);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x1000), "PC should not change");
@@ -638,7 +637,7 @@ public class InstructionsTests : CpuTestBase
 
     /// <summary>
     /// Executes one opcode through the 65C02 opcode table.
-    /// A direct-dispatch opcode runs its cached delegate and has no legacy handler.
+    /// A direct-dispatch opcode runs its cached delegate.
     /// </summary>
     /// <param name="opcode">The opcode byte.</param>
     private void ExecuteOpcode(byte opcode)

@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Tests;
 
 using Core.Cpu;
+using Core.Interfaces.Cpu;
 
 using Emulation.Cpu;
 
@@ -470,11 +471,16 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
     [Test]
     public void OpcodeTable_CopiesMetadataArray()
     {
-        var handlers = new OpcodeHandler[256];
+        var dispatch = new OpcodeDispatch[256];
+        for (int i = 0; i < dispatch.Length; i++)
+        {
+            dispatch[i] = static (ICpu cpu, in OpcodeEntry entry) => { };
+        }
+
         var metadata = new OpcodeInfo[256];
         metadata[0xEA] = new(CpuInstructions.NOP, CpuAddressingModes.Implied, 0, 2);
 
-        var table = new OpcodeTable(handlers, metadata);
+        var table = new OpcodeTable(dispatch, metadata);
         metadata[0xEA] = default;
 
         var info = table.GetMetadata(0xEA);
@@ -486,25 +492,30 @@ public class W65C02OpcodeMetadataTests : CpuTestBase
     }
 
     /// <summary>
-    /// Verifies that opcode dispatch still invokes legacy delegates through the table.
+    /// Verifies that opcode dispatch invokes the delegate stored for that opcode.
     /// </summary>
     [Test]
-    public void OpcodeTable_ExecutesLegacyHandler()
+    public void OpcodeTable_ExecutesDispatchDelegate()
     {
         bool invoked = false;
-        var handlers = new OpcodeHandler[256];
-        handlers[0xEA] = _ => invoked = true;
+        var dispatch = new OpcodeDispatch[256];
+        for (int i = 0; i < dispatch.Length; i++)
+        {
+            dispatch[i] = static (ICpu cpu, in OpcodeEntry entry) => { };
+        }
+
+        dispatch[0xEA] = (ICpu cpu, in OpcodeEntry entry) => invoked = true;
 
         var metadata = new OpcodeInfo[256];
         metadata[0xEA] = new(CpuInstructions.NOP, CpuAddressingModes.Implied, 0, 2);
 
-        var table = new OpcodeTable(handlers, metadata);
+        var table = new OpcodeTable(dispatch, metadata);
         table.Execute(0xEA, Cpu);
 
         Assert.Multiple(() =>
         {
             Assert.That(invoked, Is.True);
-            Assert.That(table.GetHandler(0xEA), Is.SameAs(handlers[0xEA]));
+            Assert.That(table.GetDispatch(0xEA), Is.SameAs(dispatch[0xEA]));
             Assert.That(table.GetMetadata(0xEA).Instruction, Is.EqualTo(CpuInstructions.NOP));
         });
     }

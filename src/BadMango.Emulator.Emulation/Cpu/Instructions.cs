@@ -14,14 +14,14 @@ using Core.Interfaces.Cpu;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Instructions are higher-order functions that take addressing mode delegates
-/// and return opcode handlers. This enables true composition and eliminates
-/// the need for separate methods for each instruction/addressing-mode combination.
+/// Each opcode is a static method cached as one <see cref="OpcodeDispatch"/> delegate.
+/// Addressing modes are <see cref="IAddressingMode"/> structs, so a shared operation
+/// can be specialized per mode without allocating a closure.
 /// </para>
 /// <para>
 /// This partial class is split across multiple files by instruction category:
 /// <list type="bullet">
-/// <item><description><c>Instructions.cs</c> - Load/Store direct dispatch (LDA, LDX, LDY, STA, STX, STY, STZ), NOP, BRK</description></item>
+/// <item><description><c>Instructions.cs</c> - Load/Store direct dispatch (LDA, LDX, LDY, STA, STX, STY, STZ), NOP, BRK, and opcode $42</description></item>
 /// <item><description><c>Instructions.Flags.cs</c> - Flag manipulation (CLC, SEC, CLI, SEI, CLD, SED, CLV)</description></item>
 /// <item><description><c>Instructions.Transfer.cs</c> - Register transfers (TAX, TAY, TXA, TYA, TXS, TSX)</description></item>
 /// <item><description><c>Instructions.Stack.cs</c> - Stack direct dispatch (PHA, PHP, PLA, PLP, PHX, PLX, PHY, PLY)</description></item>
@@ -148,75 +148,165 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for STZ absolute,X.</summary>
     internal static readonly OpcodeDispatch STZAbsoluteXDispatch = DispatchSTZAbsoluteX;
 
-    /// <summary>
-    /// NOP - No Operation instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <param name="instructionCycles">
-    /// Number of cycles the instruction itself consumes in addition to the base
-    /// fetch cycle and any cycles already added by <paramref name="addressingMode"/>.
-    /// Defaults to <c>1</c>, which produces a standard 2-cycle Implied NOP
-    /// (<c>$EA</c>). Pass <c>0</c> for the WDC65C02S 1-byte/1-cycle "unused"
-    /// NOP slots (column 3 of the opcode matrix). Pass a larger value to cover
-    /// the 8-cycle "loud" NOP at <c>$5C</c>.
-    /// </param>
-    /// <returns>An opcode handler that executes NOP.</returns>
-    /// <remarks>
-    /// All NOP variants — including the WDC65C02S unused opcode slots that
-    /// decode as multi-byte/multi-cycle NOPs — share this implementation. Flags
-    /// and registers are never modified. PC advancement and addressing-mode
-    /// cycles are entirely delegated to <paramref name="addressingMode"/>; the
-    /// only state mutation here is the TCU increment.
-    /// </remarks>
-    public static OpcodeHandler NOP(AddressingModeHandler addressingMode, int instructionCycles = 1)
-    {
-        return cpu =>
-        {
-            addressingMode(cpu); // Call addressing mode (usually does nothing for Implied)
+    /// <summary>Cached direct-dispatch delegate for BRK implied.</summary>
+    internal static readonly OpcodeDispatch BRKImpliedDispatch = DispatchBRKImplied;
 
-            if (instructionCycles > 0)
-            {
-                cpu.Registers.TCU += (ulong)instructionCycles;
-            }
-        };
-    }
+    /// <summary>Cached direct-dispatch delegate for NOP implied ($EA).</summary>
+    internal static readonly OpcodeDispatch NOPImpliedDispatch = DispatchNopImplied;
+
+    /// <summary>Cached direct-dispatch delegate for the 2-byte NOP at $02.</summary>
+    internal static readonly OpcodeDispatch NOP02ImmediateDispatch = DispatchNopImmediate;
+
+    /// <summary>Cached direct-dispatch delegate for the 2-byte NOP at $22.</summary>
+    internal static readonly OpcodeDispatch NOP22ImmediateDispatch = DispatchNopImmediate;
 
     /// <summary>
-    /// BRK - Force Break instruction. Causes a software interrupt.
+    /// Cached direct-dispatch delegate for opcode $42.
+    /// On the 65C02 this is a 2-byte, 2-cycle NOP. It is not a shared unused-NOP delegate:
+    /// the 65816 decodes $42 as WDM, and the 65832 plan uses it as an extended-opcode prefix.
     /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes BRK.</returns>
-    public static OpcodeHandler BRK(AddressingModeHandler addressingMode)
-    {
-        return cpu =>
-        {
-            byte opCycles = 0;
-            addressingMode(cpu);
+    internal static readonly OpcodeDispatch WdmDispatch = DispatchWdm;
 
-            // BRK causes a software interrupt
-            // Total 7 cycles: 1 (opcode fetch) + 1 (PC increment) + 2 (push PC) + 1 (push P) + 2 (read IRQ vector)
-            cpu.Registers.PC.Advance();
-            opCycles++; // PC increment cycle
+    /// <summary>Cached direct-dispatch delegate for the 2-byte NOP at $62.</summary>
+    internal static readonly OpcodeDispatch NOP62ImmediateDispatch = DispatchNopImmediate;
 
-            Word pc = cpu.Registers.PC.GetWord();
+    /// <summary>Cached direct-dispatch delegate for the 2-byte NOP at $82.</summary>
+    internal static readonly OpcodeDispatch NOP82ImmediateDispatch = DispatchNopImmediate;
 
-            cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), pc.HighByte());
-            opCycles++; // Push PC high byte
-            cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), pc.LowByte());
-            opCycles++; // Push PC low byte
-            cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), (byte)(cpu.Registers.P | ProcessorStatusFlags.B | ProcessorStatusFlags.R));
-            opCycles++; // Push P
+    /// <summary>Cached direct-dispatch delegate for the 2-byte NOP at $C2.</summary>
+    internal static readonly OpcodeDispatch NOPC2ImmediateDispatch = DispatchNopImmediate;
 
-            cpu.Registers.P |= ProcessorStatusFlags.I;
+    /// <summary>Cached direct-dispatch delegate for the 2-byte NOP at $E2.</summary>
+    internal static readonly OpcodeDispatch NOPE2ImmediateDispatch = DispatchNopImmediate;
 
-            // 65C02: BRK clears the D flag after pushing status (NMOS 6502 does not)
-            cpu.Registers.P &= ~ProcessorStatusFlags.D;
-            cpu.Registers.PC.SetWord(cpu.Read16(Cpu65C02Constants.IrqVector));
-            opCycles += 2; // Read IRQ vector (2 bytes)
+    /// <summary>Cached direct-dispatch delegate for the zero-page NOP at $44.</summary>
+    internal static readonly OpcodeDispatch NOP44ZeroPageDispatch = DispatchNopZeroPage;
 
-            cpu.Registers.TCU += opCycles;
-        };
-    }
+    /// <summary>Cached direct-dispatch delegate for the zero-page,X NOP at $54.</summary>
+    internal static readonly OpcodeDispatch NOP54ZeroPageXDispatch = DispatchNopZeroPageX;
+
+    /// <summary>Cached direct-dispatch delegate for the zero-page,X NOP at $D4.</summary>
+    internal static readonly OpcodeDispatch NOPD4ZeroPageXDispatch = DispatchNopZeroPageX;
+
+    /// <summary>Cached direct-dispatch delegate for the zero-page,X NOP at $F4.</summary>
+    internal static readonly OpcodeDispatch NOPF4ZeroPageXDispatch = DispatchNopZeroPageX;
+
+    /// <summary>Cached direct-dispatch delegate for the 8-cycle absolute NOP at $5C.</summary>
+    internal static readonly OpcodeDispatch NOP5CAbsoluteDispatch = DispatchNop5C;
+
+    /// <summary>Cached direct-dispatch delegate for the absolute NOP at $DC.</summary>
+    internal static readonly OpcodeDispatch NOPDCAbsoluteDispatch = DispatchNopAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for the absolute NOP at $FC.</summary>
+    internal static readonly OpcodeDispatch NOPFCAbsoluteDispatch = DispatchNopAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $03.</summary>
+    internal static readonly OpcodeDispatch NOP03ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $13.</summary>
+    internal static readonly OpcodeDispatch NOP13ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $23.</summary>
+    internal static readonly OpcodeDispatch NOP23ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $33.</summary>
+    internal static readonly OpcodeDispatch NOP33ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $43.</summary>
+    internal static readonly OpcodeDispatch NOP43ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $53.</summary>
+    internal static readonly OpcodeDispatch NOP53ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $63.</summary>
+    internal static readonly OpcodeDispatch NOP63ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $73.</summary>
+    internal static readonly OpcodeDispatch NOP73ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $83.</summary>
+    internal static readonly OpcodeDispatch NOP83ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $93.</summary>
+    internal static readonly OpcodeDispatch NOP93ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $A3.</summary>
+    internal static readonly OpcodeDispatch NOPA3ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $B3.</summary>
+    internal static readonly OpcodeDispatch NOPB3ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $C3.</summary>
+    internal static readonly OpcodeDispatch NOPC3ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $D3.</summary>
+    internal static readonly OpcodeDispatch NOPD3ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $E3.</summary>
+    internal static readonly OpcodeDispatch NOPE3ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $F3.</summary>
+    internal static readonly OpcodeDispatch NOPF3ImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $0B.</summary>
+    internal static readonly OpcodeDispatch NOP0BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $1B.</summary>
+    internal static readonly OpcodeDispatch NOP1BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $2B.</summary>
+    internal static readonly OpcodeDispatch NOP2BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $3B.</summary>
+    internal static readonly OpcodeDispatch NOP3BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $4B.</summary>
+    internal static readonly OpcodeDispatch NOP4BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $5B.</summary>
+    internal static readonly OpcodeDispatch NOP5BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $6B.</summary>
+    internal static readonly OpcodeDispatch NOP6BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $7B.</summary>
+    internal static readonly OpcodeDispatch NOP7BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $8B.</summary>
+    internal static readonly OpcodeDispatch NOP8BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $9B.</summary>
+    internal static readonly OpcodeDispatch NOP9BImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $AB.</summary>
+    internal static readonly OpcodeDispatch NOPABImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $BB.</summary>
+    internal static readonly OpcodeDispatch NOPBBImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $EB.</summary>
+    internal static readonly OpcodeDispatch NOPEBImpliedDispatch = DispatchNopOneByte;
+
+    /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $FB.</summary>
+    internal static readonly OpcodeDispatch NOPFBImpliedDispatch = DispatchNopOneByte;
+
+    private static void DispatchBRKImplied(ICpu cpu, in OpcodeEntry entry) => OpBRK<ImpliedMode>(cpu);
+
+    private static void DispatchNopImplied(ICpu cpu, in OpcodeEntry entry) => OpNop<ImpliedMode>(cpu, 1);
+
+    private static void DispatchNopImmediate(ICpu cpu, in OpcodeEntry entry) => OpNop<ImmediateMode>(cpu, 1);
+
+    private static void DispatchWdm(ICpu cpu, in OpcodeEntry entry) => OpWdm(cpu);
+
+    private static void DispatchNopZeroPage(ICpu cpu, in OpcodeEntry entry) => OpNop<ZeroPageMode>(cpu, 1);
+
+    private static void DispatchNopZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpNop<ZeroPageXMode>(cpu, 1);
+
+    private static void DispatchNopAbsolute(ICpu cpu, in OpcodeEntry entry) => OpNop<AbsoluteMode>(cpu, 1);
+
+    private static void DispatchNop5C(ICpu cpu, in OpcodeEntry entry) => OpNop<AbsoluteMode>(cpu, 5);
+
+    private static void DispatchNopOneByte(ICpu cpu, in OpcodeEntry entry) => OpNop<ImpliedMode>(cpu, 0);
 
     private static void DispatchLDAImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDA<ImmediateMode>(cpu);
 
@@ -404,5 +494,72 @@ public static partial class Instructions
         cpu.Write8(address, 0x00);
 
         cpu.Registers.TCU += 1; // Memory write
+    }
+
+    /// <summary>
+    /// NOP. Flags and registers stay unchanged. <paramref name="instructionCycles"/> is
+    /// added on top of the cycles <typeparamref name="TMode"/> already charged.
+    /// Zero leaves only those addressing-mode cycles, which is the 1-byte unused NOP.
+    /// </summary>
+    /// <typeparam name="TMode">The addressing mode that advances PC and charges its own cycles.</typeparam>
+    /// <param name="cpu">The CPU instance.</param>
+    /// <param name="instructionCycles">Extra cycles after the addressing mode. <c>$EA</c> uses 1. <c>$5C</c> uses 5.</param>
+    private static void OpNop<TMode>(ICpu cpu, int instructionCycles)
+        where TMode : struct, IAddressingMode
+    {
+        TMode.Resolve(cpu);
+
+        if (instructionCycles > 0)
+        {
+            cpu.Registers.TCU += (ulong)instructionCycles;
+        }
+    }
+
+    /// <summary>
+    /// Opcode $42 on the 65C02: a 2-byte, 2-cycle NOP.
+    /// Immediate addressing consumes the operand. The extra cycle is this instruction's
+    /// cycle, on top of the opcode fetch performed by the CPU. This method is not a
+    /// shared NOP so a 65816 or 65832 table can replace <see cref="WdmDispatch"/> alone.
+    /// </summary>
+    /// <param name="cpu">The CPU instance.</param>
+    private static void OpWdm(ICpu cpu)
+    {
+        ImmediateMode.Resolve(cpu);
+        cpu.Registers.TCU += 1;
+    }
+
+    /// <summary>
+    /// BRK. Pushes PC+1 and status with B and the reserved bit set, sets I, clears D, and loads the IRQ vector.
+    /// </summary>
+    /// <typeparam name="TMode">The addressing mode. The 65C02 form is implied.</typeparam>
+    /// <param name="cpu">The CPU instance.</param>
+    private static void OpBRK<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
+    {
+        byte opCycles = 0;
+        TMode.Resolve(cpu);
+
+        // BRK causes a software interrupt.
+        // Total 7 cycles: 1 (opcode fetch) + 1 (PC increment) + 2 (push PC) + 1 (push P) + 2 (read IRQ vector).
+        cpu.Registers.PC.Advance();
+        opCycles++; // PC increment cycle
+
+        Word pc = cpu.Registers.PC.GetWord();
+
+        cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), pc.HighByte());
+        opCycles++; // Push PC high byte
+        cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), pc.LowByte());
+        opCycles++; // Push PC low byte
+        cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), (byte)(cpu.Registers.P | ProcessorStatusFlags.B | ProcessorStatusFlags.R));
+        opCycles++; // Push P
+
+        cpu.Registers.P |= ProcessorStatusFlags.I;
+
+        // 65C02: BRK clears the D flag after pushing status (NMOS 6502 does not).
+        cpu.Registers.P &= ~ProcessorStatusFlags.D;
+        cpu.Registers.PC.SetWord(cpu.Read16(Cpu65C02Constants.IrqVector));
+        opCycles += 2; // Read IRQ vector (2 bytes)
+
+        cpu.Registers.TCU += opCycles;
     }
 }
