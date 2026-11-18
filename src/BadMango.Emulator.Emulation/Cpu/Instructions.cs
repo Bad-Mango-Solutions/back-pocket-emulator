@@ -24,9 +24,9 @@ using Core.Interfaces.Cpu;
 /// <item><description><c>Instructions.cs</c> - Load/Store direct dispatch (LDA, LDX, LDY, STA, STX, STY, STZ), NOP, BRK</description></item>
 /// <item><description><c>Instructions.Flags.cs</c> - Flag manipulation (CLC, SEC, CLI, SEI, CLD, SED, CLV)</description></item>
 /// <item><description><c>Instructions.Transfer.cs</c> - Register transfers (TAX, TAY, TXA, TYA, TXS, TSX)</description></item>
-/// <item><description><c>Instructions.Stack.cs</c> - Stack operations (PHA, PHP, PLA, PLP, PHX, PLX, PHY, PLY)</description></item>
-/// <item><description><c>Instructions.Jump.cs</c> - Jumps and subroutines (JMP, JSR, RTS, RTI)</description></item>
-/// <item><description><c>Instructions.Branch.cs</c> - Branches (BCC, BCS, BEQ, BNE, BMI, BPL, BVC, BVS, BRA)</description></item>
+/// <item><description><c>Instructions.Stack.cs</c> - Stack direct dispatch (PHA, PHP, PLA, PLP, PHX, PLX, PHY, PLY)</description></item>
+/// <item><description><c>Instructions.Jump.cs</c> - Jump direct dispatch (JMP, JSR, RTS, RTI)</description></item>
+/// <item><description><c>Instructions.Branch.cs</c> - Branch direct dispatch (BCC, BCS, BEQ, BNE, BMI, BPL, BVC, BVS, BRA)</description></item>
 /// <item><description><c>Instructions.Arithmetic.cs</c> - Arithmetic direct dispatch (ADC, SBC, INC, DEC, INX, INY, DEX, DEY, INA, DEA)</description></item>
 /// <item><description><c>Instructions.Logical.cs</c> - Logical direct dispatch (AND, ORA, EOR, BIT)</description></item>
 /// <item><description><c>Instructions.Shift.cs</c> - Shift direct dispatch (ASL, LSR, ROL, ROR)</description></item>

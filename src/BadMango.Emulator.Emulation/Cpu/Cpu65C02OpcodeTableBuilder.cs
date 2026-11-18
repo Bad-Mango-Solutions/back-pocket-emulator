@@ -256,14 +256,14 @@ public static class Cpu65C02OpcodeTableBuilder
         SetDirectOpcode(0xBA, Instructions.TSXImpliedDispatch, CpuInstructions.TSX, CpuAddressingModes.Implied); // Transfer SP to X
 
         // Stack Operations
-        SetOpcode(0x48, Instructions.PHA(AddressingModes.Implied), CpuInstructions.PHA, CpuAddressingModes.Implied); // Push Accumulator
-        SetOpcode(0x08, Instructions.PHP(AddressingModes.Implied), CpuInstructions.PHP, CpuAddressingModes.Implied); // Push Processor Status
-        SetOpcode(0x68, Instructions.PLA(AddressingModes.Implied), CpuInstructions.PLA, CpuAddressingModes.Implied); // Pull Accumulator
-        SetOpcode(0x28, Instructions.PLP(AddressingModes.Implied), CpuInstructions.PLP, CpuAddressingModes.Implied); // Pull Processor Status
-        SetOpcode(0xDA, Instructions.PHX(AddressingModes.Implied), CpuInstructions.PHX, CpuAddressingModes.Implied); // Push X (65C02)
-        SetOpcode(0xFA, Instructions.PLX(AddressingModes.Implied), CpuInstructions.PLX, CpuAddressingModes.Implied); // Pull X (65C02)
-        SetOpcode(0x5A, Instructions.PHY(AddressingModes.Implied), CpuInstructions.PHY, CpuAddressingModes.Implied); // Push Y (65C02)
-        SetOpcode(0x7A, Instructions.PLY(AddressingModes.Implied), CpuInstructions.PLY, CpuAddressingModes.Implied); // Pull Y (65C02)
+        SetDirectOpcode(0x48, Instructions.PHAImpliedDispatch, CpuInstructions.PHA, CpuAddressingModes.Implied); // Push Accumulator
+        SetDirectOpcode(0x08, Instructions.PHPImpliedDispatch, CpuInstructions.PHP, CpuAddressingModes.Implied); // Push Processor Status
+        SetDirectOpcode(0x68, Instructions.PLAImpliedDispatch, CpuInstructions.PLA, CpuAddressingModes.Implied); // Pull Accumulator
+        SetDirectOpcode(0x28, Instructions.PLPImpliedDispatch, CpuInstructions.PLP, CpuAddressingModes.Implied); // Pull Processor Status
+        SetDirectOpcode(0xDA, Instructions.PHXImpliedDispatch, CpuInstructions.PHX, CpuAddressingModes.Implied); // Push X (65C02)
+        SetDirectOpcode(0xFA, Instructions.PLXImpliedDispatch, CpuInstructions.PLX, CpuAddressingModes.Implied); // Pull X (65C02)
+        SetDirectOpcode(0x5A, Instructions.PHYImpliedDispatch, CpuInstructions.PHY, CpuAddressingModes.Implied); // Push Y (65C02)
+        SetDirectOpcode(0x7A, Instructions.PLYImpliedDispatch, CpuInstructions.PLY, CpuAddressingModes.Implied); // Pull Y (65C02)
 
         // 65C02-Specific Instructions
         SetDirectOpcode(0x64, Instructions.STZZeroPageDispatch, CpuInstructions.STZ, CpuAddressingModes.ZeroPage);
@@ -319,12 +319,12 @@ public static class Cpu65C02OpcodeTableBuilder
         SetOpcode(0xFF, Instructions.BBS(AddressingModes.ZeroPageRelative, 7), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
 
         // Jump and Subroutine Operations
-        SetOpcode(0x4C, Instructions.JMP(AddressingModes.Absolute), CpuInstructions.JMP, CpuAddressingModes.Absolute); // Jump Absolute
-        SetOpcode(0x6C, Instructions.JMP(AddressingModes.Indirect), CpuInstructions.JMP, CpuAddressingModes.Indirect); // Jump Indirect
-        SetOpcode(0x7C, Instructions.JMP(AddressingModes.AbsoluteIndirectX), CpuInstructions.JMP, CpuAddressingModes.AbsoluteIndirectX); // Jump Indirect X (65C02)
-        SetOpcode(0x20, Instructions.JSR(AddressingModes.Absolute), CpuInstructions.JSR, CpuAddressingModes.Absolute); // Jump to Subroutine
-        SetOpcode(0x60, Instructions.RTS(AddressingModes.Implied), CpuInstructions.RTS, CpuAddressingModes.Implied); // Return from Subroutine
-        SetOpcode(0x40, Instructions.RTI(AddressingModes.Implied), CpuInstructions.RTI, CpuAddressingModes.Implied); // Return from Interrupt
+        SetDirectOpcode(0x4C, Instructions.JMPAbsoluteDispatch, CpuInstructions.JMP, CpuAddressingModes.Absolute); // Jump Absolute
+        SetDirectOpcode(0x6C, Instructions.JMPIndirectDispatch, CpuInstructions.JMP, CpuAddressingModes.Indirect); // Jump Indirect
+        SetDirectOpcode(0x7C, Instructions.JMPAbsoluteIndirectXDispatch, CpuInstructions.JMP, CpuAddressingModes.AbsoluteIndirectX); // Jump Indirect X (65C02)
+        SetDirectOpcode(0x20, Instructions.JSRAbsoluteDispatch, CpuInstructions.JSR, CpuAddressingModes.Absolute); // Jump to Subroutine
+        SetDirectOpcode(0x60, Instructions.RTSImpliedDispatch, CpuInstructions.RTS, CpuAddressingModes.Implied); // Return from Subroutine
+        SetDirectOpcode(0x40, Instructions.RTIImpliedDispatch, CpuInstructions.RTI, CpuAddressingModes.Implied); // Return from Interrupt
 
         // Comparison Operations
         SetDirectOpcode(0xC9, Instructions.CMPImmediateDispatch, CpuInstructions.CMP, CpuAddressingModes.Immediate);
@@ -346,15 +346,15 @@ public static class Cpu65C02OpcodeTableBuilder
         SetDirectOpcode(0xCC, Instructions.CPYAbsoluteDispatch, CpuInstructions.CPY, CpuAddressingModes.Absolute);
 
         // Branch Operations
-        SetOpcode(0x90, Instructions.BCC(AddressingModes.Relative), CpuInstructions.BCC, CpuAddressingModes.Relative); // Branch if Carry Clear
-        SetOpcode(0xB0, Instructions.BCS(AddressingModes.Relative), CpuInstructions.BCS, CpuAddressingModes.Relative); // Branch if Carry Set
-        SetOpcode(0xF0, Instructions.BEQ(AddressingModes.Relative), CpuInstructions.BEQ, CpuAddressingModes.Relative); // Branch if Equal
-        SetOpcode(0xD0, Instructions.BNE(AddressingModes.Relative), CpuInstructions.BNE, CpuAddressingModes.Relative); // Branch if Not Equal
-        SetOpcode(0x30, Instructions.BMI(AddressingModes.Relative), CpuInstructions.BMI, CpuAddressingModes.Relative); // Branch if Minus
-        SetOpcode(0x10, Instructions.BPL(AddressingModes.Relative), CpuInstructions.BPL, CpuAddressingModes.Relative); // Branch if Plus
-        SetOpcode(0x50, Instructions.BVC(AddressingModes.Relative), CpuInstructions.BVC, CpuAddressingModes.Relative); // Branch if Overflow Clear
-        SetOpcode(0x70, Instructions.BVS(AddressingModes.Relative), CpuInstructions.BVS, CpuAddressingModes.Relative); // Branch if Overflow Set
-        SetOpcode(0x80, Instructions.BRA(AddressingModes.Relative), CpuInstructions.BRA, CpuAddressingModes.Relative); // Branch Always (65C02)
+        SetDirectOpcode(0x90, Instructions.BCCRelativeDispatch, CpuInstructions.BCC, CpuAddressingModes.Relative); // Branch if Carry Clear
+        SetDirectOpcode(0xB0, Instructions.BCSRelativeDispatch, CpuInstructions.BCS, CpuAddressingModes.Relative); // Branch if Carry Set
+        SetDirectOpcode(0xF0, Instructions.BEQRelativeDispatch, CpuInstructions.BEQ, CpuAddressingModes.Relative); // Branch if Equal
+        SetDirectOpcode(0xD0, Instructions.BNERelativeDispatch, CpuInstructions.BNE, CpuAddressingModes.Relative); // Branch if Not Equal
+        SetDirectOpcode(0x30, Instructions.BMIRelativeDispatch, CpuInstructions.BMI, CpuAddressingModes.Relative); // Branch if Minus
+        SetDirectOpcode(0x10, Instructions.BPLRelativeDispatch, CpuInstructions.BPL, CpuAddressingModes.Relative); // Branch if Plus
+        SetDirectOpcode(0x50, Instructions.BVCRelativeDispatch, CpuInstructions.BVC, CpuAddressingModes.Relative); // Branch if Overflow Clear
+        SetDirectOpcode(0x70, Instructions.BVSRelativeDispatch, CpuInstructions.BVS, CpuAddressingModes.Relative); // Branch if Overflow Set
+        SetDirectOpcode(0x80, Instructions.BRARelativeDispatch, CpuInstructions.BRA, CpuAddressingModes.Relative); // Branch Always (65C02)
 
         // Arithmetic Operations
         SetDirectOpcode(0x69, Instructions.ADCImmediateDispatch, CpuInstructions.ADC, CpuAddressingModes.Immediate);

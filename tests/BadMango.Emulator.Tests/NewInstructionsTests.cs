@@ -149,8 +149,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x42, sp: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.PHA(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x48);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xFE));
@@ -168,8 +167,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x00, sp: 0xFE, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.PLA(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x68);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xFF));
@@ -186,8 +184,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x00, sp: 0xFF, p: FlagC | FlagZ, cycles: 10);
 
         // Act
-        var handler = Instructions.PHP(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x08);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xFE));
@@ -205,8 +202,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x00, sp: 0xFE, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.PLP(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x28);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xFF));
@@ -303,8 +299,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.BCC(AddressingModes.Relative);
-        handler(Cpu);
+        ExecuteOpcode(0x90);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x1011)); // 0x1001 + 0x10
@@ -322,8 +317,7 @@ public class NewInstructionsTests : CpuTestBase
         ushort originalPC = Cpu.Registers.PC.GetWord();
 
         // Act
-        var handler = Instructions.BCC(AddressingModes.Relative);
-        handler(Cpu);
+        ExecuteOpcode(0x90);
 
         // Assert - PC should only advance by the addressing mode (1 byte for relative)
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo((ushort)(originalPC + 1)));
@@ -340,8 +334,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: FlagZ, cycles: 10);
 
         // Act
-        var handler = Instructions.BEQ(AddressingModes.Relative);
-        handler(Cpu);
+        ExecuteOpcode(0xF0);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x1006)); // 0x1001 + 0x05
@@ -358,8 +351,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.BNE(AddressingModes.Relative);
-        handler(Cpu);
+        ExecuteOpcode(0xD0);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x0FFF)); // 0x1001 + (-2)
@@ -376,8 +368,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: (ProcessorStatusFlags)0xFF, cycles: 10); // All flags set
 
         // Act
-        var handler = Instructions.BRA(AddressingModes.Relative);
-        handler(Cpu);
+        ExecuteOpcode(0x80);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x1021)); // 0x1001 + 0x20
@@ -394,8 +385,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.BRA(AddressingModes.Relative);
-        handler(Cpu);
+        ExecuteOpcode(0x80);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x0FF1)); // 0x1001 + (-16)
@@ -725,8 +715,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.JMP(AddressingModes.Absolute);
-        handler(Cpu);
+        ExecuteOpcode(0x4C);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x2000));
@@ -743,8 +732,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, sp: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.JSR(AddressingModes.Absolute);
-        handler(Cpu);
+        ExecuteOpcode(0x20);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x2000));
@@ -765,8 +753,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, sp: 0xFD, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.RTS(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x60);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x2001)); // Return address + 1
@@ -786,8 +773,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, sp: 0xFC, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.RTI(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x40);
 
         // Assert
         Assert.That(Cpu.Registers.PC.GetWord(), Is.EqualTo(0x2000));
@@ -865,8 +851,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0x42, sp: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.PHX(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xDA);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xFE));
@@ -884,8 +869,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, x: 0x00, sp: 0xFE, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.PLX(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xFA);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xFF));
@@ -902,8 +886,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, y: 0x55, sp: 0xFF, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.PHY(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x5A);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xFE));
@@ -921,8 +904,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, y: 0x00, sp: 0xFE, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.PLY(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0x7A);
 
         // Assert
         Assert.That(Cpu.Registers.SP.GetByte(), Is.EqualTo(0xFF));

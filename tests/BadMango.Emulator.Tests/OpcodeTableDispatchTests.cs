@@ -242,6 +242,36 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
+    /// Branch, jump, and stack opcodes use direct dispatch and leave the legacy slot null.
+    /// </summary>
+    [Test]
+    public void Build_BranchJumpAndStackOpcodes_UseDirectDispatchWithNullLegacyHandlers()
+    {
+        var table = Cpu65C02OpcodeTableBuilder.Build();
+        int converted = 0;
+
+        Assert.Multiple(() =>
+        {
+            for (int opcode = 0; opcode < 256; opcode++)
+            {
+                CpuInstructions instruction = table.GetMetadata((byte)opcode).Instruction;
+                if (!IsBranchJumpOrStack(instruction))
+                {
+                    continue;
+                }
+
+                converted++;
+                Assert.That(
+                    table.GetHandler((byte)opcode),
+                    Is.Null,
+                    $"${opcode:X2} {instruction} legacy handler");
+            }
+
+            Assert.That(converted, Is.EqualTo(23), "converted opcode count");
+        });
+    }
+
+    /// <summary>
     /// Reports whether an instruction belongs to the logical, arithmetic, or compare families.
     /// </summary>
     /// <param name="instruction">The opcode mnemonic.</param>
@@ -278,6 +308,36 @@ public class OpcodeTableDispatchTests : CpuTestBase
             or CpuInstructions.LSR
             or CpuInstructions.ROL
             or CpuInstructions.ROR;
+    }
+
+    /// <summary>
+    /// Reports whether an instruction belongs to the branch, jump, or stack families.
+    /// </summary>
+    /// <param name="instruction">The opcode mnemonic.</param>
+    /// <returns><see langword="true"/> when the mnemonic is a relative branch, JMP, JSR, RTS, RTI, or a push or pull.</returns>
+    private static bool IsBranchJumpOrStack(CpuInstructions instruction)
+    {
+        return instruction is CpuInstructions.BCC
+            or CpuInstructions.BCS
+            or CpuInstructions.BEQ
+            or CpuInstructions.BNE
+            or CpuInstructions.BMI
+            or CpuInstructions.BPL
+            or CpuInstructions.BVC
+            or CpuInstructions.BVS
+            or CpuInstructions.BRA
+            or CpuInstructions.JMP
+            or CpuInstructions.JSR
+            or CpuInstructions.RTS
+            or CpuInstructions.RTI
+            or CpuInstructions.PHA
+            or CpuInstructions.PHP
+            or CpuInstructions.PLA
+            or CpuInstructions.PLP
+            or CpuInstructions.PHX
+            or CpuInstructions.PLX
+            or CpuInstructions.PHY
+            or CpuInstructions.PLY;
     }
 
     /// <summary>

@@ -7,98 +7,99 @@ namespace BadMango.Emulator.Emulation.Cpu;
 
 using Core;
 using Core.Cpu;
+using Core.Interfaces.Cpu;
 
 /// <content>
 /// Jump and subroutine instructions (JMP, JSR, RTS, RTI).
 /// </content>
 public static partial class Instructions
 {
-    /// <summary>
-    /// JMP - Jump instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (Absolute or Indirect).</param>
-    /// <returns>An opcode handler that executes JMP.</returns>
-    public static OpcodeHandler JMP(AddressingModeHandler addressingMode)
+    /// <summary>Cached direct-dispatch delegate for JMP absolute.</summary>
+    internal static readonly OpcodeDispatch JMPAbsoluteDispatch = DispatchJMPAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for JMP indirect.</summary>
+    internal static readonly OpcodeDispatch JMPIndirectDispatch = DispatchJMPIndirect;
+
+    /// <summary>Cached direct-dispatch delegate for JMP absolute indirect,X.</summary>
+    internal static readonly OpcodeDispatch JMPAbsoluteIndirectXDispatch = DispatchJMPAbsoluteIndirectX;
+
+    /// <summary>Cached direct-dispatch delegate for JSR absolute.</summary>
+    internal static readonly OpcodeDispatch JSRAbsoluteDispatch = DispatchJSRAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for RTS implied.</summary>
+    internal static readonly OpcodeDispatch RTSImpliedDispatch = DispatchRTSImplied;
+
+    /// <summary>Cached direct-dispatch delegate for RTI implied.</summary>
+    internal static readonly OpcodeDispatch RTIImpliedDispatch = DispatchRTIImplied;
+
+    private static void DispatchJMPAbsolute(ICpu cpu, in OpcodeEntry entry) => OpJMP<AbsoluteMode>(cpu);
+
+    private static void DispatchJMPIndirect(ICpu cpu, in OpcodeEntry entry) => OpJMP<IndirectMode>(cpu);
+
+    private static void DispatchJMPAbsoluteIndirectX(ICpu cpu, in OpcodeEntry entry) => OpJMP<AbsoluteIndirectXMode>(cpu);
+
+    private static void DispatchJSRAbsolute(ICpu cpu, in OpcodeEntry entry) => OpJSR<AbsoluteMode>(cpu);
+
+    private static void DispatchRTSImplied(ICpu cpu, in OpcodeEntry entry) => OpRTS(cpu);
+
+    private static void DispatchRTIImplied(ICpu cpu, in OpcodeEntry entry) => OpRTI(cpu);
+
+    private static void OpJMP<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
-        {
-            Addr targetAddr = addressingMode(cpu);
-            cpu.Registers.PC.SetWord((Word)targetAddr);
-        };
+        Addr targetAddr = TMode.Resolve(cpu);
+        cpu.Registers.PC.SetWord((Word)targetAddr);
     }
 
-    /// <summary>
-    /// JSR - Jump to Subroutine instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Absolute).</param>
-    /// <returns>An opcode handler that executes JSR.</returns>
-    public static OpcodeHandler JSR(AddressingModeHandler addressingMode)
+    private static void OpJSR<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
-        {
-            byte opCycles = 0;
-            Addr targetAddr = addressingMode(cpu);
+        byte opCycles = 0;
+        Addr targetAddr = TMode.Resolve(cpu);
 
-            // JSR pushes PC - 1 to the stack (6502 behavior)
-            // This is because RTS increments the pulled address before setting PC
-            Word returnAddr = (Word)(cpu.Registers.PC.GetWord() - 1);
+        // JSR pushes PC - 1 to the stack (6502 behavior)
+        // This is because RTS increments the pulled address before setting PC
+        Word returnAddr = (Word)(cpu.Registers.PC.GetWord() - 1);
 
-            cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), returnAddr.HighByte());
-            opCycles++; // Push high byte
-            cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), returnAddr.LowByte());
-            opCycles++; // Push low byte
-            cpu.Registers.PC.SetAddr(targetAddr);
-            opCycles++; // Internal operation
+        cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), returnAddr.HighByte());
+        opCycles++; // Push high byte
+        cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), returnAddr.LowByte());
+        opCycles++; // Push low byte
+        cpu.Registers.PC.SetAddr(targetAddr);
+        opCycles++; // Internal operation
 
-            cpu.Registers.TCU += opCycles;
-        };
+        cpu.Registers.TCU += opCycles;
     }
 
-    /// <summary>
-    /// RTS - Return from Subroutine instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes RTS.</returns>
-    public static OpcodeHandler RTS(AddressingModeHandler addressingMode)
+    private static void OpRTS(ICpu cpu)
     {
-        return cpu =>
-        {
-            byte opCycles = 0;
-            addressingMode(cpu);
+        byte opCycles = 0;
+        ImpliedMode.Resolve(cpu);
 
-            byte lo = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
-            opCycles++; // Pull low byte
-            byte hi = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
-            opCycles++; // Pull high byte
-            cpu.Registers.PC.SetWord((Word)(((hi << 8) | lo) + 1));
-            opCycles += 3; // Internal operations
+        byte lo = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
+        opCycles++; // Pull low byte
+        byte hi = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
+        opCycles++; // Pull high byte
+        cpu.Registers.PC.SetWord((Word)(((hi << 8) | lo) + 1));
+        opCycles += 3; // Internal operations
 
-            cpu.Registers.TCU += opCycles;
-        };
+        cpu.Registers.TCU += opCycles;
     }
 
-    /// <summary>
-    /// RTI - Return from Interrupt instruction.
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes RTI.</returns>
-    public static OpcodeHandler RTI(AddressingModeHandler addressingMode)
+    private static void OpRTI(ICpu cpu)
     {
-        return cpu =>
-        {
-            byte opCycles = 0;
-            addressingMode(cpu);
-            cpu.Registers.P = (ProcessorStatusFlags)cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase)) | ProcessorStatusFlags.R;
-            opCycles++; // Pull P
-            byte lo = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
-            opCycles++; // Pull PC low byte
-            byte hi = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
-            opCycles++; // Pull PC high byte
-            cpu.Registers.PC.SetWord((Word)((hi << 8) | lo));
-            cpu.HaltReason = HaltState.None;
-            opCycles += 2; // Internal operations
+        byte opCycles = 0;
+        ImpliedMode.Resolve(cpu);
+        cpu.Registers.P = (ProcessorStatusFlags)cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase)) | ProcessorStatusFlags.R;
+        opCycles++; // Pull P
+        byte lo = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
+        opCycles++; // Pull PC low byte
+        byte hi = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
+        opCycles++; // Pull PC high byte
+        cpu.Registers.PC.SetWord((Word)((hi << 8) | lo));
+        cpu.HaltReason = HaltState.None;
+        opCycles += 2; // Internal operations
 
-            cpu.Registers.TCU += opCycles;
-        };
+        cpu.Registers.TCU += opCycles;
     }
 }
