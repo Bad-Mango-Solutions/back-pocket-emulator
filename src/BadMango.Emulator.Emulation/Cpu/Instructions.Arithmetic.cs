@@ -9,7 +9,7 @@ using Core.Cpu;
 using Core.Interfaces.Cpu;
 
 /// <content>
-/// Arithmetic instructions (ADC, SBC, INC, DEC, INX, INY, DEX, DEY).
+/// Arithmetic instructions (ADC, SBC, INC, DEC, INX, INY, DEX, DEY, INA, DEA).
 /// </content>
 public static partial class Instructions
 {
