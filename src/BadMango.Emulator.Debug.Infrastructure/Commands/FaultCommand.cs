@@ -6,6 +6,9 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using System.Globalization;
 
+using BadMango.Emulator.Bus;
+using BadMango.Emulator.Debug.Abstractions;
+
 /// <summary>
 /// Shows details about the most recent bus fault.
 /// </summary>
@@ -24,12 +27,24 @@ using System.Globalization;
 /// </remarks>
 public sealed class FaultCommand : CommandHandlerBase, ICommandHelp
 {
+    private readonly IDebugSession? session;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="FaultCommand"/> class.
     /// </summary>
     public FaultCommand()
+        : this(null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FaultCommand"/> class that reads the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    public FaultCommand(IDebugSession? session)
         : base("fault", "Show most recent bus fault details")
     {
+        this.session = session;
     }
 
     /// <inheritdoc/>
@@ -40,13 +55,12 @@ public sealed class FaultCommand : CommandHandlerBase, ICommandHelp
 
     /// <inheritdoc/>
     public string DetailedDescription =>
-        "Displays information about the most recent bus fault recorded by " +
-        "the memory bus, including the faulting address and fault kind. " +
-        "Useful for debugging unmapped memory access, permission violations, " +
-        "and silent floating-bus reads. Shows 'No fault' if no fault has " +
-        "occurred since the ring was last cleared. Recording is off by " +
-        "default; the first use of 'fault' or 'buslog' turns it on, so only " +
-        "faults from that point on are captured.";
+        "Displays the latched fault status and fault address, then the most recent " +
+        "bus fault recorded by the memory bus. Useful for debugging unmapped memory " +
+        "access, permission violations, and silent floating-bus reads. Shows 'No fault' " +
+        "if no fault has occurred since the ring was last cleared. Recording is off by " +
+        "default; the first use of 'fault' or 'buslog' turns it on, so only faults from " +
+        "that point on are captured. The registers stay latched even when recording is off.";
 
     /// <inheritdoc/>
     public IReadOnlyList<CommandOption> Options { get; } = [];
@@ -79,10 +93,16 @@ public sealed class FaultCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error("No bus attached. This command requires a bus-based system.");
         }
 
+        IDebugSession active = DebugSessions.Require(this.session, debugContext);
+        FaultKind status = (FaultKind)active.FaultStatus;
+        uint faultAddress = active.FaultAddress;
+
         var ring = debugContext.Bus.FaultRing;
         if (ring is null)
         {
             debugContext.Output.WriteLine("Bus Fault Status:");
+            debugContext.Output.WriteLine();
+            WriteRegisters(debugContext, status, faultAddress);
             debugContext.Output.WriteLine();
             debugContext.Output.WriteLine("  No fault ring is configured for this bus.");
             return CommandResult.Ok();
@@ -91,6 +111,8 @@ public sealed class FaultCommand : CommandHandlerBase, ICommandHelp
         BusLogCommand.EnsureRecordingEnabled(debugContext.Bus, debugContext.Output);
 
         debugContext.Output.WriteLine("Bus Fault Status:");
+        debugContext.Output.WriteLine();
+        WriteRegisters(debugContext, status, faultAddress);
         debugContext.Output.WriteLine();
         debugContext.Output.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
@@ -144,5 +166,21 @@ public sealed class FaultCommand : CommandHandlerBase, ICommandHelp
             $"  Pc:         ${f.Pc:X4}"));
 
         return CommandResult.Ok();
+    }
+
+    /// <summary>
+    /// Writes the latched fault status and address.
+    /// </summary>
+    /// <param name="debugContext">The context whose output receives the lines.</param>
+    /// <param name="status">The latched fault status.</param>
+    /// <param name="faultAddress">The latched fault address.</param>
+    private static void WriteRegisters(IDebugContext debugContext, FaultKind status, uint faultAddress)
+    {
+        debugContext.Output.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"  Status:         {status}"));
+        debugContext.Output.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"  Address:        ${faultAddress:X4}"));
     }
 }

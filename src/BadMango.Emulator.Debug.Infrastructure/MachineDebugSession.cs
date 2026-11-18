@@ -56,6 +56,10 @@ using SessionWatchAccess = BadMango.Emulator.Debug.Abstractions.WatchAccess;
 /// run has finished. <see cref="GetRunStatus"/> keeps the result until the next <see cref="StartRun"/>.
 /// <see cref="StopRun(Guid, TimeSpan?)"/> on a finished run does not cancel a disposed token.
 /// </para>
+/// <para>
+/// GitHub issue #337 calls <see cref="IDebugSession"/>. This type is that session.
+/// It does not add another memory-read shape beside <see cref="ReadMemory"/>.
+/// </para>
 /// </remarks>
 public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 {
@@ -120,7 +124,16 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         }
     }
 
+    /// <inheritdoc />
+    public ushort FaultStatus => (ushort)this.RequireBus().FaultStatus;
+
+    /// <inheritdoc />
+    public uint FaultAddress => this.RequireBus().FaultAddress;
+
     private IMachine Machine => debugContext.Machine ?? throw new InvalidOperationException(NoMachineMessage);
+
+    /// <inheritdoc />
+    public void ClearFaultStatus() => this.RequireBus().ClearFaultStatus();
 
     /// <inheritdoc />
     public RegisterSnapshot GetRegisters()
@@ -144,9 +157,15 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
 
     /// <inheritdoc />
     /// <remarks>
-    /// Each byte is a <c>TryRead8</c> debug read. A fault is stored in <see cref="MemoryBlock.Faults"/>
-    /// and the read continues. The bus reports the fault as a result, so a large unmapped span does
-    /// not throw once per byte.
+    /// Each byte is a <c>TryRead8</c> debug read. A successful read carries a zero
+    /// <see cref="BusFault"/>: <see cref="FaultKind"/> is <see cref="FaultKind.None"/> and the
+    /// address, device, and region stay at their defaults. The session does not read those
+    /// fields from a success. A nonzero low byte of <see cref="FaultKind"/> is stored in
+    /// <see cref="MemoryBlock.Faults"/> and that data byte stays 0. The mask is omitted when
+    /// every byte is <c>00</c>. A zero low byte keeps the data byte, including a high-byte-only
+    /// kind. The read continues. The bus reports the fault as a result, so a large unmapped span
+    /// does not throw once per byte. A debug read does not latch fault status and does not
+    /// enter the fault ring.
     /// </remarks>
     public MemoryBlock ReadMemory(uint address, int length)
     {
@@ -159,9 +178,10 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
         {
             var access = CreateDebugReadAccess(address + (uint)offset);
             var read = bus.TryRead8(access);
-            if (read.Failed)
+            byte mask = (byte)read.Fault.Kind;
+            if (mask != 0)
             {
-                faults[offset] = (byte)read.Fault.Kind;
+                faults[offset] = mask;
                 anyFault = true;
                 continue;
             }
@@ -558,6 +578,10 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// When the machine has no main-memory provider, each text byte is a debug <c>TryRead8</c>.
+    /// That read does not latch fault status and does not enter the fault ring.
+    /// </remarks>
     public ScreenTextSnapshot GetScreenText() => GetScreenText(Machine);
 
     /// <inheritdoc />

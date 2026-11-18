@@ -9,6 +9,11 @@ using BadMango.Emulator.Core.Cpu;
 /// <summary>
 /// Defines the core contract for a debug session that can query and control emulator state.
 /// </summary>
+/// <remarks>
+/// GitHub issue #337 calls <see cref="IDebugSession"/> for inspection and control.
+/// That host does not call <c>CpuBase.Read8</c> and does not issue its own <c>TryRead8</c>.
+/// Memory reads stay on <see cref="ReadMemory"/>, which keeps the existing fault mask.
+/// </remarks>
 public interface IDebugSession
 {
     /// <summary>
@@ -25,6 +30,38 @@ public interface IDebugSession
     /// <see cref="AbortReaction.HostBreak"/>; it does not pulse the abort line.
     /// </remarks>
     AbortReaction AbortReaction { get; set; }
+
+    /// <summary>
+    /// Gets the latched bus fault status.
+    /// </summary>
+    /// <value>
+    /// The numeric <c>FaultKind</c>. Zero means no fault is latched. The low byte is the
+    /// section 10 mask stored by <see cref="ReadMemory"/>.
+    /// </value>
+    /// <remarks>
+    /// A debug read does not change this value. A successful access leaves a latched value
+    /// in place. <see cref="ClearFaultStatus"/> writes zero and clears the fault address.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">No bus is attached.</exception>
+    ushort FaultStatus { get; }
+
+    /// <summary>
+    /// Gets the address of the byte that latched <see cref="FaultStatus"/>.
+    /// </summary>
+    /// <value>The faulting address, or zero when <see cref="FaultStatus"/> is zero.</value>
+    /// <exception cref="InvalidOperationException">No bus is attached.</exception>
+    uint FaultAddress { get; }
+
+    /// <summary>
+    /// Clears the latched bus fault status.
+    /// </summary>
+    /// <remarks>
+    /// Writes zero into the status and the address, clears the bus's private latch, and
+    /// deasserts <c>SignalLine.Abort</c> when this bus asserted it. No emulated instruction
+    /// calls this method.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">No bus is attached.</exception>
+    void ClearFaultStatus();
 
     /// <summary>
     /// Gets the current register snapshot for the active machine.

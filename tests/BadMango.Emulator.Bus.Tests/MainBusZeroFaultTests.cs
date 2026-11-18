@@ -42,6 +42,44 @@ public class MainBusZeroFaultTests
     }
 
     /// <summary>
+    /// A successful debug <see cref="MainBus.TryRead8"/> returns a zero fault.
+    /// The page's device and region stay off the success result.
+    /// </summary>
+    /// <remarks>
+    /// <c>MachineDebugSession.ReadMemory</c> reads with this access shape.
+    /// </remarks>
+    [Test]
+    public void TryRead8_DebugRead_MappedPage_ReturnsZeroFault()
+    {
+        var raw = new byte[0x1000];
+        raw[0x0100] = 0x5A;
+        var bus = new MainBus();
+        bus.MapPage(0, new(7, RegionTag.Rom, PagePerms.ReadWrite, TargetCaps.SupportsPeek | TargetCaps.SupportsPoke, new RamTarget(raw, "ram"), 0));
+
+        var result = bus.TryRead8(new BusAccess(
+            Address: 0x0100,
+            Value: 0,
+            WidthBits: 8,
+            Mode: BusAccessMode.Decomposed,
+            EmulationFlag: true,
+            Intent: AccessIntent.DebugRead,
+            SourceId: 0,
+            Cycle: 0,
+            Flags: AccessFlags.NoSideEffects));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Ok, Is.True);
+            Assert.That(result.Value, Is.EqualTo(0x5A));
+            Assert.That(result.Fault, Is.EqualTo(default(BusFault)));
+            Assert.That(result.Fault.Kind, Is.EqualTo(FaultKind.None));
+            Assert.That(result.Fault.Address, Is.EqualTo(default(Addr)));
+            Assert.That(result.Fault.DeviceId, Is.EqualTo(0));
+            Assert.That(result.Fault.RegionTag, Is.EqualTo(default(RegionTag)));
+        });
+    }
+
+    /// <summary>
     /// A successful <see cref="MainBus.TryWrite8"/> returns a zero fault.
     /// </summary>
     [Test]
