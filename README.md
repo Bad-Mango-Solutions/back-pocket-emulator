@@ -67,8 +67,7 @@ back-pocket-emulator/
 │   ├── BadMango.Emulator.TextEditor/           # Avalonia editor
 │   ├── BadMango.Emulator.Debug.Infrastructure/ # REPL, commands, breakpoints, trace
 │   ├── BadMango.Emulator.Debug.UI/             # Avalonia windows for the console debugger
-│   ├── BadMango.Emulator.Debug/                # Console host (emudbg)
-│   └── BadMango.Emulator.Interop/              # Reserved for native and Rust interop
+│   └── BadMango.Emulator.Debug/                # Console host (emudbg)
 │
 ├── tests/
 │   ├── BadMango.Unit.Components/               # Shared test helpers
