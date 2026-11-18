@@ -717,7 +717,7 @@ public class LoadStoreDispatchParityTests : CpuTestBase
         OpcodeInfo info = Table.GetMetadata(opcode);
         Assert.Multiple(() =>
         {
-            Assert.That(Table.GetHandler(opcode), Is.Null, $"{name} legacy handler");
+            Assert.That(Table.GetDispatch(opcode), Is.Not.Null, $"{name} dispatch");
             Assert.That(info.Instruction, Is.EqualTo(instruction), $"{name} mnemonic");
             Assert.That(info.AddressingMode, Is.EqualTo(mode), $"{name} mode");
             Assert.That(info.TotalLength, Is.EqualTo(length), $"{name} length");

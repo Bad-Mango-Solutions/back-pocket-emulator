@@ -11,10 +11,10 @@ using Core.Interfaces.Cpu;
 /// Builds the opcode table for the 65C02 CPU using compositional pattern.
 /// </summary>
 /// <remarks>
-/// This builder uses true composition where addressing modes return addresses
-/// and instructions are higher-order functions that accept addressing mode delegates.
-/// This pattern eliminates duplication and makes it easy to add new instructions
-/// and addressing modes without creating combinatorial explosion of methods.
+/// Each opcode is registered with <c>SetDirectOpcode</c> and its own cached
+/// <see cref="OpcodeDispatch"/> delegate. Unassigned slots start as
+/// <see cref="IllegalOpcodeDispatch"/>, which halts the CPU. The finished 65C02
+/// table overwrites every slot: unused opcodes are NOPs, and $42 is WDM's slot.
 /// </remarks>
 public static class Cpu65C02OpcodeTableBuilder
 {
@@ -54,31 +54,29 @@ public static class Cpu65C02OpcodeTableBuilder
     };
 
     /// <summary>
+    /// Cached direct-dispatch delegate for an opcode this table did not assign.
+    /// The finished 65C02 table overwrites every slot. A later CPU table can leave
+    /// a slot on this delegate when that opcode is undefined for that CPU.
+    /// </summary>
+    private static readonly OpcodeDispatch IllegalOpcodeDispatch = DispatchIllegalOpcode;
+
+    /// <summary>
     /// Builds the opcode table for the 65C02 CPU.
     /// </summary>
     /// <returns>An <see cref="OpcodeTable"/> configured for the 65C02 CPU.</returns>
     public static OpcodeTable Build()
     {
-        var handlers = new OpcodeHandler?[256];
-        var dispatchTargets = new OpcodeDispatch?[256];
+        var dispatchTargets = new OpcodeDispatch[256];
         var metadata = new OpcodeInfo[256];
 
-        // Initialize all opcodes to illegal opcode handler
+        // Unassigned slots halt. The registrations below overwrite every 65C02 opcode.
         for (int i = 0; i < 256; i++)
         {
-            handlers[i] = IllegalOpcode;
-        }
-
-        void SetOpcode(byte opcode, OpcodeHandler handler, CpuInstructions instruction, CpuAddressingModes addressingMode)
-        {
-            handlers[opcode] = handler;
-            dispatchTargets[opcode] = null;
-            metadata[opcode] = new(instruction, addressingMode, GetOperandLength(addressingMode), BaseCycles[opcode]);
+            dispatchTargets[i] = IllegalOpcodeDispatch;
         }
 
         void SetDirectOpcode(byte opcode, OpcodeDispatch dispatchTarget, CpuInstructions instruction, CpuAddressingModes addressingMode)
         {
-            handlers[opcode] = null;
             dispatchTargets[opcode] = dispatchTarget;
             metadata[opcode] = new(instruction, addressingMode, GetOperandLength(addressingMode), BaseCycles[opcode]);
         }
@@ -105,7 +103,7 @@ public static class Cpu65C02OpcodeTableBuilder
         };
 
         // BRK - Force Break
-        SetOpcode(0x00, Instructions.BRK(AddressingModes.Implied), CpuInstructions.BRK, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x00, Instructions.BRKImpliedDispatch, CpuInstructions.BRK, CpuAddressingModes.Implied);
 
         // LDA - Load Accumulator
         SetDirectOpcode(0xA9, Instructions.LDAImmediateDispatch, CpuInstructions.LDA, CpuAddressingModes.Immediate);
@@ -143,7 +141,7 @@ public static class Cpu65C02OpcodeTableBuilder
         SetDirectOpcode(0xBC, Instructions.LDYAbsoluteXDispatch, CpuInstructions.LDY, CpuAddressingModes.AbsoluteX);
 
         // NOP - No Operation
-        SetOpcode(0xEA, Instructions.NOP(AddressingModes.Implied), CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xEA, Instructions.NOPImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
 
         // WDC W65C02S "unused" opcode NOP slots (see "65C02 Apple II Emulator
         // Correctness Checklist.md" section 6 and the WDC W65C02S datasheet).
@@ -151,35 +149,40 @@ public static class Cpu65C02OpcodeTableBuilder
         // 2.4.3's boot1 IIgs-detection idiom at $102C: `C2 02`) relies on these
         // being silent NOPs on a 65C02 (whereas on a 65816 they decode as
         // REP/SEP/PEI/MVN/JML/etc. and have observable side effects).
-        // The disassembler renders these as `NOP <operand>` via the standard
-        // Instructions.NOP + AddressingModes.* composition.
+        // The disassembler renders these as `NOP <operand>` from the metadata below.
+        // Each slot has its own cached delegate. $42 is registered on its own, below,
+        // and is not part of this immediate-NOP group.
 
         // 2 bytes, 2 cycles: immediate-mode NOPs.
-        SetOpcode(0x02, Instructions.NOP(AddressingModes.Immediate), CpuInstructions.NOP, CpuAddressingModes.Immediate);
-        SetOpcode(0x22, Instructions.NOP(AddressingModes.Immediate), CpuInstructions.NOP, CpuAddressingModes.Immediate);
-        SetOpcode(0x42, Instructions.NOP(AddressingModes.Immediate), CpuInstructions.NOP, CpuAddressingModes.Immediate);
-        SetOpcode(0x62, Instructions.NOP(AddressingModes.Immediate), CpuInstructions.NOP, CpuAddressingModes.Immediate);
-        SetOpcode(0x82, Instructions.NOP(AddressingModes.Immediate), CpuInstructions.NOP, CpuAddressingModes.Immediate);
-        SetOpcode(0xC2, Instructions.NOP(AddressingModes.Immediate), CpuInstructions.NOP, CpuAddressingModes.Immediate);
-        SetOpcode(0xE2, Instructions.NOP(AddressingModes.Immediate), CpuInstructions.NOP, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0x02, Instructions.NOP02ImmediateDispatch, CpuInstructions.NOP, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0x22, Instructions.NOP22ImmediateDispatch, CpuInstructions.NOP, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0x62, Instructions.NOP62ImmediateDispatch, CpuInstructions.NOP, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0x82, Instructions.NOP82ImmediateDispatch, CpuInstructions.NOP, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0xC2, Instructions.NOPC2ImmediateDispatch, CpuInstructions.NOP, CpuAddressingModes.Immediate);
+        SetDirectOpcode(0xE2, Instructions.NOPE2ImmediateDispatch, CpuInstructions.NOP, CpuAddressingModes.Immediate);
+
+        // $42 is a 2-byte, 2-cycle NOP on the 65C02, WDM on the 65816, and the
+        // planned 65832 extended-opcode prefix. Its handler and table entry stay
+        // separate from the immediate NOPs above so another CPU table can replace it.
+        SetDirectOpcode(0x42, Instructions.WdmDispatch, CpuInstructions.NOP, CpuAddressingModes.Immediate);
 
         // 2 bytes, 3 cycles: zero-page NOP.
         // (ZeroPage adds 1 cycle for the operand fetch; NOP adds 1; +1 from
         //  base opcode fetch = 3 cycles total.)
-        SetOpcode(0x44, Instructions.NOP(AddressingModes.ZeroPage), CpuInstructions.NOP, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x44, Instructions.NOP44ZeroPageDispatch, CpuInstructions.NOP, CpuAddressingModes.ZeroPage);
 
         // 2 bytes, 4 cycles: zero-page,X NOPs.
         // (ZeroPageX adds 2 cycles (fetch + indexing); NOP adds 1; +1 from
         //  base opcode fetch = 4 cycles total.)
-        SetOpcode(0x54, Instructions.NOP(AddressingModes.ZeroPageX), CpuInstructions.NOP, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0xD4, Instructions.NOP(AddressingModes.ZeroPageX), CpuInstructions.NOP, CpuAddressingModes.ZeroPageX);
-        SetOpcode(0xF4, Instructions.NOP(AddressingModes.ZeroPageX), CpuInstructions.NOP, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0x54, Instructions.NOP54ZeroPageXDispatch, CpuInstructions.NOP, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0xD4, Instructions.NOPD4ZeroPageXDispatch, CpuInstructions.NOP, CpuAddressingModes.ZeroPageX);
+        SetDirectOpcode(0xF4, Instructions.NOPF4ZeroPageXDispatch, CpuInstructions.NOP, CpuAddressingModes.ZeroPageX);
 
         // 3 bytes, 4 cycles: absolute NOPs.
         // (Absolute adds 2 cycles for the 16-bit operand fetch; NOP adds 1;
         //  +1 from base opcode fetch = 4 cycles total.)
-        SetOpcode(0xDC, Instructions.NOP(AddressingModes.Absolute), CpuInstructions.NOP, CpuAddressingModes.Absolute);
-        SetOpcode(0xFC, Instructions.NOP(AddressingModes.Absolute), CpuInstructions.NOP, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0xDC, Instructions.NOPDCAbsoluteDispatch, CpuInstructions.NOP, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0xFC, Instructions.NOPFCAbsoluteDispatch, CpuInstructions.NOP, CpuAddressingModes.Absolute);
 
         // 3 bytes, 8 cycles: "loud" absolute NOP. Per the WDC datasheet this is
         // the only unused-slot NOP that consumes 8 cycles (versus 4 for the
@@ -188,45 +191,45 @@ public static class Cpu65C02OpcodeTableBuilder
         // pressure; the actual bus read at the formed address is not performed
         // since no shipping 65C02 software in scope for this emulator relies on
         // the side effect.
-        SetOpcode(0x5C, Instructions.NOP(AddressingModes.Absolute, instructionCycles: 5), CpuInstructions.NOP, CpuAddressingModes.Absolute);
+        SetDirectOpcode(0x5C, Instructions.NOP5CAbsoluteDispatch, CpuInstructions.NOP, CpuAddressingModes.Absolute);
 
         // 1 byte, 1 cycle: column-3 single-cycle NOPs. These are the slots
         // reserved by WDC for future expansion; on the 65C02 they fully decode
         // in a single cycle with no side effects (no operand fetch, no PC
         // advance beyond the opcode byte itself).
-        SetOpcode(0x03, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x13, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x23, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x33, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x43, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x53, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x63, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x73, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x83, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x93, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xA3, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xB3, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xC3, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xD3, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xE3, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xF3, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x03, Instructions.NOP03ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x13, Instructions.NOP13ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x23, Instructions.NOP23ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x33, Instructions.NOP33ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x43, Instructions.NOP43ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x53, Instructions.NOP53ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x63, Instructions.NOP63ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x73, Instructions.NOP73ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x83, Instructions.NOP83ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x93, Instructions.NOP93ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xA3, Instructions.NOPA3ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xB3, Instructions.NOPB3ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xC3, Instructions.NOPC3ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xD3, Instructions.NOPD3ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xE3, Instructions.NOPE3ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xF3, Instructions.NOPF3ImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
 
         // 1 byte, 1 cycle: column-B single-cycle NOPs. Additional reserved slots
         // per WDC datasheet; same behavior as column-3 (no operand, no side effects).
-        SetOpcode(0x0B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x1B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x2B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x3B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x4B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x5B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x6B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x7B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x8B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0x9B, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xAB, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xBB, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xEB, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
-        SetOpcode(0xFB, Instructions.NOP(AddressingModes.Implied, instructionCycles: 0), CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x0B, Instructions.NOP0BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x1B, Instructions.NOP1BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x2B, Instructions.NOP2BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x3B, Instructions.NOP3BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x4B, Instructions.NOP4BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x5B, Instructions.NOP5BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x6B, Instructions.NOP6BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x7B, Instructions.NOP7BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x8B, Instructions.NOP8BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0x9B, Instructions.NOP9BImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xAB, Instructions.NOPABImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xBB, Instructions.NOPBBImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xEB, Instructions.NOPEBImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
+        SetDirectOpcode(0xFB, Instructions.NOPFBImpliedDispatch, CpuInstructions.NOP, CpuAddressingModes.Implied);
 
         // STX - Store X Register
         SetDirectOpcode(0x86, Instructions.STXZeroPageDispatch, CpuInstructions.STX, CpuAddressingModes.ZeroPage);
@@ -456,13 +459,13 @@ public static class Cpu65C02OpcodeTableBuilder
         SetDirectOpcode(0x6E, Instructions.RORAbsoluteDispatch, CpuInstructions.ROR, CpuAddressingModes.Absolute);
         SetDirectOpcode(0x7E, Instructions.RORAbsoluteXDispatch, CpuInstructions.ROR, CpuAddressingModes.AbsoluteX);
 
-        return new(handlers, metadata, dispatchTargets);
+        return new(dispatchTargets, metadata);
     }
 
     /// <summary>
     /// Handles illegal/undefined opcodes by halting execution.
     /// </summary>
-    private static void IllegalOpcode(ICpu cpu)
+    private static void DispatchIllegalOpcode(ICpu cpu, in OpcodeEntry entry)
     {
         cpu.HaltReason = HaltState.Stp; // Halt on illegal opcode (stop execution)
     }

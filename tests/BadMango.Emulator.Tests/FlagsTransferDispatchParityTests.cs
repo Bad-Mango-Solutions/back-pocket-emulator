@@ -219,7 +219,7 @@ public class FlagsTransferDispatchParityTests : CpuTestBase
 
     /// <summary>
     /// Runs one implied opcode through the CPU and checks architectural state.
-    /// The opcode's legacy handler is null, so the step uses direct dispatch.
+    /// The step uses that opcode's cached dispatch delegate.
     /// </summary>
     /// <param name="opcode">The opcode byte written at <see cref="StartPc"/>.</param>
     /// <param name="a">The accumulator before the step.</param>
@@ -257,9 +257,9 @@ public class FlagsTransferDispatchParityTests : CpuTestBase
         Write(StartPc, opcode);
 
         Assert.That(
-            Cpu65C02OpcodeTableBuilder.Build().GetHandler(opcode),
-            Is.Null,
-            $"${opcode:X2} legacy handler");
+            Cpu65C02OpcodeTableBuilder.Build().GetDispatch(opcode),
+            Is.Not.Null,
+            $"${opcode:X2} dispatch");
 
         Cpu.Step();
 

@@ -323,8 +323,8 @@ public class Cpu65C02GenericBuilderIntegrationTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(table.GetHandler(0xA9), Is.Null, "LDA immediate legacy handler");
-            Assert.That(table.GetHandler(0x85), Is.Null, "STA zero page legacy handler");
+            Assert.That(table.GetDispatch(0xA9), Is.Not.Null, "LDA immediate dispatch");
+            Assert.That(table.GetDispatch(0x85), Is.Not.Null, "STA zero page dispatch");
             Assert.That(table.GetMetadata(0xA9).Instruction, Is.EqualTo(CpuInstructions.LDA));
             Assert.That(table.GetMetadata(0xA9).AddressingMode, Is.EqualTo(CpuAddressingModes.Immediate));
             Assert.That(table.GetMetadata(0x85).Instruction, Is.EqualTo(CpuInstructions.STA));
