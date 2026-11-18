@@ -21,6 +21,7 @@ using BadMango.Emulator.Emulation.Cpu;
 internal sealed class Wdc65C02VectorRunner
 {
     private readonly PhysicalMemory memory;
+    private readonly WriteRecordingRamTarget target;
     private readonly Cpu65C02 cpu;
 
     /// <summary>
@@ -30,7 +31,7 @@ internal sealed class Wdc65C02VectorRunner
     {
         var mainBus = new MainBus(16);
         memory = new PhysicalMemory(0x10000, "wdc65c02-vectors");
-        var target = new RamTarget(memory.Slice(0, 0x10000));
+        target = new WriteRecordingRamTarget(memory.Slice(0, 0x10000));
         mainBus.MapPageRange(
             startPage: 0,
             pageCount: 16,
@@ -203,10 +204,16 @@ internal sealed class Wdc65C02VectorRunner
 
         Apply(ram, test.InitialRam);
         Load(test);
+        target.ResetWrites();
         CpuStepResult result = cpu.Step();
         string? mismatch = Compare(test, ram, (int)result.CyclesConsumed.Value);
         Clear(ram, test.InitialRam);
         Clear(ram, test.FinalRam);
+        foreach (ushort address in target.Writes)
+        {
+            ram[address] = 0;
+        }
+
         return mismatch;
     }
 
@@ -261,7 +268,22 @@ internal sealed class Wdc65C02VectorRunner
             }
         }
 
-        if (registersMatch && ramMismatches == 0 && cycles == test.Cycles)
+        int strayWrites = 0;
+        ushort strayAddress = 0;
+        foreach (ushort address in target.Writes)
+        {
+            if (!TryByteAt(test.FinalRam, address, out _))
+            {
+                if (strayWrites == 0)
+                {
+                    strayAddress = address;
+                }
+
+                strayWrites++;
+            }
+        }
+
+        if (registersMatch && ramMismatches == 0 && strayWrites == 0 && cycles == test.Cycles)
         {
             return null;
         }
@@ -281,6 +303,11 @@ internal sealed class Wdc65C02VectorRunner
         if (ramMismatches > 0)
         {
             text.Append(CultureInfo.InvariantCulture, $" ram ${ramAddress:X4}=${ramActual:X2} expected ${ramExpected:X2} ({ramMismatches} byte(s));");
+        }
+
+        if (strayWrites > 0)
+        {
+            text.Append(CultureInfo.InvariantCulture, $" unexpected write to ${strayAddress:X4} ({strayWrites} write(s) outside final ram);");
         }
 
         return text.ToString();
