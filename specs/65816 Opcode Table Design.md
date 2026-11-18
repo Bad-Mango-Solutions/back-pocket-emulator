@@ -301,7 +301,7 @@ static void DispatchPrefix42(ICpu cpu, in OpcodeEntry entry)
 }
 ```
 
-`FetchByte` on `Cpu65C02` is private. The prefix needs the same operation on `Cpu65832`: advance PC, read through the instruction-fetch path, add one to `TCU`. That is one fetched byte, one cycle, matching the way `Step` charges the primary opcode. The second-level `Execute` is the same call the primary table uses. Its handlers are `OpcodeDispatch` values from the 32-bit cache (`Acc32`, `Idx32`). Unassigned second-level slots start on a halt delegate, the same rule as `IllegalOpcodeDispatch` on the 65C02 builder. That field is private, so the 65832 builder has its own static readonly halt delegate of the same shape.
+`FetchByte` on `Cpu65C02` is private. The prefix needs the same operation on `Cpu65832`: advance PC, read through the instruction-fetch path, add one to `TCU`. That is one fetched byte, one cycle, matching the way `Step` charges the primary opcode. The second-level `Execute` is the same call the primary table uses. Its handlers are `OpcodeDispatch` values from the 32-bit cache (`Acc32`, `Idx32`). Unassigned second-level slots start on a NOP delegate that consumes the prefix and the second byte, the same way an unused 65C02 opcode behaves as a NOP (decided in open question 6).
 
 The `$42` slot of `Bank42` is another named `DispatchWdm`. That one fetches the next byte and dispatches into `Bank4242`:
 
@@ -342,9 +342,13 @@ These change the shape of the tables or the prefix. The recommendations above ar
 
 4. **How many widths does 65832 mode have?** `GetAccumulatorSize` and `GetIndexSize` return 32 whenever `CP` is clear. `ProcessorStatusFlags` remarks say M and X are ignored when `CP` is clear; the helpers also ignore them in 65C02 mode and honor them only in 65816 mode (`CP` set, `E` clear). This note follows the helpers: five 65816 tables while `CP` is set, and one 32-bit table while `CP` is clear. Confirm before anyone adds an 8/16/32 matrix inside 65832 mode. The essay's native-32 mode (A, X, Y, S, and the bank registers become 32-bit) matches the single 32-bit table. It does not match a new M/X encoding.
 
+   *Josh (2026-11-18):* leaning toward a single 65832 table, effectively indexed by a 16-bit (`ushort`) opcode value so the `$42 xx` space lives in the same table. Left open for now.
+
 5. **Which prefix map is binding, and in which mode is `$42` a prefix?** Three sources disagree. #568 and this note's brief: `$42 xx`, with a deeper bank such as `$42 42 xx`. `specs/Architecture Spec v1.0 Part 3.md` Phase 6: prefix opcodes `$42`, `$43`, and `$44`. The opcode-space essay: `$42 xx`, `$42 42 xx`, `$42 43 xx`, plus top-level `$43` and `$44`, while legacy mode preserves every 65C816 opcode. The instruction-set reference assigns `$42` to WDM (reserved, 2 cycles) and `$44` to `MVP`. Column `$x3` is the stack-relative column for the opcodes it lists (`LDA` `$A3`, `STA` `$83`, `ADC` `$63`, `SBC` `$E3`, `CMP` `$C3`). It does not give `$43` its own row. This note's recommendation: the only primary-map prefix is `$42`, and only when `CP` is clear; `CP` set keeps 65816 WDM. The only deeper bank specified here is `$42 42 xx`. Confirm before `$43` or `$44` become prefixes. They are real 65816 opcodes under the instruction-set reference (`$44` is `MVP`).
 
-6. **What does an unassigned `$42 xx` byte do?** The recommendation is the 65C02 builder's rule for a slot this CPU did not define: the halt delegate. Confirm if an undefined extension should halt, or should behave as a NOP the way an unused 65C02 opcode does.
+   *Josh (2026-11-18):* `$42` is the prefix for 65832-exclusive opcodes. `$43` and `$44` stay as the 65816 defines them.
+
+6. **What does an unassigned `$42 xx` byte do?** *Decided (Josh, 2026-11-18):* it behaves as a NOP, the way an unused 65C02 opcode does. It consumes the prefix and the second byte and does nothing else.
 
 Cycle counts for specific extended opcodes are not an open design choice yet. The references do not list them. Each prefix byte charges one cycle through the same fetch the primary opcode uses. The second-level handler owns the rest of `TCU`.
 
