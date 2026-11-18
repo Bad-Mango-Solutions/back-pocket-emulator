@@ -135,10 +135,6 @@ public sealed class Cpu65C02HardwareVectorTests
     {
         switch (opcode)
         {
-            case 0x28:
-            case 0x40:
-                reason = "Tracked by #570";
-                return true;
             case 0x5C:
                 reason = "Tracked by #572";
                 return true;
