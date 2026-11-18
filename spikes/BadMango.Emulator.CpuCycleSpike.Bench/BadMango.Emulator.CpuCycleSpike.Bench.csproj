@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>BadMango.Emulator.CpuCycleSpike.Bench</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Emulation\BadMango.Emulator.Emulation.csproj" />
+  </ItemGroup>
+
+</Project>
