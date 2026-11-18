@@ -923,8 +923,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0xF0, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.TSB(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x04);
 
         // Assert
         Assert.That(Read(0x50), Is.EqualTo(0xFF)); // 0x0F OR 0xF0
@@ -943,8 +942,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0x80, p: FlagZ, cycles: 10);
 
         // Act
-        var handler = Instructions.TSB(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x04);
 
         // Assert
         Assert.That(Read(0x50), Is.EqualTo(0xFF)); // 0xFF OR 0x80 = 0xFF
@@ -963,8 +961,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, a: 0xF0, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.TRB(AddressingModes.ZeroPage);
-        handler(Cpu);
+        ExecuteOpcode(0x14);
 
         // Assert
         Assert.That(Read(0x50), Is.EqualTo(0x0F)); // 0xFF AND (NOT 0xF0)
@@ -981,8 +978,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.WAI(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xCB);
 
         // Assert
         Assert.That(Cpu.Halted, Is.True, "Processor should be halted");
@@ -998,8 +994,7 @@ public class NewInstructionsTests : CpuTestBase
         SetupCpu(pc: 0x1000, p: 0, cycles: 10);
 
         // Act
-        var handler = Instructions.STP(AddressingModes.Implied);
-        handler(Cpu);
+        ExecuteOpcode(0xDB);
 
         // Assert
         Assert.That(Cpu.Halted, Is.True, "Processor should be halted");

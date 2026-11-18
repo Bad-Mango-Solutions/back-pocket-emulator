@@ -272,6 +272,36 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
+    /// Bit and remaining 65C02-only opcodes use direct dispatch and leave the legacy slot null.
+    /// </summary>
+    [Test]
+    public void Build_BitAnd65C02Opcodes_UseDirectDispatchWithNullLegacyHandlers()
+    {
+        var table = Cpu65C02OpcodeTableBuilder.Build();
+        int converted = 0;
+
+        Assert.Multiple(() =>
+        {
+            for (int opcode = 0; opcode < 256; opcode++)
+            {
+                CpuInstructions instruction = table.GetMetadata((byte)opcode).Instruction;
+                if (!IsBitOr65C02Only(instruction))
+                {
+                    continue;
+                }
+
+                converted++;
+                Assert.That(
+                    table.GetHandler((byte)opcode),
+                    Is.Null,
+                    $"${opcode:X2} {instruction} legacy handler");
+            }
+
+            Assert.That(converted, Is.EqualTo(38), "converted opcode count");
+        });
+    }
+
+    /// <summary>
     /// Reports whether an instruction belongs to the logical, arithmetic, or compare families.
     /// </summary>
     /// <param name="instruction">The opcode mnemonic.</param>
@@ -338,6 +368,23 @@ public class OpcodeTableDispatchTests : CpuTestBase
             or CpuInstructions.PLX
             or CpuInstructions.PHY
             or CpuInstructions.PLY;
+    }
+
+    /// <summary>
+    /// Reports whether an instruction belongs to the bit or remaining 65C02-only families.
+    /// </summary>
+    /// <param name="instruction">The opcode mnemonic.</param>
+    /// <returns><see langword="true"/> when the mnemonic is TSB, TRB, WAI, STP, RMB, SMB, BBR, or BBS.</returns>
+    private static bool IsBitOr65C02Only(CpuInstructions instruction)
+    {
+        return instruction is CpuInstructions.TSB
+            or CpuInstructions.TRB
+            or CpuInstructions.WAI
+            or CpuInstructions.STP
+            or CpuInstructions.RMB
+            or CpuInstructions.SMB
+            or CpuInstructions.BBR
+            or CpuInstructions.BBS;
     }
 
     /// <summary>
