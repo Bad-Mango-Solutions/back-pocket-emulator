@@ -127,11 +127,13 @@ public sealed partial class MainBus
                 "Mapping trace range starts outside the address space.");
         }
 
-        int newEnd = (int)(endInclusive >> PageShift);
-        if (newEnd > lastPage)
+        uint lastAddress = ((uint)pageTable.Length << PageShift) - 1;
+        if (endInclusive > lastAddress)
         {
-            newEnd = lastPage;
+            endInclusive = lastAddress;
         }
+
+        int newEnd = (int)(endInclusive >> PageShift);
 
         int oldStart = traceRangeStartPage;
         int oldEnd = traceRangeEndPage;

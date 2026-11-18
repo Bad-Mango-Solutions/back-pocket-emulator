@@ -301,6 +301,23 @@ public class MappingTraceTests
     }
 
     /// <summary>
+    /// A range end past the address space is clamped, so the reported end matches the pages forced slow.
+    /// </summary>
+    [Test]
+    public void SetRange_EndPastAddressSpace_ReportsClampedEnd()
+    {
+        var bus = new MainBus(16);
+
+        bus.SetMappingTraceRange(0xF000, 0x1_2345);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(bus.MappingTraceRangeStart, Is.EqualTo(0xF000u));
+            Assert.That(bus.MappingTraceRangeEnd, Is.EqualTo(0xFFFFu));
+        });
+    }
+
+    /// <summary>
     /// A remap with trace off allocates nothing and does not read the provider.
     /// </summary>
     [Test]
