@@ -56,7 +56,7 @@ public class OpcodeTableDispatchTests : CpuTestBase
     }
 
     /// <summary>
-    /// Two tables on one thread, including a handler that re-enters the other table,
+    /// Two tables on one thread, including a dispatch delegate that re-enters the other table,
     /// each run only their own dispatch delegate.
     /// </summary>
     [Test]
@@ -64,22 +64,22 @@ public class OpcodeTableDispatchTests : CpuTestBase
     {
         var order = new List<string>();
         var metadata = new OpcodeInfo[256];
-        var handlersA = FilledDispatch();
-        var handlersB = FilledDispatch();
+        var dispatchA = FilledDispatch();
+        var dispatchB = FilledDispatch();
         OpcodeTable? tableB = null;
 
-        handlersA[0x10] = (ICpu cpu, in OpcodeEntry entry) =>
+        dispatchA[0x10] = (ICpu cpu, in OpcodeEntry entry) =>
         {
             order.Add("A10-enter");
             tableB!.Execute(0x20, cpu);
             order.Add("A10-exit");
         };
-        handlersA[0x11] = (ICpu cpu, in OpcodeEntry entry) => order.Add("A11");
-        handlersB[0x20] = (ICpu cpu, in OpcodeEntry entry) => order.Add("B20");
-        handlersB[0x21] = (ICpu cpu, in OpcodeEntry entry) => order.Add("B21");
+        dispatchA[0x11] = (ICpu cpu, in OpcodeEntry entry) => order.Add("A11");
+        dispatchB[0x20] = (ICpu cpu, in OpcodeEntry entry) => order.Add("B20");
+        dispatchB[0x21] = (ICpu cpu, in OpcodeEntry entry) => order.Add("B21");
 
-        var tableA = new OpcodeTable(handlersA, metadata);
-        tableB = new OpcodeTable(handlersB, metadata);
+        var tableA = new OpcodeTable(dispatchA, metadata);
+        tableB = new OpcodeTable(dispatchB, metadata);
 
         tableA.Execute(0x10, Cpu);
         tableB.Execute(0x21, Cpu);
