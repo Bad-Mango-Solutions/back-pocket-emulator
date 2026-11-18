@@ -280,21 +280,17 @@ public static partial class Instructions
 
         if (((byte)cpu.Registers.P & (byte)ProcessorStatusFlags.D) != 0)
         {
-            // Decimal (BCD) mode — 65C02 sets N, V, Z correctly based on the final BCD
-            // result (NMOS 6502 left N/V/Z undefined in decimal mode). One extra cycle.
-            int al = (a & 0x0F) - (value & 0x0F) - borrow;
-            if (al < 0)
-            {
-                al -= 6;
-            }
+            // Decimal SBC on the 65C02. The low-nibble correction is subtracted from the
+            // whole byte, so that -6 can borrow into the high nibble. Masking the
+            // correction inside the low nibble leaves the high digit one too large
+            // whenever the low digit is 0-5. N and Z follow the corrected result.
+            // V and C follow the binary subtraction, before the BCD adjustment.
+            // The adjustment takes one extra cycle.
+            int difference = a - value - borrow;
+            int low = (a & 0x0F) - (value & 0x0F) - borrow;
+            int high = (a >> 4) - (value >> 4) - (low < 0 ? 1 : 0);
 
-            int ah = (a >> 4) - (value >> 4) - (al < 0 ? 1 : 0);
-
-            // V flag computed from signed-binary subtraction of the full bytes
-            // (WDC W65C02S: V reflects the signed-overflow of the binary
-            // subtraction A - value - borrow, taken before BCD correction).
-            int binResult = a - value - borrow;
-            if (((a ^ value) & (a ^ (binResult & 0xFF)) & 0x80) != 0)
+            if (((a ^ value) & (a ^ (difference & 0xFF)) & 0x80) != 0)
             {
                 cpu.Registers.P |= ProcessorStatusFlags.V;
             }
@@ -303,14 +299,7 @@ public static partial class Instructions
                 cpu.Registers.P &= ~ProcessorStatusFlags.V;
             }
 
-            if (ah < 0)
-            {
-                ah -= 6;
-            }
-
-            byte result = (byte)(((ah << 4) | (al & 0x0F)) & 0xFF);
-
-            if (ah >= 0)
+            if (difference >= 0)
             {
                 cpu.Registers.P |= ProcessorStatusFlags.C;
             }
@@ -319,8 +308,20 @@ public static partial class Instructions
                 cpu.Registers.P &= ~ProcessorStatusFlags.C;
             }
 
-            cpu.Registers.P.SetZeroAndNegative(result);
-            cpu.Registers.A.SetByte(result);
+            int result = ((high << 4) | (low & 0x0F)) & 0xFF;
+            if (low < 0)
+            {
+                result = (result - 6) & 0xFF;
+            }
+
+            if (high < 0)
+            {
+                result = (result - 0x60) & 0xFF;
+            }
+
+            byte result8 = (byte)result;
+            cpu.Registers.P.SetZeroAndNegative(result8);
+            cpu.Registers.A.SetByte(result8);
             opCycles++; // 65C02: decimal mode takes one extra cycle for correct flag computation
         }
         else
