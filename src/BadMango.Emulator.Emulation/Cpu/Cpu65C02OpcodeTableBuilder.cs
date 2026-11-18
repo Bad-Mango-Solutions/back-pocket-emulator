@@ -270,53 +270,53 @@ public static class Cpu65C02OpcodeTableBuilder
         SetDirectOpcode(0x74, Instructions.STZZeroPageXDispatch, CpuInstructions.STZ, CpuAddressingModes.ZeroPageX);
         SetDirectOpcode(0x9C, Instructions.STZAbsoluteDispatch, CpuInstructions.STZ, CpuAddressingModes.Absolute);
         SetDirectOpcode(0x9E, Instructions.STZAbsoluteXDispatch, CpuInstructions.STZ, CpuAddressingModes.AbsoluteX);
-        SetOpcode(0x04, Instructions.TSB(AddressingModes.ZeroPage), CpuInstructions.TSB, CpuAddressingModes.ZeroPage); // Test and Set Bits
-        SetOpcode(0x0C, Instructions.TSB(AddressingModes.Absolute), CpuInstructions.TSB, CpuAddressingModes.Absolute); // Test and Set Bits
-        SetOpcode(0x14, Instructions.TRB(AddressingModes.ZeroPage), CpuInstructions.TRB, CpuAddressingModes.ZeroPage); // Test and Reset Bits
-        SetOpcode(0x1C, Instructions.TRB(AddressingModes.Absolute), CpuInstructions.TRB, CpuAddressingModes.Absolute); // Test and Reset Bits
-        SetOpcode(0xCB, Instructions.WAI(AddressingModes.Implied), CpuInstructions.WAI, CpuAddressingModes.Implied); // Wait for Interrupt
-        SetOpcode(0xDB, Instructions.STP(AddressingModes.Implied), CpuInstructions.STP, CpuAddressingModes.Implied); // Stop Processor
+        SetDirectOpcode(0x04, Instructions.TSBZeroPageDispatch, CpuInstructions.TSB, CpuAddressingModes.ZeroPage); // Test and Set Bits
+        SetDirectOpcode(0x0C, Instructions.TSBAbsoluteDispatch, CpuInstructions.TSB, CpuAddressingModes.Absolute); // Test and Set Bits
+        SetDirectOpcode(0x14, Instructions.TRBZeroPageDispatch, CpuInstructions.TRB, CpuAddressingModes.ZeroPage); // Test and Reset Bits
+        SetDirectOpcode(0x1C, Instructions.TRBAbsoluteDispatch, CpuInstructions.TRB, CpuAddressingModes.Absolute); // Test and Reset Bits
+        SetDirectOpcode(0xCB, Instructions.WAIImpliedDispatch, CpuInstructions.WAI, CpuAddressingModes.Implied); // Wait for Interrupt
+        SetDirectOpcode(0xDB, Instructions.STPImpliedDispatch, CpuInstructions.STP, CpuAddressingModes.Implied); // Stop Processor
 
         // Rockwell/WDC Bit Manipulation Instructions (RMB, SMB, BBR, BBS)
         // Reset Memory Bit (RMB0-RMB7)
-        SetOpcode(0x07, Instructions.RMB(AddressingModes.ZeroPage, 0), CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x17, Instructions.RMB(AddressingModes.ZeroPage, 1), CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x27, Instructions.RMB(AddressingModes.ZeroPage, 2), CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x37, Instructions.RMB(AddressingModes.ZeroPage, 3), CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x47, Instructions.RMB(AddressingModes.ZeroPage, 4), CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x57, Instructions.RMB(AddressingModes.ZeroPage, 5), CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x67, Instructions.RMB(AddressingModes.ZeroPage, 6), CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x77, Instructions.RMB(AddressingModes.ZeroPage, 7), CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x07, Instructions.RMB0ZeroPageDispatch, CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x17, Instructions.RMB1ZeroPageDispatch, CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x27, Instructions.RMB2ZeroPageDispatch, CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x37, Instructions.RMB3ZeroPageDispatch, CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x47, Instructions.RMB4ZeroPageDispatch, CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x57, Instructions.RMB5ZeroPageDispatch, CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x67, Instructions.RMB6ZeroPageDispatch, CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x77, Instructions.RMB7ZeroPageDispatch, CpuInstructions.RMB, CpuAddressingModes.ZeroPage);
 
         // Set Memory Bit (SMB0-SMB7)
-        SetOpcode(0x87, Instructions.SMB(AddressingModes.ZeroPage, 0), CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0x97, Instructions.SMB(AddressingModes.ZeroPage, 1), CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xA7, Instructions.SMB(AddressingModes.ZeroPage, 2), CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xB7, Instructions.SMB(AddressingModes.ZeroPage, 3), CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xC7, Instructions.SMB(AddressingModes.ZeroPage, 4), CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xD7, Instructions.SMB(AddressingModes.ZeroPage, 5), CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xE7, Instructions.SMB(AddressingModes.ZeroPage, 6), CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
-        SetOpcode(0xF7, Instructions.SMB(AddressingModes.ZeroPage, 7), CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x87, Instructions.SMB0ZeroPageDispatch, CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0x97, Instructions.SMB1ZeroPageDispatch, CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xA7, Instructions.SMB2ZeroPageDispatch, CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xB7, Instructions.SMB3ZeroPageDispatch, CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xC7, Instructions.SMB4ZeroPageDispatch, CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xD7, Instructions.SMB5ZeroPageDispatch, CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xE7, Instructions.SMB6ZeroPageDispatch, CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
+        SetDirectOpcode(0xF7, Instructions.SMB7ZeroPageDispatch, CpuInstructions.SMB, CpuAddressingModes.ZeroPage);
 
         // Branch if Bit Reset (BBR0-BBR7)
-        SetOpcode(0x0F, Instructions.BBR(AddressingModes.ZeroPageRelative, 0), CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0x1F, Instructions.BBR(AddressingModes.ZeroPageRelative, 1), CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0x2F, Instructions.BBR(AddressingModes.ZeroPageRelative, 2), CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0x3F, Instructions.BBR(AddressingModes.ZeroPageRelative, 3), CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0x4F, Instructions.BBR(AddressingModes.ZeroPageRelative, 4), CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0x5F, Instructions.BBR(AddressingModes.ZeroPageRelative, 5), CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0x6F, Instructions.BBR(AddressingModes.ZeroPageRelative, 6), CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0x7F, Instructions.BBR(AddressingModes.ZeroPageRelative, 7), CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x0F, Instructions.BBR0ZeroPageRelativeDispatch, CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x1F, Instructions.BBR1ZeroPageRelativeDispatch, CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x2F, Instructions.BBR2ZeroPageRelativeDispatch, CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x3F, Instructions.BBR3ZeroPageRelativeDispatch, CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x4F, Instructions.BBR4ZeroPageRelativeDispatch, CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x5F, Instructions.BBR5ZeroPageRelativeDispatch, CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x6F, Instructions.BBR6ZeroPageRelativeDispatch, CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x7F, Instructions.BBR7ZeroPageRelativeDispatch, CpuInstructions.BBR, CpuAddressingModes.ZeroPageRelative);
 
         // Branch if Bit Set (BBS0-BBS7)
-        SetOpcode(0x8F, Instructions.BBS(AddressingModes.ZeroPageRelative, 0), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0x9F, Instructions.BBS(AddressingModes.ZeroPageRelative, 1), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0xAF, Instructions.BBS(AddressingModes.ZeroPageRelative, 2), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0xBF, Instructions.BBS(AddressingModes.ZeroPageRelative, 3), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0xCF, Instructions.BBS(AddressingModes.ZeroPageRelative, 4), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0xDF, Instructions.BBS(AddressingModes.ZeroPageRelative, 5), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0xEF, Instructions.BBS(AddressingModes.ZeroPageRelative, 6), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
-        SetOpcode(0xFF, Instructions.BBS(AddressingModes.ZeroPageRelative, 7), CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x8F, Instructions.BBS0ZeroPageRelativeDispatch, CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0x9F, Instructions.BBS1ZeroPageRelativeDispatch, CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0xAF, Instructions.BBS2ZeroPageRelativeDispatch, CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0xBF, Instructions.BBS3ZeroPageRelativeDispatch, CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0xCF, Instructions.BBS4ZeroPageRelativeDispatch, CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0xDF, Instructions.BBS5ZeroPageRelativeDispatch, CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0xEF, Instructions.BBS6ZeroPageRelativeDispatch, CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
+        SetDirectOpcode(0xFF, Instructions.BBS7ZeroPageRelativeDispatch, CpuInstructions.BBS, CpuAddressingModes.ZeroPageRelative);
 
         // Jump and Subroutine Operations
         SetDirectOpcode(0x4C, Instructions.JMPAbsoluteDispatch, CpuInstructions.JMP, CpuAddressingModes.Absolute); // Jump Absolute

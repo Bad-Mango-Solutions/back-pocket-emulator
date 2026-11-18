@@ -6,121 +6,108 @@
 namespace BadMango.Emulator.Emulation.Cpu;
 
 using Core.Cpu;
+using Core.Interfaces.Cpu;
 
 /// <content>
 /// 65C02-specific instructions (TSB, TRB, WAI, STP). STZ is dispatched with the other stores.
 /// </content>
 public static partial class Instructions
 {
-    /// <summary>
-    /// TSB - Test and Set Bits instruction (65C02 specific).
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes TSB with the given addressing mode.</returns>
-    /// <remarks>
-    /// Tests the bits in the accumulator against memory, sets the Z flag if (A AND M) is zero,
-    /// then sets the bits in memory that are set in the accumulator (M = M OR A).
-    /// </remarks>
-    public static OpcodeHandler TSB(AddressingModeHandler addressingMode)
+    /// <summary>Cached direct-dispatch delegate for TSB zero page.</summary>
+    internal static readonly OpcodeDispatch TSBZeroPageDispatch = DispatchTSBZeroPage;
+
+    /// <summary>Cached direct-dispatch delegate for TSB absolute.</summary>
+    internal static readonly OpcodeDispatch TSBAbsoluteDispatch = DispatchTSBAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for TRB zero page.</summary>
+    internal static readonly OpcodeDispatch TRBZeroPageDispatch = DispatchTRBZeroPage;
+
+    /// <summary>Cached direct-dispatch delegate for TRB absolute.</summary>
+    internal static readonly OpcodeDispatch TRBAbsoluteDispatch = DispatchTRBAbsolute;
+
+    /// <summary>Cached direct-dispatch delegate for WAI implied.</summary>
+    internal static readonly OpcodeDispatch WAIImpliedDispatch = DispatchWAIImplied;
+
+    /// <summary>Cached direct-dispatch delegate for STP implied.</summary>
+    internal static readonly OpcodeDispatch STPImpliedDispatch = DispatchSTPImplied;
+
+    private static void DispatchTSBZeroPage(ICpu cpu, in OpcodeEntry entry) => OpTSB<ZeroPageMode>(cpu);
+
+    private static void DispatchTSBAbsolute(ICpu cpu, in OpcodeEntry entry) => OpTSB<AbsoluteMode>(cpu);
+
+    private static void DispatchTRBZeroPage(ICpu cpu, in OpcodeEntry entry) => OpTRB<ZeroPageMode>(cpu);
+
+    private static void DispatchTRBAbsolute(ICpu cpu, in OpcodeEntry entry) => OpTRB<AbsoluteMode>(cpu);
+
+    private static void DispatchWAIImplied(ICpu cpu, in OpcodeEntry entry) => OpWAI(cpu);
+
+    private static void DispatchSTPImplied(ICpu cpu, in OpcodeEntry entry) => OpSTP(cpu);
+
+    // TSB tests A AND M into Z, then sets the memory bits that are set in A (M = M OR A).
+    private static void OpTSB<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
+        Addr address = TMode.Resolve(cpu);
+        byte value = cpu.Read8(address);
+
+        byte a = cpu.Registers.A.GetByte();
+
+        // Set Z flag based on A AND M
+        if ((a & value) == 0)
         {
-            Addr address = addressingMode(cpu);
-            byte value = cpu.Read8(address);
+            cpu.Registers.P |= ProcessorStatusFlags.Z;
+        }
+        else
+        {
+            cpu.Registers.P &= ~ProcessorStatusFlags.Z;
+        }
 
-            byte a = cpu.Registers.A.GetByte();
+        // Set bits in memory (M = M OR A)
+        value |= a;
+        cpu.Write8(address, value);
 
-            // Set Z flag based on A AND M
-            if ((a & value) == 0)
-            {
-                cpu.Registers.P |= ProcessorStatusFlags.Z;
-            }
-            else
-            {
-                cpu.Registers.P &= ~ProcessorStatusFlags.Z;
-            }
-
-            // Set bits in memory (M = M OR A)
-            value |= a;
-            cpu.Write8(address, value);
-
-            cpu.Registers.TCU += 3; // Memory read + Memory write + internal operation
-        };
+        cpu.Registers.TCU += 3; // Memory read + Memory write + internal operation
     }
 
-    /// <summary>
-    /// TRB - Test and Reset Bits instruction (65C02 specific).
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use.</param>
-    /// <returns>An opcode handler that executes TRB with the given addressing mode.</returns>
-    /// <remarks>
-    /// Tests the bits in the accumulator against memory, sets the Z flag if (A AND M) is zero,
-    /// then clears the bits in memory that are set in the accumulator (M = M AND (NOT A)).
-    /// </remarks>
-    public static OpcodeHandler TRB(AddressingModeHandler addressingMode)
+    // TRB tests A AND M into Z, then clears the memory bits that are set in A (M = M AND NOT A).
+    private static void OpTRB<TMode>(ICpu cpu)
+        where TMode : struct, IAddressingMode
     {
-        return cpu =>
+        Addr address = TMode.Resolve(cpu);
+        byte value = cpu.Read8(address);
+
+        byte a = cpu.Registers.A.GetByte();
+
+        // Set Z flag based on A AND M
+        if ((a & value) == 0)
         {
-            Addr address = addressingMode(cpu);
-            byte value = cpu.Read8(address);
+            cpu.Registers.P |= ProcessorStatusFlags.Z;
+        }
+        else
+        {
+            cpu.Registers.P &= ~ProcessorStatusFlags.Z;
+        }
 
-            byte a = cpu.Registers.A.GetByte();
+        // Clear bits in memory (M = M AND (NOT A))
+        value &= (byte)~a;
+        cpu.Write8(address, value);
 
-            // Set Z flag based on A AND M
-            if ((a & value) == 0)
-            {
-                cpu.Registers.P |= ProcessorStatusFlags.Z;
-            }
-            else
-            {
-                cpu.Registers.P &= ~ProcessorStatusFlags.Z;
-            }
-
-            // Clear bits in memory (M = M AND (NOT A))
-            value &= (byte)~a;
-            cpu.Write8(address, value);
-
-            cpu.Registers.TCU += 3; // Memory read + Memory write + internal operation
-        };
+        cpu.Registers.TCU += 3; // Memory read + Memory write + internal operation
     }
 
-    /// <summary>
-    /// WAI - Wait for Interrupt instruction (65C02 specific).
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes WAI.</returns>
-    /// <remarks>
-    /// Puts the processor into a low-power state until an interrupt occurs.
-    /// The CPU will resume execution when IRQ (if I flag clear) or NMI is signaled.
-    /// </remarks>
-    public static OpcodeHandler WAI(AddressingModeHandler addressingMode)
+    private static void OpWAI(ICpu cpu)
     {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.HaltReason = HaltState.Wai;
+        ImpliedMode.Resolve(cpu);
+        cpu.HaltReason = HaltState.Wai;
 
-            cpu.Registers.TCU += 2;
-        };
+        cpu.Registers.TCU += 2;
     }
 
-    /// <summary>
-    /// STP - Stop the processor instruction (65C02 specific).
-    /// </summary>
-    /// <param name="addressingMode">The addressing mode function to use (typically Implied).</param>
-    /// <returns>An opcode handler that executes STP.</returns>
-    /// <remarks>
-    /// Stops the processor permanently until a hardware reset occurs.
-    /// This is the deepest halt state and cannot be resumed by interrupts.
-    /// </remarks>
-    public static OpcodeHandler STP(AddressingModeHandler addressingMode)
+    private static void OpSTP(ICpu cpu)
     {
-        return cpu =>
-        {
-            addressingMode(cpu);
-            cpu.HaltReason = HaltState.Stp;
+        ImpliedMode.Resolve(cpu);
+        cpu.HaltReason = HaltState.Stp;
 
-            cpu.Registers.TCU += 2;
-        };
+        cpu.Registers.TCU += 2;
     }
 }
