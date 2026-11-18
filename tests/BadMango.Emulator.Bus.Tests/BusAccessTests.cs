@@ -225,14 +225,14 @@ public class BusAccessTests
     }
 
     /// <summary>
-    /// Verifies that PrivilegeLevel defaults to Ring0.
+    /// Verifies that PrivilegeLevel defaults to User.
     /// </summary>
     [Test]
-    public void BusAccess_PrivilegeLevel_DefaultsToRing0()
+    public void BusAccess_PrivilegeLevel_DefaultsToUser()
     {
         var access = new BusAccess(0, 0, 8, BusAccessMode.Decomposed, true, AccessIntent.DataRead, 0, 0, AccessFlags.None);
 
-        Assert.That(access.PrivilegeLevel, Is.EqualTo(PrivilegeLevel.Ring0));
+        Assert.That(access.PrivilegeLevel, Is.EqualTo(PrivilegeLevel.User));
     }
 
     /// <summary>
@@ -241,9 +241,9 @@ public class BusAccessTests
     [Test]
     public void BusAccess_PrivilegeLevel_CanBeSet()
     {
-        var access = new BusAccess(0, 0, 8, BusAccessMode.Atomic, false, AccessIntent.DataRead, 0, 0, AccessFlags.None, PrivilegeLevel.Ring3);
+        var access = new BusAccess(0, 0, 8, BusAccessMode.Atomic, false, AccessIntent.DataRead, 0, 0, AccessFlags.None, PrivilegeLevel.Hypervisor);
 
-        Assert.That(access.PrivilegeLevel, Is.EqualTo(PrivilegeLevel.Ring3));
+        Assert.That(access.PrivilegeLevel, Is.EqualTo(PrivilegeLevel.Hypervisor));
     }
 
     /// <summary>
@@ -252,8 +252,8 @@ public class BusAccessTests
     [Test]
     public void BusAccess_DifferentPrivilegeLevels_AreNotEqual()
     {
-        var access1 = new BusAccess(0, 0, 8, BusAccessMode.Atomic, false, AccessIntent.DataRead, 0, 0, AccessFlags.None, PrivilegeLevel.Ring0);
-        var access2 = new BusAccess(0, 0, 8, BusAccessMode.Atomic, false, AccessIntent.DataRead, 0, 0, AccessFlags.None, PrivilegeLevel.Ring3);
+        var access1 = new BusAccess(0, 0, 8, BusAccessMode.Atomic, false, AccessIntent.DataRead, 0, 0, AccessFlags.None, PrivilegeLevel.User);
+        var access2 = new BusAccess(0, 0, 8, BusAccessMode.Atomic, false, AccessIntent.DataRead, 0, 0, AccessFlags.None, PrivilegeLevel.Hypervisor);
 
         Assert.That(access1, Is.Not.EqualTo(access2));
     }

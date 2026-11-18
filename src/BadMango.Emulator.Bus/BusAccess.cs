@@ -20,9 +20,9 @@ namespace BadMango.Emulator.Bus;
 /// CPU flag logic.
 /// </para>
 /// <para>
-/// The <see cref="PrivilegeLevel"/> field indicates the requestor's privilege ring.
+/// The <see cref="PrivilegeLevel"/> field indicates the requestor's privilege level.
 /// The bus may check this against the page entry's minimum privilege requirements.
-/// In compat mode, this defaults to Ring 0 (full access).
+/// In compat mode, this defaults to User so all callers pass the current non-enforced checks.
 /// </para>
 /// </remarks>
 /// <param name="Address">The memory address for the operation.</param>
@@ -34,7 +34,7 @@ namespace BadMango.Emulator.Bus;
 /// <param name="SourceId">Structural identifier of the access initiator (CPU, DMA channel, debugger).</param>
 /// <param name="Cycle">The current machine cycle for timing correlation.</param>
 /// <param name="Flags">Flags modifying access behavior (side effects, atomicity, endianness).</param>
-/// <param name="PrivilegeLevel">The requestor's privilege level. Defaults to Ring 0 for compat mode.</param>
+/// <param name="PrivilegeLevel">The requestor's privilege level. Defaults to User for compat mode.</param>
 /// <param name="Pc">
 /// Program counter of a CPU caller. The bus does not know a CPU and does not read this on a
 /// successful access. A failing <c>Try*</c> copies it onto the one <see cref="BusFault"/> it
@@ -50,7 +50,7 @@ public readonly record struct BusAccess(
     int SourceId,
     ulong Cycle,
     AccessFlags Flags,
-    PrivilegeLevel PrivilegeLevel = PrivilegeLevel.Ring0,
+    PrivilegeLevel PrivilegeLevel = PrivilegeLevel.User,
     Addr Pc = 0)
 {
     /// <summary>

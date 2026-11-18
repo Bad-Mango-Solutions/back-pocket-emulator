@@ -155,12 +155,12 @@ public class PageFastPathTests
     /// <param name="read">Minimum read privilege.</param>
     /// <param name="write">Minimum write privilege.</param>
     /// <param name="execute">Minimum execute privilege.</param>
-    [TestCase(TargetCaps.HasSideEffects, PrivilegeLevel.Ring0, PrivilegeLevel.Ring0, PrivilegeLevel.Ring0)]
-    [TestCase(TargetCaps.TimingSensitive, PrivilegeLevel.Ring0, PrivilegeLevel.Ring0, PrivilegeLevel.Ring0)]
-    [TestCase(TargetCaps.SupportsPeek | TargetCaps.HasSideEffects, PrivilegeLevel.Ring0, PrivilegeLevel.Ring0, PrivilegeLevel.Ring0)]
-    [TestCase(TargetCaps.None, PrivilegeLevel.Ring1, PrivilegeLevel.Ring0, PrivilegeLevel.Ring0)]
-    [TestCase(TargetCaps.None, PrivilegeLevel.Ring0, PrivilegeLevel.Ring3, PrivilegeLevel.Ring0)]
-    [TestCase(TargetCaps.None, PrivilegeLevel.Ring0, PrivilegeLevel.Ring0, PrivilegeLevel.Ring2)]
+    [TestCase(TargetCaps.HasSideEffects, PrivilegeLevel.User, PrivilegeLevel.User, PrivilegeLevel.User)]
+    [TestCase(TargetCaps.TimingSensitive, PrivilegeLevel.User, PrivilegeLevel.User, PrivilegeLevel.User)]
+    [TestCase(TargetCaps.SupportsPeek | TargetCaps.HasSideEffects, PrivilegeLevel.User, PrivilegeLevel.User, PrivilegeLevel.User)]
+    [TestCase(TargetCaps.None, PrivilegeLevel.Kernel, PrivilegeLevel.User, PrivilegeLevel.User)]
+    [TestCase(TargetCaps.None, PrivilegeLevel.User, PrivilegeLevel.Hypervisor, PrivilegeLevel.User)]
+    [TestCase(TargetCaps.None, PrivilegeLevel.User, PrivilegeLevel.User, PrivilegeLevel.Reserved)]
     public void MapPage_RestrictedPage_StaysSlow(TargetCaps caps, PrivilegeLevel read, PrivilegeLevel write, PrivilegeLevel execute)
     {
         var pool = new PhysicalMemory(PageBytes, "ram");

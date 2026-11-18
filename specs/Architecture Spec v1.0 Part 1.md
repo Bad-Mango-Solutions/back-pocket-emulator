@@ -471,6 +471,7 @@ public enum PrivilegeLevel : byte
 ```
 
 The privilege level is encoded in `CR0` bits 0-1. System registers are only accessible in Kernel or Hypervisor mode; User-mode access triggers a privilege violation trap.
+Privilege ordering is `User < Kernel < Hypervisor`; privilege checks compare a current level against a required minimum with `current >= required`.
 
 ---
 

@@ -106,9 +106,9 @@ public sealed partial class MainBus
             return false;
         }
 
-        if (entry.MinReadPrivilege != PrivilegeLevel.Ring0
-            || entry.MinWritePrivilege != PrivilegeLevel.Ring0
-            || entry.MinExecutePrivilege != PrivilegeLevel.Ring0)
+        if (entry.MinReadPrivilege != PrivilegeLevel.User
+            || entry.MinWritePrivilege != PrivilegeLevel.User
+            || entry.MinExecutePrivilege != PrivilegeLevel.User)
         {
             return false;
         }

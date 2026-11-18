@@ -25,8 +25,8 @@ using Interfaces;
 /// in Compat mode.
 /// </para>
 /// <para>
-/// Privilege levels control access based on the requestor's ring. In compat mode,
-/// all pages default to Ring 0 access (no restrictions). Native mode machines may
+/// Privilege levels control access based on the requestor's mode. In compat mode,
+/// all pages default to User minimum access (no restrictions). Native mode machines may
 /// enforce privilege checking.
 /// </para>
 /// <para>
@@ -45,18 +45,16 @@ using Interfaces;
 /// <param name="PhysicalBase">The physical base address within the target's address space.</param>
 /// <param name="MinReadPrivilege">
 /// Minimum privilege level required for read accesses to this page.
-/// The default value, <see cref="PrivilegeLevel.Ring0"/>, allows reads from the most privileged ring only;
-/// set this to a less-privileged ring (for example, user mode) to permit reads from code running at that level or higher.
+/// The default value, <see cref="PrivilegeLevel.User"/>, allows reads from every privilege level
+/// because <c>User &lt; Kernel &lt; Hypervisor</c> and checks use <c>current &gt;= required</c>.
 /// </param>
 /// <param name="MinWritePrivilege">
 /// Minimum privilege level required for write accesses to this page.
-/// The default value, <see cref="PrivilegeLevel.Ring0"/>, restricts writes to the most privileged ring;
-/// override this to a less-privileged ring when user-mode or guest code must be able to write to the page.
+/// The default value, <see cref="PrivilegeLevel.User"/>, permits writes from every privilege level.
 /// </param>
 /// <param name="MinExecutePrivilege">
 /// Minimum privilege level required for instruction fetch (execute) accesses to this page.
-/// The default value, <see cref="PrivilegeLevel.Ring0"/>, limits execution to the most privileged ring;
-/// increase this to a less-privileged ring when mapping user-executable code or shared executable regions.
+/// The default value, <see cref="PrivilegeLevel.User"/>, permits execution from every privilege level.
 /// </param>
 /// <param name="IsSealed">
 /// When set to <see langword="true"/>, prevents modification of this page entry from callers running at a lower privilege level,
@@ -81,9 +79,9 @@ public readonly record struct PageEntry(
     TargetCaps Caps,
     IBusTarget Target,
     Addr PhysicalBase,
-    PrivilegeLevel MinReadPrivilege = PrivilegeLevel.Ring0,
-    PrivilegeLevel MinWritePrivilege = PrivilegeLevel.Ring0,
-    PrivilegeLevel MinExecutePrivilege = PrivilegeLevel.Ring0,
+    PrivilegeLevel MinReadPrivilege = PrivilegeLevel.User,
+    PrivilegeLevel MinWritePrivilege = PrivilegeLevel.User,
+    PrivilegeLevel MinExecutePrivilege = PrivilegeLevel.User,
     bool IsSealed = false,
     byte[]? FastBacking = null,
     int FastBase = 0,
