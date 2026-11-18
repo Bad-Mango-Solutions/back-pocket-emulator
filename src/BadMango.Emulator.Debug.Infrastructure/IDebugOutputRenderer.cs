@@ -115,4 +115,12 @@ public interface IDebugOutputRenderer
     /// <param name="receipt">The reaction now in effect.</param>
     /// <param name="text">The human-readable line used when JSON is off.</param>
     void WriteAbort(TextWriter output, AbortReceipt receipt, string text);
+
+    /// <summary>
+    /// Writes the mapping-trace state and ring.
+    /// </summary>
+    /// <param name="output">The writer that receives the result.</param>
+    /// <param name="receipt">Whether trace is on, the range, and the ring.</param>
+    /// <param name="text">The human-readable listing used when JSON is off.</param>
+    void WriteMapTrace(TextWriter output, MapTraceReceipt receipt, string text);
 }

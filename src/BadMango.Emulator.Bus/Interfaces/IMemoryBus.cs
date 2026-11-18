@@ -88,6 +88,45 @@ public interface IMemoryBus
     bool FaultRecordingEnabled { get; set; }
 
     /// <summary>
+    /// Gets the fixed mapping-trace ring.
+    /// </summary>
+    /// <remarks>
+    /// The ring is allocated with the bus. Appends do not allocate. The CPU fast path does not
+    /// read this ring, <see cref="MappingTraceEnabled"/>, or the trace range. It only reads the
+    /// <see cref="PageEntry.FastOps"/> a range republish already stored.
+    /// </remarks>
+    IMappingTraceRing MappingTrace { get; }
+
+    /// <summary>
+    /// Gets or sets whether remaps and slow-path byte accesses are appended to <see cref="MappingTrace"/>.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see langword="false"/>. While false and the range is empty, a remap does not
+    /// call <see cref="ISoftSwitchProvider.GetSoftSwitchStates"/>. The slow path may load this flag
+    /// once per byte. The CPU fast path does not load it.
+    /// </remarks>
+    bool MappingTraceEnabled { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether a trace range is forcing covered pages onto the slow path.
+    /// </summary>
+    /// <remarks>
+    /// The range is empty by default. <see cref="SetMappingTraceRange"/> turns trace on.
+    /// <see cref="ClearMappingTraceRange"/> restores natural <c>FastOps</c> and leaves trace on.
+    /// </remarks>
+    bool HasMappingTraceRange { get; }
+
+    /// <summary>
+    /// Gets the start address of the trace range, or zero when <see cref="HasMappingTraceRange"/> is false.
+    /// </summary>
+    uint MappingTraceRangeStart { get; }
+
+    /// <summary>
+    /// Gets the inclusive end address of the trace range, or zero when <see cref="HasMappingTraceRange"/> is false.
+    /// </summary>
+    uint MappingTraceRangeEnd { get; }
+
+    /// <summary>
     /// Gets the latched fault status.
     /// </summary>
     /// <value>
@@ -129,6 +168,32 @@ public interface IMemoryBus
     /// A fast-path access does not clear the registers.
     /// </remarks>
     void ClearFaultStatus();
+
+    /// <summary>
+    /// Turns mapping trace on and forces every 4 KB page that intersects
+    /// <paramref name="start"/> through <paramref name="endInclusive"/> onto the slow path.
+    /// </summary>
+    /// <param name="start">The first CPU address of the range.</param>
+    /// <param name="endInclusive">The last CPU address of the range.</param>
+    /// <remarks>
+    /// Pages in the new range publish <c>FastOps</c> <c>None</c> and keep their backing array.
+    /// Pages that were in the previous range and are not in the new one get their natural
+    /// <c>FastOps</c> back. A later remap uses the same publish function, so a covered page stays slow.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="endInclusive"/> is below <paramref name="start"/>, or <paramref name="start"/>
+    /// is outside the address space.
+    /// </exception>
+    void SetMappingTraceRange(uint start, uint endInclusive);
+
+    /// <summary>
+    /// Clears the trace range and republishes natural <c>FastOps</c> for the pages it covered.
+    /// </summary>
+    /// <remarks>
+    /// Does not turn trace off. <c>maptrace off</c> clears the range and then sets
+    /// <see cref="MappingTraceEnabled"/> to <see langword="false"/>.
+    /// </remarks>
+    void ClearMappingTraceRange();
 
     /// <summary>
     /// Reads a single byte from the specified address.

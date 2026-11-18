@@ -35,9 +35,11 @@ emudbg --headless --max-cycles 100000 --exec "run-until --until-cycles=1000;exit
 
 ## Commands that use the session
 
-`regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, `reset`, and `abort` call the process-wide `IDebugSession`. `disk-list --json` uses the same envelope. `run-until` accepts a PC (`$0801`), `bp`, `watch`, `mem <addr> <byte>`, and `--until-cycles=<n>`. A bad `run-until` argument is exit code 2.
+`regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, `reset`, `abort`, and `maptrace` call the process-wide `IDebugSession`. `disk-list --json` uses the same envelope. `run-until` accepts a PC (`$0801`), `bp`, `watch`, `mem <addr> <byte>`, and `--until-cycles=<n>`. A bad `run-until` argument is exit code 2.
 
 `abort` shows or sets how a 65C02 treats `SignalLine.Abort`. With no argument it prints the current reaction. `abort noop` selects `NoOp` (the default: the line is ignored and an unmapped fetch still stops with STP). `abort hostbreak` selects `HostBreak` (the next instruction boundary requests a host stop and does not set STP). The command does not pulse the line. A machine reset does not clear the setting. `HostBreak` is rejected when the attached CPU is not a 65C02. With `--json`, the result is one `emudbg/v1` envelope whose payload is `{ "reaction": "NoOp" }` or `{ "reaction": "HostBreak" }`.
+
+`maptrace` shows or sets mapping trace. With no argument it prints whether trace is on, the optional address range, and the fixed ring. `maptrace on` records remaps and slow-path accesses and does not change a range. `maptrace range $start $end` turns trace on and forces every 4 KB page the range intersects onto the slow path. `maptrace range clear` restores those pages and leaves trace on. `maptrace off` clears the range, restores those pages, and then disables trace. With `--json`, the result is one `emudbg/v1` envelope.
 
 `mem` and `peek` keep going across bus faults. Text shows `??` for each unreadable byte. JSON adds a `faults` hex mask beside `data`: `00` means that data byte is valid, and any non-zero byte is a bitmask of fault flags (`0x01` Unmapped, `0x02` Permission, `0x04` Nx, `0x08` Misaligned, `0x10` DeviceFault). A faulted data byte is 0 and is not memory contents. The mask is omitted when every byte is `00`.
 

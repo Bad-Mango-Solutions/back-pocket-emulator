@@ -203,6 +203,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
         read8CallCount++;
         ref readonly var page = ref pageTable[access.Address >> PageShift];
         Addr physicalAddress = page.PhysicalBase + (access.Address & PageMask);
+        byte value;
 
         // Handle composite target dispatch
         if (page.Target is ICompositeTarget composite)
@@ -211,21 +212,22 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
             var subTarget = composite.ResolveTarget(offset, access.Intent);
             if (subTarget is not null)
             {
-                return subTarget.Read8(physicalAddress, access);
+                value = subTarget.Read8(physicalAddress, access);
             }
-
-            // No sub-target found, return floating bus value and record a
-            // synthetic Unmapped fault so debug tooling can see the silent
-            // hole instead of being lied to by the floating-bus value.
-            if (faultRecordingEnabled)
+            else
             {
-                RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: true);
+                // No sub-target found, return floating bus value and record a
+                // synthetic Unmapped fault so debug tooling can see the silent
+                // hole instead of being lied to by the floating-bus value.
+                if (faultRecordingEnabled)
+                {
+                    RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: true);
+                }
+
+                value = 0xFF;
             }
-
-            return 0xFF;
         }
-
-        if (page.Target is null)
+        else if (page.Target is null)
         {
             // Page entry exists but no target is mapped. Record an Unmapped
             // fault and return the floating-bus value rather than NRE'ing.
@@ -234,10 +236,20 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
                 RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: false);
             }
 
-            return 0xFF;
+            value = 0xFF;
+        }
+        else
+        {
+            value = page.Target.Read8(physicalAddress, access);
         }
 
-        return page.Target.Read8(physicalAddress, access);
+        // One load of the trace flag. The CPU fast path does not enter this method.
+        if (mappingTraceEnabled)
+        {
+            TraceSlowAccess(in access);
+        }
+
+        return value;
     }
 
     /// <inheritdoc />
@@ -255,153 +267,173 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
             if (subTarget is not null)
             {
                 subTarget.Write8(physicalAddress, value, access);
-                return;
             }
-
-            // No sub-target found for this offset - record the silent drop.
-            if (faultRecordingEnabled)
+            else if (faultRecordingEnabled)
             {
+                // No sub-target found for this offset - record the silent drop.
                 RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: true);
             }
-
-            return;
         }
-
-        if (page.Target is null)
+        else if (page.Target is null)
         {
             if (faultRecordingEnabled)
             {
                 RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: false);
             }
-
-            return;
+        }
+        else
+        {
+            page.Target.Write8(physicalAddress, value, access);
         }
 
-        page.Target.Write8(physicalAddress, value, access);
+        // One load of the trace flag. The CPU fast path does not enter this method.
+        if (mappingTraceEnabled)
+        {
+            TraceSlowAccess(in access);
+        }
     }
 
     /// <inheritdoc />
     public BusResult<byte> TryRead8(in BusAccess access)
     {
         tryRead8CallCount++;
+        BusResult<byte> result;
         int pageIndex = (int)(access.Address >> PageShift);
         if (pageIndex >= pageTable.Length)
         {
-            return RecordAndReturnFault(access, BusFault.Unmapped(access));
+            result = RecordAndReturnFault(access, BusFault.Unmapped(access));
         }
-
-        ref readonly var page = ref pageTable[pageIndex];
-
-        // Check for unmapped page
-        if (page.Target is null)
+        else
         {
-            return RecordAndReturnFault(access, BusFault.Unmapped(access));
-        }
+            ref readonly var page = ref pageTable[pageIndex];
 
-        // Check read permission.
-        // Debug reads (AccessIntent.DebugRead) bypass this check to allow
-        // inspecting memory regardless of page permissions.
-        if (!page.CanRead && !access.IsDebugAccess)
-        {
-            return RecordAndReturnFault(access, BusFault.PermissionDenied(access, page.DeviceId, page.RegionTag));
-        }
-
-        // Check NX on instruction fetch (Atomic mode only)
-        if (access.Intent == AccessIntent.InstructionFetch &&
-            access.Mode == BusAccessMode.Atomic &&
-            !page.CanExecute)
-        {
-            return RecordAndReturnFault(access, BusFault.NoExecute(access, page.DeviceId, page.RegionTag));
-        }
-
-        // Handle composite target dispatch
-        if (page.Target is ICompositeTarget composite)
-        {
-            Addr offset = access.Address & PageMask;
-            var subTarget = composite.ResolveTarget(offset, access.Intent);
-            if (subTarget is null)
+            // Check for unmapped page
+            if (page.Target is null)
             {
-                // No sub-target found - this is a silent floating-bus read.
-                // Record the synthetic Unmapped fault but still return success
-                // with $FF so the CPU sees the expected floating-bus value
-                // (matches the semantics of the fast-path Read8 above).
-                if (faultRecordingEnabled)
-                {
-                    RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: true);
-                }
-
-                return ZeroSuccess((byte)0xFF);
+                result = RecordAndReturnFault(access, BusFault.Unmapped(access));
             }
+            else if (!page.CanRead && !access.IsDebugAccess)
+            {
+                // Check read permission.
+                // Debug reads (AccessIntent.DebugRead) bypass this check to allow
+                // inspecting memory regardless of page permissions.
+                result = RecordAndReturnFault(access, BusFault.PermissionDenied(access, page.DeviceId, page.RegionTag));
+            }
+            else if (access.Intent == AccessIntent.InstructionFetch &&
+                access.Mode == BusAccessMode.Atomic &&
+                !page.CanExecute)
+            {
+                // Check NX on instruction fetch (Atomic mode only)
+                result = RecordAndReturnFault(access, BusFault.NoExecute(access, page.DeviceId, page.RegionTag));
+            }
+            else if (page.Target is ICompositeTarget composite)
+            {
+                // Handle composite target dispatch
+                Addr offset = access.Address & PageMask;
+                var subTarget = composite.ResolveTarget(offset, access.Intent);
+                if (subTarget is null)
+                {
+                    // No sub-target found - this is a silent floating-bus read.
+                    // Record the synthetic Unmapped fault but still return success
+                    // with $FF so the CPU sees the expected floating-bus value
+                    // (matches the semantics of the fast-path Read8 above).
+                    if (faultRecordingEnabled)
+                    {
+                        RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: true);
+                    }
 
-            Addr physicalAddress = page.PhysicalBase + offset;
-            byte value = subTarget.Read8(physicalAddress, access);
-            return ZeroSuccess<byte>(value);
+                    result = ZeroSuccess((byte)0xFF);
+                }
+                else
+                {
+                    Addr physicalAddress = page.PhysicalBase + offset;
+                    byte value = subTarget.Read8(physicalAddress, access);
+                    result = ZeroSuccess<byte>(value);
+                }
+            }
+            else
+            {
+                // Perform the read
+                Addr physAddr = page.PhysicalBase + (access.Address & PageMask);
+                byte readValue = page.Target.Read8(physAddr, access);
+                result = ZeroSuccess<byte>(readValue);
+            }
         }
 
-        // Perform the read
-        Addr physAddr = page.PhysicalBase + (access.Address & PageMask);
-        byte readValue = page.Target.Read8(physAddr, access);
+        // One load of the trace flag, next to the fault-recording loads above.
+        // The CPU fast path does not enter this method and does not load the flag.
+        if (mappingTraceEnabled)
+        {
+            TraceSlowAccess(in access);
+        }
 
-        return ZeroSuccess<byte>(readValue);
+        return result;
     }
 
     /// <inheritdoc />
     public BusResult TryWrite8(in BusAccess access, byte value)
     {
         tryWrite8CallCount++;
+        BusResult result;
         int pageIndex = (int)(access.Address >> PageShift);
         if (pageIndex >= pageTable.Length)
         {
-            return RecordAndReturnFaultVoid(access, BusFault.Unmapped(access));
+            result = RecordAndReturnFaultVoid(access, BusFault.Unmapped(access));
         }
-
-        ref readonly var page = ref pageTable[pageIndex];
-
-        // Check for unmapped page
-        if (page.Target is null)
+        else
         {
-            return RecordAndReturnFaultVoid(access, BusFault.Unmapped(access));
-        }
+            ref readonly var page = ref pageTable[pageIndex];
 
-        // Check write permission.
-        // Debug writes (AccessIntent.DebugWrite) bypass this check because:
-        // 1. They're used for test setup (patching ROM with stubs)
-        // 2. The target ultimately decides if the write succeeds
-        //    - RomTarget accepts debug writes if constructed with Memory<byte>
-        //    - RomTarget ignores debug writes if constructed with ReadOnlyMemory<byte>
-        // 3. This enables ICpu.Poke8() to work for debugging and testing scenarios
-        if (!page.CanWrite && !access.IsDebugAccess)
-        {
-            return RecordAndReturnFaultVoid(access, BusFault.PermissionDenied(access, page.DeviceId, page.RegionTag));
-        }
-
-        // Handle composite target dispatch
-        if (page.Target is ICompositeTarget composite)
-        {
-            Addr offset = access.Address & PageMask;
-            var subTarget = composite.ResolveTarget(offset, access.Intent);
-            if (subTarget is not null)
+            // Check for unmapped page
+            if (page.Target is null)
             {
-                Addr physicalAddress = page.PhysicalBase + offset;
-                subTarget.Write8(physicalAddress, value, access);
+                result = RecordAndReturnFaultVoid(access, BusFault.Unmapped(access));
+            }
+            else if (!page.CanWrite && !access.IsDebugAccess)
+            {
+                // Check write permission.
+                // Debug writes (AccessIntent.DebugWrite) bypass this check because:
+                // 1. They're used for test setup (patching ROM with stubs)
+                // 2. The target ultimately decides if the write succeeds
+                //    - RomTarget accepts debug writes if constructed with Memory<byte>
+                //    - RomTarget ignores debug writes if constructed with ReadOnlyMemory<byte>
+                // 3. This enables ICpu.Poke8() to work for debugging and testing scenarios
+                result = RecordAndReturnFaultVoid(access, BusFault.PermissionDenied(access, page.DeviceId, page.RegionTag));
+            }
+            else if (page.Target is ICompositeTarget composite)
+            {
+                // Handle composite target dispatch
+                Addr offset = access.Address & PageMask;
+                var subTarget = composite.ResolveTarget(offset, access.Intent);
+                if (subTarget is not null)
+                {
+                    Addr physicalAddress = page.PhysicalBase + offset;
+                    subTarget.Write8(physicalAddress, value, access);
+                }
+                else if (faultRecordingEnabled)
+                {
+                    // Silent drop - record the synthetic Unmapped fault.
+                    RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: true);
+                }
+
+                result = ZeroSuccess();
             }
             else
             {
-                // Silent drop - record the synthetic Unmapped fault.
-                if (faultRecordingEnabled)
-                {
-                    RecordSilentFault(access, BusFault.Unmapped(access), page.DeviceId, page.RegionTag, isComposite: true);
-                }
+                // Perform the write
+                Addr physAddr = page.PhysicalBase + (access.Address & PageMask);
+                page.Target.Write8(physAddr, value, access);
+                result = ZeroSuccess();
             }
-
-            return ZeroSuccess();
         }
 
-        // Perform the write
-        Addr physAddr = page.PhysicalBase + (access.Address & PageMask);
-        page.Target.Write8(physAddr, value, access);
+        // One load of the trace flag. The CPU fast path does not enter this method.
+        if (mappingTraceEnabled)
+        {
+            TraceSlowAccess(in access);
+        }
 
-        return ZeroSuccess();
+        return result;
     }
 
     /// <summary>

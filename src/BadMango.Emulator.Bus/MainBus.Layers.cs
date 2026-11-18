@@ -57,7 +57,15 @@ public sealed partial class MainBus
         // If the layer is active, recompute affected pages
         if (layer.IsActive)
         {
-            RecomputeAffectedPages(startPage, pageCount);
+            int batch = BeginTraceBatch();
+            try
+            {
+                RecomputeAffectedPages(startPage, pageCount);
+            }
+            finally
+            {
+                EndTraceBatch(batch);
+            }
         }
     }
 
@@ -78,13 +86,21 @@ public sealed partial class MainBus
 
         layers[layerName] = layer.WithActive(true);
 
-        // Recompute all pages affected by this layer's mappings
+        // Recompute all pages affected by this layer's mappings. One snapshot covers the rebuild.
         var mappings = layeredMappings[layerName];
-        foreach (var mapping in mappings)
+        int batch = BeginTraceBatch();
+        try
         {
-            int startPage = mapping.GetStartPage(PageShift);
-            int pageCount = mapping.GetPageCount(PageShift);
-            RecomputeAffectedPages(startPage, pageCount);
+            foreach (var mapping in mappings)
+            {
+                int startPage = mapping.GetStartPage(PageShift);
+                int pageCount = mapping.GetPageCount(PageShift);
+                RecomputeAffectedPages(startPage, pageCount);
+            }
+        }
+        finally
+        {
+            EndTraceBatch(batch);
         }
     }
 
@@ -105,13 +121,21 @@ public sealed partial class MainBus
 
         layers[layerName] = layer.WithActive(false);
 
-        // Recompute all pages affected by this layer's mappings
+        // Recompute all pages affected by this layer's mappings. One snapshot covers the rebuild.
         var mappings = layeredMappings[layerName];
-        foreach (var mapping in mappings)
+        int batch = BeginTraceBatch();
+        try
         {
-            int startPage = mapping.GetStartPage(PageShift);
-            int pageCount = mapping.GetPageCount(PageShift);
-            RecomputeAffectedPages(startPage, pageCount);
+            foreach (var mapping in mappings)
+            {
+                int startPage = mapping.GetStartPage(PageShift);
+                int pageCount = mapping.GetPageCount(PageShift);
+                RecomputeAffectedPages(startPage, pageCount);
+            }
+        }
+        finally
+        {
+            EndTraceBatch(batch);
         }
     }
 
@@ -144,14 +168,22 @@ public sealed partial class MainBus
             mappings[i] = mappings[i] with { Perms = perms };
         }
 
-        // If the layer is active, recompute affected pages
+        // If the layer is active, recompute affected pages. One snapshot covers the rebuild.
         if (layer.IsActive)
         {
-            foreach (var mapping in mappings)
+            int batch = BeginTraceBatch();
+            try
             {
-                int startPage = mapping.GetStartPage(PageShift);
-                int pageCount = mapping.GetPageCount(PageShift);
-                RecomputeAffectedPages(startPage, pageCount);
+                foreach (var mapping in mappings)
+                {
+                    int startPage = mapping.GetStartPage(PageShift);
+                    int pageCount = mapping.GetPageCount(PageShift);
+                    RecomputeAffectedPages(startPage, pageCount);
+                }
+            }
+            finally
+            {
+                EndTraceBatch(batch);
             }
         }
     }
@@ -316,6 +348,6 @@ public sealed partial class MainBus
             }
         }
 
-        pageTable[pageIndex] = WithFastPath(effectiveEntry);
+        pageTable[pageIndex] = WithFastPath(effectiveEntry, pageIndex);
     }
 }

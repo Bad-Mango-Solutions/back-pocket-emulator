@@ -43,7 +43,7 @@ dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj 
 ```
 
 - `--exec` / `-e` and `--file` / `-f` run commands and exit. End a sequence with `exit` when you need a clean success.
-- `--json` makes `regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, `reset`, and `abort` print an `emudbg/v1` envelope. Parse `payload`. Do not scrape the text boxes.
+- `--json` makes `regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, `reset`, `abort`, and `maptrace` print an `emudbg/v1` envelope. Parse `payload`. Do not scrape the text boxes.
 - `--agent` is headless + JSON + non-interactive.
 - `--max-cycles <n>` is the default `RunBudget` for `run`, `run-until`, and `step`.
 - `--seed` exits 2. There is no seeded RNG to attach it to.

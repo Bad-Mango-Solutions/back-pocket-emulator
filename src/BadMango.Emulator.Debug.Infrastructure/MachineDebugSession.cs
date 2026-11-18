@@ -130,10 +130,40 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <inheritdoc />
     public uint FaultAddress => this.RequireBus().FaultAddress;
 
+    /// <inheritdoc />
+    public bool MappingTraceEnabled
+    {
+        get => this.RequireBus().MappingTraceEnabled;
+        set => this.RequireBus().MappingTraceEnabled = value;
+    }
+
     private IMachine Machine => debugContext.Machine ?? throw new InvalidOperationException(NoMachineMessage);
 
     /// <inheritdoc />
     public void ClearFaultStatus() => this.RequireBus().ClearFaultStatus();
+
+    /// <inheritdoc />
+    public void SetMappingTraceRange(uint start, uint endInclusive) =>
+        this.RequireBus().SetMappingTraceRange(start, endInclusive);
+
+    /// <inheritdoc />
+    public void ClearMappingTraceRange() => this.RequireBus().ClearMappingTraceRange();
+
+    /// <inheritdoc />
+    public bool TryGetMappingTraceRange(out uint start, out uint endInclusive)
+    {
+        IMemoryBus bus = this.RequireBus();
+        if (!bus.HasMappingTraceRange)
+        {
+            start = 0;
+            endInclusive = 0;
+            return false;
+        }
+
+        start = bus.MappingTraceRangeStart;
+        endInclusive = bus.MappingTraceRangeEnd;
+        return true;
+    }
 
     /// <inheritdoc />
     public RegisterSnapshot GetRegisters()
