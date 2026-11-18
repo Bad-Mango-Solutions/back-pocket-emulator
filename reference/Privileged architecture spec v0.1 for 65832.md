@@ -359,6 +359,7 @@ This revision locks in: **VBAR**, **save-always trap frames**, and **NX** (no-ex
 
 - **U — user mode:** memory protections enforced; privileged instructions trap.
 - **K — kernel mode:** full access; manages MMU, interrupts, mode switching, and privileged state.
+- **Privilege ordering:** `User (0) < Kernel (1) < Hypervisor (2)`; minimum-privilege checks are evaluated as `current >= required`.
 
 ### Invariants
 
@@ -1643,4 +1644,3 @@ Since you’re writing the emulator in C# (and maybe Rust for hot loops), the mo
 - **Access widths and atomicity rules** for DEV pages (and for normal memory): what happens on 16/32-bit accesses to a DEV page when the device only meaningfully supports 8-bit registers?
 
 If you tell me your preference (strict fault vs byte-split vs device-defined), I’ll freeze it into the spec in a way that stays teachable and hypervisor-friendly.
-

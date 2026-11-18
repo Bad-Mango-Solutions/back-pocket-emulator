@@ -202,20 +202,36 @@ public class PageEntryTests
     }
 
     /// <summary>
-    /// Verifies that PageEntry has default privilege levels of Ring0.
+    /// Verifies that PageEntry has default privilege levels of User.
     /// </summary>
     [Test]
-    public void PageEntry_PrivilegeLevels_DefaultToRing0()
+    public void PageEntry_PrivilegeLevels_DefaultToUser()
     {
         var mockTarget = new Mock<IBusTarget>();
         var entry = new PageEntry(1, RegionTag.Ram, PagePerms.All, TargetCaps.None, mockTarget.Object, 0);
 
         Assert.Multiple(() =>
         {
-            Assert.That(entry.MinReadPrivilege, Is.EqualTo(PrivilegeLevel.Ring0));
-            Assert.That(entry.MinWritePrivilege, Is.EqualTo(PrivilegeLevel.Ring0));
-            Assert.That(entry.MinExecutePrivilege, Is.EqualTo(PrivilegeLevel.Ring0));
+            Assert.That(entry.MinReadPrivilege, Is.EqualTo(PrivilegeLevel.User));
+            Assert.That(entry.MinWritePrivilege, Is.EqualTo(PrivilegeLevel.User));
+            Assert.That(entry.MinExecutePrivilege, Is.EqualTo(PrivilegeLevel.User));
             Assert.That(entry.IsSealed, Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that default page privilege minimums allow every privilege level.
+    /// </summary>
+    [Test]
+    public void PageEntry_PrivilegeLevels_DefaultsAllowEveryLevel()
+    {
+        var entry = CreateEntry(TargetCaps.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(PrivilegeLevel.User, Is.GreaterThanOrEqualTo(entry.MinReadPrivilege));
+            Assert.That(PrivilegeLevel.Kernel, Is.GreaterThanOrEqualTo(entry.MinWritePrivilege));
+            Assert.That(PrivilegeLevel.Hypervisor, Is.GreaterThanOrEqualTo(entry.MinExecutePrivilege));
         });
     }
 
@@ -233,16 +249,16 @@ public class PageEntryTests
             Caps: TargetCaps.None,
             Target: mockTarget.Object,
             PhysicalBase: 0,
-            MinReadPrivilege: PrivilegeLevel.Ring3,
-            MinWritePrivilege: PrivilegeLevel.Ring1,
-            MinExecutePrivilege: PrivilegeLevel.Ring2,
+            MinReadPrivilege: PrivilegeLevel.Hypervisor,
+            MinWritePrivilege: PrivilegeLevel.Kernel,
+            MinExecutePrivilege: PrivilegeLevel.Reserved,
             IsSealed: true);
 
         Assert.Multiple(() =>
         {
-            Assert.That(entry.MinReadPrivilege, Is.EqualTo(PrivilegeLevel.Ring3));
-            Assert.That(entry.MinWritePrivilege, Is.EqualTo(PrivilegeLevel.Ring1));
-            Assert.That(entry.MinExecutePrivilege, Is.EqualTo(PrivilegeLevel.Ring2));
+            Assert.That(entry.MinReadPrivilege, Is.EqualTo(PrivilegeLevel.Hypervisor));
+            Assert.That(entry.MinWritePrivilege, Is.EqualTo(PrivilegeLevel.Kernel));
+            Assert.That(entry.MinExecutePrivilege, Is.EqualTo(PrivilegeLevel.Reserved));
             Assert.That(entry.IsSealed, Is.True);
         });
     }

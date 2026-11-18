@@ -5,11 +5,17 @@
 namespace BadMango.Emulator.Core;
 
 /// <summary>
-/// Defines the privilege levels for the 65832 processor.
+/// Defines the canonical privilege levels for the 65832 processor and bus checks.
 /// </summary>
 /// <remarks>
-/// Privilege levels are encoded in bits 0-1 of the CR0 (Control Register 0).
-/// Higher numeric values indicate higher privilege.
+/// <para>
+/// Privilege levels are encoded in bits 0-1 of CR0 (Control Register 0) with the
+/// architectural ordering <c>User (0) &lt; Kernel (1) &lt; Hypervisor (2)</c>.
+/// </para>
+/// <para>
+/// Permission checks compare the running level against a required minimum with
+/// <c>current &gt;= required</c>, so a <see cref="User"/> minimum allows every level.
+/// </para>
 /// </remarks>
 public enum PrivilegeLevel : byte
 {

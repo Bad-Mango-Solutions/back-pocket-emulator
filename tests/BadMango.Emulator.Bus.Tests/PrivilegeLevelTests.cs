@@ -11,34 +11,33 @@ namespace BadMango.Emulator.Bus.Tests;
 public class PrivilegeLevelTests
 {
     /// <summary>
-    /// Verifies that Ring0 has value 0 (highest privilege).
+    /// Verifies that User has value 0 (least privilege).
     /// </summary>
     [Test]
-    public void PrivilegeLevel_Ring0_HasValueZero()
+    public void PrivilegeLevel_User_HasValueZero()
     {
-        Assert.That((byte)PrivilegeLevel.Ring0, Is.EqualTo(0));
+        Assert.That((byte)PrivilegeLevel.User, Is.EqualTo(0));
     }
 
     /// <summary>
-    /// Verifies that Ring3 has the highest numeric value (lowest privilege).
+    /// Verifies that Hypervisor has value 2.
     /// </summary>
     [Test]
-    public void PrivilegeLevel_Ring3_HasHighestNumericValue()
+    public void PrivilegeLevel_Hypervisor_HasValueTwo()
     {
-        Assert.That((byte)PrivilegeLevel.Ring3, Is.EqualTo(3));
+        Assert.That((byte)PrivilegeLevel.Hypervisor, Is.EqualTo(2));
     }
 
     /// <summary>
-    /// Verifies that rings are ordered correctly.
+    /// Verifies that privilege levels are ordered as User &lt; Kernel &lt; Hypervisor.
     /// </summary>
     [Test]
-    public void PrivilegeLevel_RingsAreOrderedCorrectly()
+    public void PrivilegeLevel_LevelsAreOrderedCorrectly()
     {
         Assert.Multiple(() =>
         {
-            Assert.That(PrivilegeLevel.Ring0, Is.LessThan(PrivilegeLevel.Ring1));
-            Assert.That(PrivilegeLevel.Ring1, Is.LessThan(PrivilegeLevel.Ring2));
-            Assert.That(PrivilegeLevel.Ring2, Is.LessThan(PrivilegeLevel.Ring3));
+            Assert.That(PrivilegeLevel.User, Is.LessThan(PrivilegeLevel.Kernel));
+            Assert.That(PrivilegeLevel.Kernel, Is.LessThan(PrivilegeLevel.Hypervisor));
         });
     }
 
@@ -51,9 +50,9 @@ public class PrivilegeLevelTests
         var values = Enum.GetValues<PrivilegeLevel>();
 
         Assert.That(values, Has.Length.EqualTo(4));
-        Assert.That(values, Contains.Item(PrivilegeLevel.Ring0));
-        Assert.That(values, Contains.Item(PrivilegeLevel.Ring1));
-        Assert.That(values, Contains.Item(PrivilegeLevel.Ring2));
-        Assert.That(values, Contains.Item(PrivilegeLevel.Ring3));
+        Assert.That(values, Contains.Item(PrivilegeLevel.User));
+        Assert.That(values, Contains.Item(PrivilegeLevel.Kernel));
+        Assert.That(values, Contains.Item(PrivilegeLevel.Hypervisor));
+        Assert.That(values, Contains.Item(PrivilegeLevel.Reserved));
     }
 }

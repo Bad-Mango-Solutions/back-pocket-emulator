@@ -8,6 +8,7 @@ using System.Text.Json;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Core;
 using BadMango.Emulator.Core.Cpu;
 using BadMango.Emulator.Core.Debugger;
 using BadMango.Emulator.Core.Interfaces.Cpu;
@@ -429,7 +430,7 @@ public sealed class WatchpointManager : IActivatableDebugStepListener
                     SourceId: 0,
                     Cycle: 0,
                     Flags: AccessFlags.NoSideEffects,
-                    PrivilegeLevel: Bus.PrivilegeLevel.Ring0);
+                    PrivilegeLevel: PrivilegeLevel.User);
                 value = bus.Read8(in busAccess);
                 hasValue = true;
             }

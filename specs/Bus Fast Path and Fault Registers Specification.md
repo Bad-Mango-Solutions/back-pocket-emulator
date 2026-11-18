@@ -27,7 +27,7 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are used as in RFC 211
 
 `CpuBase` (`src/BadMango.Emulator.Emulation/Cpu/CpuBase.cs`) holds an `IMemoryBus` taken from `IEventContext.Bus`. `Read8`, `Write8`, `Peek8`, `Poke8`, `Read16`, `Write16`, `Read32`, and `Write32` each allocate a `BusAccess` through `CreateReadAccess`, `CreateWriteAccess`, `CreateDebugReadAccess`, or `CreateDebugWriteAccess`, then call the matching `Try*` method. `Cpu65C02.InstructionFetch8` does the same with `CreateInstructionFetchAccess` and `AccessIntent.InstructionFetch`.
 
-Each of those factories calls the virtual `GetEmulationFlag()` (the 65C02 override returns `true`) and reads `context.Now` (an interface call) plus `Registers.TCU` for `BusAccess.Cycle`. The struct is `BusAccess` in `src/BadMango.Emulator.Bus/BusAccess.cs`: address, value, width, `BusAccessMode`, emulation flag, `AccessIntent`, source id, cycle, `AccessFlags`, and `PrivilegeLevel` (default `Ring0`). CPU factories pass `BusAccessMode.Decomposed` and `AccessFlags.None`. Debug factories add `AccessFlags.NoSideEffects`.
+Each of those factories calls the virtual `GetEmulationFlag()` (the 65C02 override returns `true`) and reads `context.Now` (an interface call) plus `Registers.TCU` for `BusAccess.Cycle`. The struct is `BusAccess` in `src/BadMango.Emulator.Bus/BusAccess.cs`: address, value, width, `BusAccessMode`, emulation flag, `AccessIntent`, source id, cycle, `AccessFlags`, and `PrivilegeLevel` (default `User`). CPU factories pass `BusAccessMode.Decomposed` and `AccessFlags.None`. Debug factories add `AccessFlags.NoSideEffects`.
 
 `MainBus.TryRead8` (`src/BadMango.Emulator.Bus/MainBus.cs`) then:
 
@@ -42,7 +42,7 @@ The success return is `BusResult<byte>.Success(value, access, deviceId, regionTa
 
 `IMemoryBus` also has non-`Try` `Read8` / `Write8` / `Read16` / `Write16` / `Read32` / `Write32`. The remarks call those the hot path and `Try*` the checked path. `CpuBase` does not call the non-`Try` methods. The non-`Try` byte methods still branch on `ICompositeTarget` and still call `IBusTarget.Read8` through the interface. `reference/Main bus architecture.md` ("The page table is the spine", "Read and write entry points you'll actually use") called for one page lookup and a direct call, with tracing on a separate plane ("Observability that won't ruin performance": one flag check when tracing is off). The same note later suggests `Func<>` delegates on `PageEntry` and, further down, replacing `IBusTarget` calls with function pointers. Those two mechanisms are not the implementation (section 6).
 
-`PageEntry` (`src/BadMango.Emulator.Bus/PageEntry.cs`) is a `readonly record struct`: `DeviceId`, `RegionTag`, `PagePerms`, `TargetCaps`, `IBusTarget Target`, `PhysicalBase`, three `PrivilegeLevel` minimums (default `Bus.PrivilegeLevel.Ring0`), and `IsSealed`. It does not carry a backing array. `MainBus.TryRead8` does not read the privilege fields.
+`PageEntry` (`src/BadMango.Emulator.Bus/PageEntry.cs`) is a `readonly record struct`: `DeviceId`, `RegionTag`, `PagePerms`, `TargetCaps`, `IBusTarget Target`, `PhysicalBase`, three `PrivilegeLevel` minimums (default `Core.PrivilegeLevel.User`), and `IsSealed`. It does not carry a backing array. `MainBus.TryRead8` does not read the privilege fields.
 
 `PhysicalMemory` owns a `byte[]` and hands out `Memory<byte>` slices. `RamTarget` and `RomTarget` are sealed views of those slices. `RomTarget` has two constructors: `ReadOnlyMemory<byte>` (`isWritable` false) and `Memory<byte>` (debug writes allowed). Normal `RomTarget.Write8` ignores a non-debug write.
 
@@ -128,7 +128,7 @@ A page is a candidate only when all of the following hold:
 - `Target` is a `RamTarget`, or a `RomTarget`, and is not an `ICompositeTarget`. `LanguageCardSplitTarget` is an `ICompositeTarget` and stays slow in `$C081` split mode even though the bytes behind it are RAM and ROM.
 - `MemoryMarshal.TryGetArray` succeeds for that target's slice. `PhysicalMemory` is a `byte[]`, so the machine's ordinary RAM and ROM succeed. A slice that is not array-backed stays slow.
 - `TargetCaps` does not include `HasSideEffects` or `TimingSensitive`.
-- `MinReadPrivilege`, `MinWritePrivilege`, and `MinExecutePrivilege` are all `BadMango.Emulator.Bus.PrivilegeLevel.Ring0`, the default. Any other value keeps the page slow so a later privilege check has a place to live. The fast path does not perform that check.
+- `MinReadPrivilege`, `MinWritePrivilege`, and `MinExecutePrivilege` are all `BadMango.Emulator.Core.PrivilegeLevel.User`, the default. Any other value keeps the page slow so a later privilege check has a place to live. The fast path does not perform that check.
 - `RegionTag` is not an input. A `RamTarget` tagged `Shadow` or `Io` is still eligible when the other rules pass. A composite I/O page is ineligible because of its target type, not because of `RegionTag.Io`.
 
 `FastOps` is then:
@@ -277,7 +277,7 @@ Current values are a discriminant, not flags: `Nx = 3` would be `Unmapped | Perm
 
 `Write` and `Fetch` are detail, not a reason to fault. `Permission` remains the low-byte bit for a `PagePerms` failure. `Privilege` is the high-byte bit for a ring failure that does not exist yet. `BankCrossing` without a low-byte bit is not a fault and MUST NOT be latched on its own.
 
-`BadMango.Emulator.Bus.PrivilegeLevel` and `BadMango.Emulator.Core.PrivilegeLevel` are separate enums. Unifying them is #507. This spec does not rename either enum and does not choose which definition survives. The reserved `Privilege` bit is not a license to compare the two enums.
+`BadMango.Emulator.Core.PrivilegeLevel` is the canonical privilege enum (`User < Kernel < Hypervisor` and checks use `current >= required`). The reserved `Privilege` bit is not a license to enforce privilege before the architecture work lands.
 
 ## 11. ABORT
 
@@ -438,7 +438,7 @@ This epic does not edit those architecture files. #501 does, after this spec is 
 These are decisions, not leftovers. Appendix A does not contain a sub-issue that "fixes" them unless the row says so.
 
 1. **NX is dead on the CPU path.** `TryRead8` raises `Nx` only for `BusAccessMode.Atomic`. Every CPU factory passes `Decomposed`. `PagePerms` says NX is ignored in compat mode, and `GetEmulationFlag` on the 65C02 returns true. #499's list of per-byte checks includes NX. The 65C02 fast path does not add it. A native fetch checks `FastOps.Fetch` and otherwise uses the slow path, which still will not raise `Nx` until some CPU issues `Atomic`. That change is out of scope.
-2. **Privilege fields are stored and not checked.** `PageEntry` carries three minimums. `TryRead8` ignores them. `BadMango.Emulator.Bus.PrivilegeLevel` and `BadMango.Emulator.Core.PrivilegeLevel` are separate enums. Unifying them is #507. This spec does not rename either enum and does not choose which definition survives. The fast path treats the default minimums as no extra restriction, because the slow path does not enforce them, and it does not compare the two enums. The high-byte `Privilege` bit stays clear.
+2. **Privilege fields are stored and not checked.** `PageEntry` carries three minimums. `TryRead8` ignores them. The fast path treats the default `BadMango.Emulator.Core.PrivilegeLevel.User` minimums as no extra restriction, because the slow path does not enforce them and no privilege compare is active yet. The high-byte `Privilege` bit stays clear.
 3. **`BusResult.Cycles` is not the instruction cycle count.** #500 asks for cycle accounting to stay correct. The CPU never reads `BusResult.Cycles`. Correct means `Registers.TCU` and the 256-byte page-cross increments stay as they are. Adding the bus's `cycles: 1` into `TCU` would double-count.
 4. **#489 has merged, and its kind numbers are not a flags layout.** `main` documents the mask as 1, 2, 3, 4, 5 in `MemoryBlock`, `DebugOutputRenderer.FaultText`, and `emudbg.md`. Section 10 keeps 0, 1, and 2, and moves 3, 4, and 5 onto bits 2, 3, and 4. `FaultKind` can no longer be a `byte` once the high byte exists. The mask stores the low byte. A5 is the change that moves the merged mask, the `--json` text, and the tests together.
 5. **Sticky status versus "success leaves status at zero".** #499 can be read as "every success writes zero". Section 9 chooses first-fault-wins and a sticky register, cleared by the host or by reset. A success writes nothing.

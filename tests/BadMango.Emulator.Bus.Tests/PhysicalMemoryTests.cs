@@ -484,5 +484,5 @@ public class PhysicalMemoryTests
         SourceId: 0,
         Cycle: 0,
         Flags: AccessFlags.None,
-        PrivilegeLevel: PrivilegeLevel.Ring0);
+        PrivilegeLevel: PrivilegeLevel.User);
 }
