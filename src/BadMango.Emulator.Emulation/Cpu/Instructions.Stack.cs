@@ -37,6 +37,20 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for PLY implied.</summary>
     internal static readonly OpcodeDispatch PLYImpliedDispatch = DispatchPLYImplied;
 
+    /// <summary>
+    /// Turns a status byte pulled by PLP or RTI into the live P register.
+    /// </summary>
+    /// <param name="status">The byte read from the stack.</param>
+    /// <returns>
+    /// The live flags. B is clear, bit 5 is set, and N, V, D, I, Z, and C come from <paramref name="status"/>.
+    /// </returns>
+    /// <remarks>
+    /// B and bit 5 are not latches in the 65C02 status register. PHP and BRK set both in the
+    /// copy they push. Pulling that byte must not leave B set, and a read of P shows bit 5 set.
+    /// </remarks>
+    internal static ProcessorStatusFlags PulledProcessorStatus(byte status)
+        => (ProcessorStatusFlags)((status | (byte)ProcessorStatusFlags.R) & ~(byte)ProcessorStatusFlags.B);
+
     private static void DispatchPHAImplied(ICpu cpu, in OpcodeEntry entry) => OpPHA(cpu);
 
     private static void DispatchPHPImplied(ICpu cpu, in OpcodeEntry entry) => OpPHP(cpu);
@@ -79,7 +93,7 @@ public static partial class Instructions
     private static void OpPLP(ICpu cpu)
     {
         ImpliedMode.Resolve(cpu);
-        cpu.Registers.P = (ProcessorStatusFlags)cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase)) | ProcessorStatusFlags.R;
+        cpu.Registers.P = PulledProcessorStatus(cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase)));
         cpu.Registers.TCU += 3;
     }
 

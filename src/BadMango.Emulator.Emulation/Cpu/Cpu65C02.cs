@@ -269,7 +269,7 @@ public sealed class Cpu65C02 : CpuBase
                         // RTI pulls status first, then PC low, then PC high (no +1)
                         Addr statusAddr = PopByte(Cpu65C02Constants.StackBase);
                         byte status = Read8(statusAddr);
-                        Registers.P = (ProcessorStatusFlags)status | ProcessorStatusFlags.R;
+                        Registers.P = Instructions.PulledProcessorStatus(status);
 
                         Addr rtiLowAddr = PopByte(Cpu65C02Constants.StackBase);
                         byte rtiLowByte = Read8(rtiLowAddr);

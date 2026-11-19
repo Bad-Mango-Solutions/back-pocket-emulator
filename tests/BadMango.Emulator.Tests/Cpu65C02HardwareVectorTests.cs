@@ -88,17 +88,17 @@ public sealed class Cpu65C02HardwareVectorTests
         });
     }
 
-    private static IEnumerable<TestCaseData> FastOpcodes() => Enumerate("MatchesFinalStateAndCycleCount", full: false);
+    private static IEnumerable<TestCaseData> FastOpcodes() => Enumerate("MatchesFinalStateAndCycleCount");
 
-    private static IEnumerable<TestCaseData> FullOpcodes() => Enumerate("MatchesFullHardwareSet", full: true);
+    private static IEnumerable<TestCaseData> FullOpcodes() => Enumerate("MatchesFullHardwareSet");
 
-    private static IEnumerable<TestCaseData> Enumerate(string suffix, bool full)
+    private static IEnumerable<TestCaseData> Enumerate(string suffix)
     {
         for (int opcode = 0; opcode < 256; opcode++)
         {
             var data = new TestCaseData((byte)opcode);
             data.SetName($"Opcode_{opcode:X2}_{suffix}");
-            if (TryIgnore((byte)opcode, out string? reason) || (full && TryIgnoreFull((byte)opcode, out reason)))
+            if (TryIgnore((byte)opcode, out string? reason))
             {
                 data.Ignore(reason);
             }
@@ -107,51 +107,12 @@ public sealed class Cpu65C02HardwareVectorTests
         }
     }
 
-    /// <summary>
-    /// Opcodes whose only failures are cases the committed subset does not sample.
-    /// </summary>
-    /// <param name="opcode">The opcode byte.</param>
-    /// <param name="reason">The tracking issue.</param>
-    /// <returns><see langword="true"/> when the full-set run should be ignored.</returns>
-    private static bool TryIgnoreFull(byte opcode, out string reason)
-    {
-        switch (opcode)
-        {
-            case 0x0D:
-            case 0x5D:
-            case 0x6E:
-            case 0x7C:
-            case 0x8C:
-            case 0x99:
-                reason = "Tracked by #583";
-                return true;
-            default:
-                reason = string.Empty;
-                return false;
-        }
-    }
-
     private static bool TryIgnore(byte opcode, out string reason)
     {
         switch (opcode)
         {
-            case 0x28:
-            case 0x40:
-                reason = "Tracked by #570";
-                return true;
             case 0x5C:
                 reason = "Tracked by #572";
-                return true;
-            case 0xE1:
-            case 0xE5:
-            case 0xE9:
-            case 0xED:
-            case 0xF1:
-            case 0xF2:
-            case 0xF5:
-            case 0xF9:
-            case 0xFD:
-                reason = "Tracked by #573";
                 return true;
             default:
                 reason = string.Empty;

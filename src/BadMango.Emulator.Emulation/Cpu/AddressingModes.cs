@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -208,7 +210,7 @@ public static class AddressingModes
     {
         byte addrCycles = 0;
         Addr pc = cpu.Registers.PC.GetAddr();
-        Addr address = cpu.Read16(pc);
+        Addr address = FetchOperandWord(cpu, pc);
         addrCycles += 2; // 2 cycles to fetch the 16-bit address
         cpu.Registers.PC.Advance(2);
 
@@ -242,7 +244,7 @@ public static class AddressingModes
     {
         byte addrCycles = 0;
         Addr pc = cpu.Registers.PC.GetAddr();
-        Addr baseAddr = cpu.Read16(pc);
+        Addr baseAddr = FetchOperandWord(cpu, pc);
         addrCycles += 2; // 2 cycles to fetch the 16-bit address
         cpu.Registers.PC.Advance(2);
 
@@ -281,7 +283,7 @@ public static class AddressingModes
     {
         byte addrCycles = 0;
         Addr pc = cpu.Registers.PC.GetAddr();
-        Addr baseAddr = cpu.Read16(pc);
+        Addr baseAddr = FetchOperandWord(cpu, pc);
         addrCycles += 2; // 2 cycles to fetch the 16-bit address
         cpu.Registers.PC.Advance(2);
 
@@ -435,7 +437,7 @@ public static class AddressingModes
     {
         byte addrCycles = 0;
         Addr pc = cpu.Registers.PC.GetAddr();
-        Addr baseAddr = cpu.Read16(pc);
+        Addr baseAddr = FetchOperandWord(cpu, pc);
         cpu.Registers.PC.Advance(2);
         Addr effectiveAddr = (baseAddr + cpu.Registers.X.GetByte()) & 0xFFFF;
         addrCycles += 3; // 2 cycles to fetch address + 1 extra for write operations
@@ -468,7 +470,7 @@ public static class AddressingModes
     {
         byte addrCycles = 0;
         Addr pc = cpu.Registers.PC.GetAddr();
-        Addr baseAddr = cpu.Read16(pc);
+        Addr baseAddr = FetchOperandWord(cpu, pc);
         cpu.Registers.PC.Advance(2);
         Addr effectiveAddr = (baseAddr + cpu.Registers.Y.GetByte()) & 0xFFFF;
         addrCycles += 3; // 2 cycles to fetch address + 1 extra for write operations
@@ -607,7 +609,7 @@ public static class AddressingModes
     {
         byte addrCycles = 0;
         Addr pc = cpu.Registers.PC.GetAddr();
-        Addr pointerAddr = cpu.Read16(pc);
+        Addr pointerAddr = FetchOperandWord(cpu, pc);
         addrCycles += 2; // 2 cycles to fetch pointer address
         cpu.Registers.PC.Advance(2);
 
@@ -703,7 +705,7 @@ public static class AddressingModes
     {
         byte addrCycles = 0;
         Addr pc = cpu.Registers.PC.GetAddr();
-        Addr baseAddr = cpu.Read16(pc);
+        Addr baseAddr = FetchOperandWord(cpu, pc);
         cpu.Registers.PC.Advance(2);
         addrCycles += 2; // 2 cycles to fetch base address
 
@@ -790,5 +792,32 @@ public static class AddressingModes
 
         // Encode both operands in return value: low byte = ZP addr, next byte = offset
         return (Addr)((relativeOffset << 8) | zpAddr);
+    }
+
+    /// <summary>
+    /// Reads a 16-bit instruction operand at <paramref name="pc"/>.
+    /// </summary>
+    /// <param name="cpu">The CPU whose bus supplies the bytes.</param>
+    /// <param name="pc">The address of the low operand byte.</param>
+    /// <returns>The operand, low byte first.</returns>
+    /// <remarks>
+    /// Any address that is not the last byte of its program bank uses <see cref="ICpu.Read16"/>,
+    /// so the same-page fast path stays in place. The high byte at the end of a bank is read
+    /// from <c>(pc + 1) &amp; $FFFF</c> in that bank. <c>$FFFF</c> continues at <c>$0000</c>
+    /// and does not read <c>$10000</c>. A later 65816 fetch wraps inside the program bank
+    /// the same way and does not cross into the next bank.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Word FetchOperandWord(ICpu cpu, Addr pc)
+    {
+        if ((pc & 0xFFFF) != 0xFFFF)
+        {
+            return cpu.Read16(pc);
+        }
+
+        byte low = cpu.Read8(pc);
+        Addr highAddress = (pc & 0xFF0000) | ((pc + 1) & 0xFFFF);
+        byte high = cpu.Read8(highAddress);
+        return (Word)((high << 8) | low);
     }
 }
