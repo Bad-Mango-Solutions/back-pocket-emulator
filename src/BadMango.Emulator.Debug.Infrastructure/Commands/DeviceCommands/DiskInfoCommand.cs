@@ -173,10 +173,11 @@ public sealed class DiskInfoCommand : CommandHandlerBase, ICommandHelp
 
         try
         {
-            // Intrinsic write-protect: OS read-only attribute, OR 2MG header bit if present.
+            // Effective write-protect: OS read-only attribute, the mount-time read-only state
+            // when the image is mounted, OR the 2MG header bit if present.
             var fileInfo = new FileInfo(path);
             var osReadOnly = (fileInfo.Attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly;
-            var intrinsicWriteProtected = osReadOnly
+            var effectiveWriteProtected = osReadOnly
                 || (mountedOpen is not null && open.IsReadOnly)
                 || (twoImgHeader is TwoImgHeader hdr && hdr.IsWriteProtected);
 
@@ -201,7 +202,7 @@ public sealed class DiskInfoCommand : CommandHandlerBase, ICommandHelp
 
             output.WriteLine($"  File size:        {fileInfo.Length} bytes");
             output.WriteLine($"  Detected format:  {open.Format}");
-            output.WriteLine($"  Write-protected:  {(intrinsicWriteProtected ? "yes" : "no")}");
+            output.WriteLine($"  Write-protected:  {(effectiveWriteProtected ? "yes" : "no")}");
             output.WriteLine($"  Bootable:         {DescribeBootability(open, context.Error)}");
 
             switch (open)

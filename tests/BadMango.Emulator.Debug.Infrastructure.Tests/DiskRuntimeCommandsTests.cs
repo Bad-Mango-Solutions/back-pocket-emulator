@@ -607,7 +607,11 @@ public sealed class DiskRuntimeCommandsTests
             UnflushedChanges = true,
         });
 
+        var factory = new CountingDiskImageFactory();
+        this.debugContext.AttachDiskImageFactory(factory);
+
         Assert.That(new DiskInsertCommand().Execute(this.debugContext, ["6:1", path]).Success, Is.True);
+        var opensAfterMount = factory.OpenCount;
 
         var result = new DiskInfoCommand().Execute(this.debugContext, [path]);
 
@@ -616,6 +620,7 @@ public sealed class DiskRuntimeCommandsTests
             Assert.That(result.Success, Is.True, result.Message);
             Assert.That(this.outputWriter.ToString(), Does.Contain("Mounted:          yes (slot 6, drive 1)"));
             Assert.That(this.outputWriter.ToString(), Does.Contain("Unflushed changes: yes"));
+            Assert.That(factory.OpenCount, Is.EqualTo(opensAfterMount), "disk info must not reopen a mounted image.");
         });
     }
 
@@ -1154,6 +1159,22 @@ public sealed class DiskRuntimeCommandsTests
     /// Writes are rejected: the media is declared read-only and any write attempt is
     /// logged as an error via the injected <see cref="ILogger"/>.
     /// </summary>
+    /// <summary>
+    /// A <see cref="DiskImageFactory"/> that counts calls to <see cref="DiskImageFactory.Open"/>.
+    /// </summary>
+    private sealed class CountingDiskImageFactory : DiskImageFactory
+    {
+        /// <summary>Gets the number of times <see cref="Open"/> has been called.</summary>
+        public int OpenCount { get; private set; }
+
+        /// <inheritdoc />
+        public override DiskImageOpenResult Open(string path, bool forceReadOnly = false)
+        {
+            this.OpenCount++;
+            return base.Open(path, forceReadOnly);
+        }
+    }
+
     private sealed class InMemoryMedia : I525Media
     {
         private readonly byte[] track0;
