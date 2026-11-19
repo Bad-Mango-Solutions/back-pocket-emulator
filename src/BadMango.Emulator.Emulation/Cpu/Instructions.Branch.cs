@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -40,25 +42,27 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for BRA relative.</summary>
     internal static readonly OpcodeDispatch BRARelativeDispatch = DispatchBRARelative;
 
-    private static void DispatchBCCRelative(ICpu cpu, in OpcodeEntry entry) => OpBCC(cpu);
+    private static void DispatchBCCRelative(ICpu cpu, in OpcodeEntry entry) => OpBCC<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchBCSRelative(ICpu cpu, in OpcodeEntry entry) => OpBCS(cpu);
+    private static void DispatchBCSRelative(ICpu cpu, in OpcodeEntry entry) => OpBCS<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchBEQRelative(ICpu cpu, in OpcodeEntry entry) => OpBEQ(cpu);
+    private static void DispatchBEQRelative(ICpu cpu, in OpcodeEntry entry) => OpBEQ<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchBNERelative(ICpu cpu, in OpcodeEntry entry) => OpBNE(cpu);
+    private static void DispatchBNERelative(ICpu cpu, in OpcodeEntry entry) => OpBNE<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchBMIRelative(ICpu cpu, in OpcodeEntry entry) => OpBMI(cpu);
+    private static void DispatchBMIRelative(ICpu cpu, in OpcodeEntry entry) => OpBMI<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchBPLRelative(ICpu cpu, in OpcodeEntry entry) => OpBPL(cpu);
+    private static void DispatchBPLRelative(ICpu cpu, in OpcodeEntry entry) => OpBPL<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchBVCRelative(ICpu cpu, in OpcodeEntry entry) => OpBVC(cpu);
+    private static void DispatchBVCRelative(ICpu cpu, in OpcodeEntry entry) => OpBVC<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchBVSRelative(ICpu cpu, in OpcodeEntry entry) => OpBVS(cpu);
+    private static void DispatchBVSRelative(ICpu cpu, in OpcodeEntry entry) => OpBVS<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchBRARelative(ICpu cpu, in OpcodeEntry entry) => OpBRA(cpu);
+    private static void DispatchBRARelative(ICpu cpu, in OpcodeEntry entry) => OpBRA<Cpu65C02>(As65C02(cpu));
 
-    private static void OpBCC(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBCC<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);
@@ -78,7 +82,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBCS(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBCS<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);
@@ -98,7 +104,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBEQ(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBEQ<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);
@@ -118,7 +126,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBNE(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBNE<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);
@@ -138,7 +148,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBMI(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBMI<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);
@@ -158,7 +170,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBPL(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBPL<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);
@@ -178,7 +192,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBVC(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBVC<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);
@@ -198,7 +214,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBVS(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBVS<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);
@@ -218,7 +236,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBRA(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBRA<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         Addr targetAddr = RelativeMode.Resolve(cpu);

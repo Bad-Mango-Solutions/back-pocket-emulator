@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -109,71 +111,73 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for DEY implied.</summary>
     internal static readonly OpcodeDispatch DEYImpliedDispatch = DispatchDEYImplied;
 
-    private static void DispatchADCImmediate(ICpu cpu, in OpcodeEntry entry) => OpADC<ImmediateMode>(cpu);
+    private static void DispatchADCImmediate(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchADCZeroPage(ICpu cpu, in OpcodeEntry entry) => OpADC<ZeroPageMode>(cpu);
+    private static void DispatchADCZeroPage(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchADCZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpADC<ZeroPageXMode>(cpu);
+    private static void DispatchADCZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchADCAbsolute(ICpu cpu, in OpcodeEntry entry) => OpADC<AbsoluteMode>(cpu);
+    private static void DispatchADCAbsolute(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchADCAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpADC<AbsoluteXMode>(cpu);
+    private static void DispatchADCAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchADCAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpADC<AbsoluteYMode>(cpu);
+    private static void DispatchADCAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, AbsoluteYMode>(As65C02(cpu));
 
-    private static void DispatchADCIndirectX(ICpu cpu, in OpcodeEntry entry) => OpADC<IndirectXMode>(cpu);
+    private static void DispatchADCIndirectX(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, IndirectXMode>(As65C02(cpu));
 
-    private static void DispatchADCIndirectY(ICpu cpu, in OpcodeEntry entry) => OpADC<IndirectYMode>(cpu);
+    private static void DispatchADCIndirectY(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, IndirectYMode>(As65C02(cpu));
 
-    private static void DispatchADCZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpADC<ZeroPageIndirectMode>(cpu);
+    private static void DispatchADCZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpADC<Cpu65C02, ZeroPageIndirectMode>(As65C02(cpu));
 
-    private static void DispatchSBCImmediate(ICpu cpu, in OpcodeEntry entry) => OpSBC<ImmediateMode>(cpu);
+    private static void DispatchSBCImmediate(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchSBCZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSBC<ZeroPageMode>(cpu);
+    private static void DispatchSBCZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchSBCZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSBC<ZeroPageXMode>(cpu);
+    private static void DispatchSBCZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchSBCAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSBC<AbsoluteMode>(cpu);
+    private static void DispatchSBCAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchSBCAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpSBC<AbsoluteXMode>(cpu);
+    private static void DispatchSBCAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchSBCAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpSBC<AbsoluteYMode>(cpu);
+    private static void DispatchSBCAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, AbsoluteYMode>(As65C02(cpu));
 
-    private static void DispatchSBCIndirectX(ICpu cpu, in OpcodeEntry entry) => OpSBC<IndirectXMode>(cpu);
+    private static void DispatchSBCIndirectX(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, IndirectXMode>(As65C02(cpu));
 
-    private static void DispatchSBCIndirectY(ICpu cpu, in OpcodeEntry entry) => OpSBC<IndirectYMode>(cpu);
+    private static void DispatchSBCIndirectY(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, IndirectYMode>(As65C02(cpu));
 
-    private static void DispatchSBCZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpSBC<ZeroPageIndirectMode>(cpu);
+    private static void DispatchSBCZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpSBC<Cpu65C02, ZeroPageIndirectMode>(As65C02(cpu));
 
-    private static void DispatchINCZeroPage(ICpu cpu, in OpcodeEntry entry) => OpINC<ZeroPageMode>(cpu);
+    private static void DispatchINCZeroPage(ICpu cpu, in OpcodeEntry entry) => OpINC<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchINCZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpINC<ZeroPageXMode>(cpu);
+    private static void DispatchINCZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpINC<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchINCAbsolute(ICpu cpu, in OpcodeEntry entry) => OpINC<AbsoluteMode>(cpu);
+    private static void DispatchINCAbsolute(ICpu cpu, in OpcodeEntry entry) => OpINC<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchINCAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpINC<AbsoluteXWriteMode>(cpu);
+    private static void DispatchINCAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpINC<Cpu65C02, AbsoluteXWriteMode>(As65C02(cpu));
 
-    private static void DispatchDECZeroPage(ICpu cpu, in OpcodeEntry entry) => OpDEC<ZeroPageMode>(cpu);
+    private static void DispatchDECZeroPage(ICpu cpu, in OpcodeEntry entry) => OpDEC<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchDECZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpDEC<ZeroPageXMode>(cpu);
+    private static void DispatchDECZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpDEC<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchDECAbsolute(ICpu cpu, in OpcodeEntry entry) => OpDEC<AbsoluteMode>(cpu);
+    private static void DispatchDECAbsolute(ICpu cpu, in OpcodeEntry entry) => OpDEC<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchDECAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpDEC<AbsoluteXWriteMode>(cpu);
+    private static void DispatchDECAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpDEC<Cpu65C02, AbsoluteXWriteMode>(As65C02(cpu));
 
-    private static void DispatchINAAccumulator(ICpu cpu, in OpcodeEntry entry) => OpINA<AccumulatorMode>(cpu);
+    private static void DispatchINAAccumulator(ICpu cpu, in OpcodeEntry entry) => OpINA<Cpu65C02, AccumulatorMode>(As65C02(cpu));
 
-    private static void DispatchDEAAccumulator(ICpu cpu, in OpcodeEntry entry) => OpDEA<AccumulatorMode>(cpu);
+    private static void DispatchDEAAccumulator(ICpu cpu, in OpcodeEntry entry) => OpDEA<Cpu65C02, AccumulatorMode>(As65C02(cpu));
 
-    private static void DispatchINXImplied(ICpu cpu, in OpcodeEntry entry) => OpINX<ImpliedMode>(cpu);
+    private static void DispatchINXImplied(ICpu cpu, in OpcodeEntry entry) => OpINX<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchINYImplied(ICpu cpu, in OpcodeEntry entry) => OpINY<ImpliedMode>(cpu);
+    private static void DispatchINYImplied(ICpu cpu, in OpcodeEntry entry) => OpINY<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchDEXImplied(ICpu cpu, in OpcodeEntry entry) => OpDEX<ImpliedMode>(cpu);
+    private static void DispatchDEXImplied(ICpu cpu, in OpcodeEntry entry) => OpDEX<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchDEYImplied(ICpu cpu, in OpcodeEntry entry) => OpDEY<ImpliedMode>(cpu);
+    private static void DispatchDEYImplied(ICpu cpu, in OpcodeEntry entry) => OpDEY<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void OpADC<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpADC<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -267,7 +271,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpSBC<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSBC<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -363,7 +369,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpINC<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpINC<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -381,7 +389,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpDEC<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpDEC<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -400,7 +410,9 @@ public static partial class Instructions
     }
 
     // 65C02 INC A. Operates on the accumulator.
-    private static void OpINA<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpINA<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -412,7 +424,9 @@ public static partial class Instructions
     }
 
     // 65C02 DEC A. Operates on the accumulator.
-    private static void OpDEA<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpDEA<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -423,7 +437,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpINX<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpINX<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -434,7 +450,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpINY<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpINY<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -445,7 +463,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpDEX<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpDEX<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -456,7 +476,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpDEY<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpDEY<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);

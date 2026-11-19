@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -31,19 +33,21 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for TSX implied.</summary>
     internal static readonly OpcodeDispatch TSXImpliedDispatch = DispatchTSXImplied;
 
-    private static void DispatchTAXImplied(ICpu cpu, in OpcodeEntry entry) => OpTAX<ImpliedMode>(cpu);
+    private static void DispatchTAXImplied(ICpu cpu, in OpcodeEntry entry) => OpTAX<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchTAYImplied(ICpu cpu, in OpcodeEntry entry) => OpTAY<ImpliedMode>(cpu);
+    private static void DispatchTAYImplied(ICpu cpu, in OpcodeEntry entry) => OpTAY<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchTXAImplied(ICpu cpu, in OpcodeEntry entry) => OpTXA<ImpliedMode>(cpu);
+    private static void DispatchTXAImplied(ICpu cpu, in OpcodeEntry entry) => OpTXA<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchTYAImplied(ICpu cpu, in OpcodeEntry entry) => OpTYA<ImpliedMode>(cpu);
+    private static void DispatchTYAImplied(ICpu cpu, in OpcodeEntry entry) => OpTYA<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchTXSImplied(ICpu cpu, in OpcodeEntry entry) => OpTXS<ImpliedMode>(cpu);
+    private static void DispatchTXSImplied(ICpu cpu, in OpcodeEntry entry) => OpTXS<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchTSXImplied(ICpu cpu, in OpcodeEntry entry) => OpTSX<ImpliedMode>(cpu);
+    private static void DispatchTSXImplied(ICpu cpu, in OpcodeEntry entry) => OpTSX<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void OpTAX<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpTAX<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -54,7 +58,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpTAY<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpTAY<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -65,7 +71,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpTXA<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpTXA<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -76,7 +84,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpTYA<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpTYA<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -87,7 +97,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpTXS<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpTXS<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -95,7 +107,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpTSX<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpTSX<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);

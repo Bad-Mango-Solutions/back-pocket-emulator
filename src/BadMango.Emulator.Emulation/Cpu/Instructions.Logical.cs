@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -109,71 +111,73 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for BIT immediate.</summary>
     internal static readonly OpcodeDispatch BITImmediateDispatch = DispatchBITImmediate;
 
-    private static void DispatchANDImmediate(ICpu cpu, in OpcodeEntry entry) => OpAND<ImmediateMode>(cpu);
+    private static void DispatchANDImmediate(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchANDZeroPage(ICpu cpu, in OpcodeEntry entry) => OpAND<ZeroPageMode>(cpu);
+    private static void DispatchANDZeroPage(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchANDZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpAND<ZeroPageXMode>(cpu);
+    private static void DispatchANDZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchANDAbsolute(ICpu cpu, in OpcodeEntry entry) => OpAND<AbsoluteMode>(cpu);
+    private static void DispatchANDAbsolute(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchANDAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpAND<AbsoluteXMode>(cpu);
+    private static void DispatchANDAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchANDAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpAND<AbsoluteYMode>(cpu);
+    private static void DispatchANDAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, AbsoluteYMode>(As65C02(cpu));
 
-    private static void DispatchANDIndirectX(ICpu cpu, in OpcodeEntry entry) => OpAND<IndirectXMode>(cpu);
+    private static void DispatchANDIndirectX(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, IndirectXMode>(As65C02(cpu));
 
-    private static void DispatchANDIndirectY(ICpu cpu, in OpcodeEntry entry) => OpAND<IndirectYMode>(cpu);
+    private static void DispatchANDIndirectY(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, IndirectYMode>(As65C02(cpu));
 
-    private static void DispatchANDZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpAND<ZeroPageIndirectMode>(cpu);
+    private static void DispatchANDZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpAND<Cpu65C02, ZeroPageIndirectMode>(As65C02(cpu));
 
-    private static void DispatchORAImmediate(ICpu cpu, in OpcodeEntry entry) => OpORA<ImmediateMode>(cpu);
+    private static void DispatchORAImmediate(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchORAZeroPage(ICpu cpu, in OpcodeEntry entry) => OpORA<ZeroPageMode>(cpu);
+    private static void DispatchORAZeroPage(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchORAZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpORA<ZeroPageXMode>(cpu);
+    private static void DispatchORAZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchORAAbsolute(ICpu cpu, in OpcodeEntry entry) => OpORA<AbsoluteMode>(cpu);
+    private static void DispatchORAAbsolute(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchORAAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpORA<AbsoluteXMode>(cpu);
+    private static void DispatchORAAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchORAAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpORA<AbsoluteYMode>(cpu);
+    private static void DispatchORAAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, AbsoluteYMode>(As65C02(cpu));
 
-    private static void DispatchORAIndirectX(ICpu cpu, in OpcodeEntry entry) => OpORA<IndirectXMode>(cpu);
+    private static void DispatchORAIndirectX(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, IndirectXMode>(As65C02(cpu));
 
-    private static void DispatchORAIndirectY(ICpu cpu, in OpcodeEntry entry) => OpORA<IndirectYMode>(cpu);
+    private static void DispatchORAIndirectY(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, IndirectYMode>(As65C02(cpu));
 
-    private static void DispatchORAZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpORA<ZeroPageIndirectMode>(cpu);
+    private static void DispatchORAZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpORA<Cpu65C02, ZeroPageIndirectMode>(As65C02(cpu));
 
-    private static void DispatchEORImmediate(ICpu cpu, in OpcodeEntry entry) => OpEOR<ImmediateMode>(cpu);
+    private static void DispatchEORImmediate(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchEORZeroPage(ICpu cpu, in OpcodeEntry entry) => OpEOR<ZeroPageMode>(cpu);
+    private static void DispatchEORZeroPage(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchEORZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpEOR<ZeroPageXMode>(cpu);
+    private static void DispatchEORZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchEORAbsolute(ICpu cpu, in OpcodeEntry entry) => OpEOR<AbsoluteMode>(cpu);
+    private static void DispatchEORAbsolute(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchEORAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpEOR<AbsoluteXMode>(cpu);
+    private static void DispatchEORAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchEORAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpEOR<AbsoluteYMode>(cpu);
+    private static void DispatchEORAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, AbsoluteYMode>(As65C02(cpu));
 
-    private static void DispatchEORIndirectX(ICpu cpu, in OpcodeEntry entry) => OpEOR<IndirectXMode>(cpu);
+    private static void DispatchEORIndirectX(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, IndirectXMode>(As65C02(cpu));
 
-    private static void DispatchEORIndirectY(ICpu cpu, in OpcodeEntry entry) => OpEOR<IndirectYMode>(cpu);
+    private static void DispatchEORIndirectY(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, IndirectYMode>(As65C02(cpu));
 
-    private static void DispatchEORZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpEOR<ZeroPageIndirectMode>(cpu);
+    private static void DispatchEORZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpEOR<Cpu65C02, ZeroPageIndirectMode>(As65C02(cpu));
 
-    private static void DispatchBITZeroPage(ICpu cpu, in OpcodeEntry entry) => OpBIT<ZeroPageMode>(cpu);
+    private static void DispatchBITZeroPage(ICpu cpu, in OpcodeEntry entry) => OpBIT<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchBITAbsolute(ICpu cpu, in OpcodeEntry entry) => OpBIT<AbsoluteMode>(cpu);
+    private static void DispatchBITAbsolute(ICpu cpu, in OpcodeEntry entry) => OpBIT<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchBITZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpBIT<ZeroPageXMode>(cpu);
+    private static void DispatchBITZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpBIT<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchBITAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpBIT<AbsoluteXMode>(cpu);
+    private static void DispatchBITAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpBIT<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchBITImmediate(ICpu cpu, in OpcodeEntry entry) => OpBITImmediate<ImmediateMode>(cpu);
+    private static void DispatchBITImmediate(ICpu cpu, in OpcodeEntry entry) => OpBITImmediate<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void OpAND<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpAND<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -195,7 +199,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpORA<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpORA<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -217,7 +223,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpEOR<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpEOR<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -239,7 +247,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpBIT<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBIT<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -283,7 +293,9 @@ public static partial class Instructions
     }
 
     // BIT immediate sets Z from A AND the operand. N and V are left unchanged.
-    private static void OpBITImmediate<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBITImmediate<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
