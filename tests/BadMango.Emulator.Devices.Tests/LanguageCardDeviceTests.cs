@@ -380,8 +380,11 @@ public class LanguageCardDeviceTests
 
         var context = CreateTestContext();
         dispatcher.Read(0x83, in context);
-        dispatcher.Read(0x83, in context);
-        Assert.That(device.IsRamReadEnabled, Is.True, "precondition: RAM is readable");
+        Assert.Multiple(() =>
+        {
+            Assert.That(device.IsRamReadEnabled, Is.True, "precondition: one read of $C083 makes RAM readable");
+            Assert.That(device.IsRamWriteEnabled, Is.False, "precondition: one read does not enable writes");
+        });
 
         dispatcher.Write(0x82, 0x00, in context);
 
