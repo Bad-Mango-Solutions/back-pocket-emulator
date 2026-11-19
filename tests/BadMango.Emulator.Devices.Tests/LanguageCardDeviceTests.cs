@@ -293,7 +293,7 @@ public class LanguageCardDeviceTests
     }
 
     /// <summary>
-    /// Verifies that R�2 protocol requires two consecutive reads of same odd address.
+    /// Verifies that two odd reads enable writes.
     /// </summary>
     [Test]
     public void RxProtocol_TwoReadsOfSameOddAddress_EnablesWrite()
@@ -318,23 +318,28 @@ public class LanguageCardDeviceTests
     }
 
     /// <summary>
-    /// Verifies that R�2 protocol resets when reading a different address.
+    /// Verifies that the second odd read enables writes even when the address differs.
     /// </summary>
-    [Test]
-    public void RxProtocol_DifferentOddAddress_DoesNotEnableWrite()
+    /// <remarks>
+    /// Pre-write is a flag, not a remembered address. MAME's <c>lc_update</c> enables
+    /// writing on any second odd read.
+    /// </remarks>
+    /// <param name="first">The first odd soft-switch offset from $C000.</param>
+    /// <param name="second">The second odd soft-switch offset from $C000.</param>
+    [TestCase(0x81, 0x89)]
+    [TestCase(0x8B, 0x83)]
+    public void RxProtocol_DifferentOddAddresses_EnablesWrite(byte first, byte second)
     {
         var device = new LanguageCardDevice();
         var dispatcher = new IOPageDispatcher();
         device.RegisterHandlers(dispatcher);
 
         var context = CreateTestContext();
+        dispatcher.Read(first, in context);
+        Assert.That(device.IsRamWriteEnabled, Is.False, "the first odd read only arms pre-write");
 
-        // First read of $C083
-        dispatcher.Read(0x83, in context);
-
-        // Read different odd address $C081
-        dispatcher.Read(0x81, in context);
-        Assert.That(device.IsRamWriteEnabled, Is.False, "Write should not be enabled");
+        dispatcher.Read(second, in context);
+        Assert.That(device.IsRamWriteEnabled, Is.True, "the next odd read enables writes");
     }
 
     /// <summary>

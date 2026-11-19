@@ -122,8 +122,7 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     private bool readRam;           // True = read from LC RAM
     private bool writeEnabled;      // True = writes go to LC RAM
     private bool bank2Selected;     // True = $D000 bank 2 (Bank 1 selected on power-on)
-    private bool preWrite;          // R*2 protocol state
-    private byte lastReadOffset;    // Last read offset for R*2
+    private bool preWrite;          // Armed by an odd read; any later odd read enables writes
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LanguageCardDevice"/> class.
@@ -350,7 +349,6 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         writeEnabled = false;
         bank2Selected = false;
         preWrite = false;
-        lastReadOffset = 0;
 
         ApplyState();
     }
@@ -362,7 +360,6 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         writeEnabled = false;
         bank2Selected = false;
         preWrite = false;
-        lastReadOffset = 0;
 
         ApplyState();
     }
@@ -572,13 +569,14 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     /// The Language Card soft switch encoding uses the low 4 bits of the address:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>Bit 0: Odd address. Two reads of the same odd address enable writes. A write never does.</description></item>
+    /// <item><description>Bit 0: Odd address. Any odd read arms pre-write; the next odd read, at any address, enables writes. A write never does.</description></item>
     /// <item><description>Bits 0 and 1: Read source - RAM when bits are equal (00 or 11), ROM when different (01 or 10)</description></item>
     /// <item><description>Bit 3: Bank select (0 = Bank 2, 1 = Bank 1)</description></item>
     /// </list>
     /// <para>
-    /// Reads and writes both select the bank and the read source. Pre-write is set only by an
-    /// odd read and is cleared by any write. An even access also write-protects RAM. An odd
+    /// Reads and writes both select the bank and the read source. Pre-write is a single flag:
+    /// any odd read arms it, and any following odd read enables writing, even at a different
+    /// address. Any write clears the flag. An even access also write-protects RAM. An odd
     /// write leaves an already-enabled write alone.
     /// </para>
     /// </remarks>
@@ -600,19 +598,14 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
             // Odd write selects the bank below, but only resets pre-write.
             preWrite = false;
         }
-        else if (preWrite && switchIndex == lastReadOffset)
-        {
-            // Second consecutive read of the same odd address enables writes.
-            writeEnabled = true;
-        }
-        else if (!writeEnabled)
+        else if (!preWrite)
         {
             preWrite = true;
-            lastReadOffset = switchIndex;
         }
         else
         {
-            preWrite = false;
+            // Any later odd read enables writes. The address does not have to match.
+            writeEnabled = true;
         }
 
         // Decode state from offset bits
