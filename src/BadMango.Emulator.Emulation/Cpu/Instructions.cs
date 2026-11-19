@@ -203,7 +203,10 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for the zero-page,X NOP at $F4.</summary>
     internal static readonly OpcodeDispatch NOPF4ZeroPageXDispatch = DispatchNopZeroPageX;
 
-    /// <summary>Cached direct-dispatch delegate for the 8-cycle absolute NOP at $5C.</summary>
+    /// <summary>
+    /// Cached direct-dispatch delegate for unused NOP <c>$5C</c>.
+    /// The handler fetches three bytes, reads <c>$FF</c> plus the low operand, then reads <c>$FFFF</c> four times.
+    /// </summary>
     internal static readonly OpcodeDispatch NOP5CAbsoluteDispatch = DispatchNop5C;
 
     /// <summary>Cached direct-dispatch delegate for the absolute NOP at $DC.</summary>
@@ -329,7 +332,7 @@ public static partial class Instructions
 
     private static void DispatchNopAbsolute(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, AbsoluteMode>(As65C02(cpu), 1);
 
-    private static void DispatchNop5C(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, AbsoluteMode>(As65C02(cpu), 5);
+    private static void DispatchNop5C(ICpu cpu, in OpcodeEntry entry) => OpNop5C<Cpu65C02>(As65C02(cpu));
 
     private static void DispatchNopOneByte(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, ImpliedMode>(As65C02(cpu), 0);
 
@@ -543,7 +546,10 @@ public static partial class Instructions
     /// <typeparam name="TCpu">The concrete CPU. The 65C02 table closes this over <see cref="Cpu65C02"/>.</typeparam>
     /// <typeparam name="TMode">The addressing mode that advances PC and charges its own cycles.</typeparam>
     /// <param name="cpu">The CPU instance.</param>
-    /// <param name="instructionCycles">Extra cycles after the addressing mode. <c>$EA</c> uses 1. <c>$5C</c> uses 5.</param>
+    /// <param name="instructionCycles">
+    /// Extra cycles after the addressing mode. <c>$EA</c> uses 1. The 1-byte unused NOPs pass 0.
+    /// <c>$5C</c> does not use this method.
+    /// </param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void OpNop<TCpu, TMode>(TCpu cpu, int instructionCycles)
         where TCpu : class, ICpu
@@ -555,6 +561,32 @@ public static partial class Instructions
         {
             cpu.Registers.TCU += (ulong)instructionCycles;
         }
+    }
+
+    /// <summary>
+    /// Unused NOP <c>$5C</c>. Fetches the opcode's two operand bytes, reads <c>$FF</c> plus the low operand byte, then reads <c>$FFFF</c> four times.
+    /// </summary>
+    /// <typeparam name="TCpu">The concrete CPU. The 65C02 table closes this over <see cref="Cpu65C02"/>.</typeparam>
+    /// <param name="cpu">The CPU instance.</param>
+    /// <remarks>
+    /// Table 7-1 of the WDC W65C02S datasheet lists 8 cycles. KimKlone measured <c>5C 34 12</c> as a 3-byte fetch,
+    /// one read of <c>$FF34</c>, then four reads of <c>$FFFF</c>
+    /// (https://laughtonelectronics.com/Arcana/KimKlone/Kimklone_opcode_mapping.html), cited by
+    /// https://github.com/SingleStepTests/65x02/issues/12. The high operand byte is fetched and discarded.
+    /// Absolute addressing charges the two operand-fetch cycles. These five reads charge the rest.
+    /// The opcode fetch is the eighth cycle. Registers other than PC stay unchanged.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpNop5C<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
+    {
+        Addr operand = AbsoluteMode.Resolve(cpu);
+        cpu.Read8((Addr)(0xFF00 | (operand & 0xFF)));
+        cpu.Read8(0xFFFF);
+        cpu.Read8(0xFFFF);
+        cpu.Read8(0xFFFF);
+        cpu.Read8(0xFFFF);
+        cpu.Registers.TCU += 5;
     }
 
     /// <summary>

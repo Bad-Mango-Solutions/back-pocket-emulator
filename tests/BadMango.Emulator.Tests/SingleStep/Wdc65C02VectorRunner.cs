@@ -17,6 +17,7 @@ using BadMango.Emulator.Emulation.Cpu;
 /// <summary>
 /// Executes one <see cref="Cpu65C02"/> instruction per vector case and compares the
 /// architectural result. Bus cycles inside <c>cycles</c> are counted, not traced.
+/// Unused NOP <c>$5C</c> is the one opcode whose cycle count is not taken from the vector.
 /// </summary>
 internal sealed class Wdc65C02VectorRunner
 {
@@ -206,7 +207,7 @@ internal sealed class Wdc65C02VectorRunner
         Load(test);
         target.ResetWrites();
         CpuStepResult result = cpu.Step();
-        string? mismatch = Compare(test, ram, (int)result.CyclesConsumed.Value);
+        string? mismatch = Compare(opcode, test, ram, (int)result.CyclesConsumed.Value);
         Clear(ram, test.InitialRam);
         Clear(ram, test.FinalRam);
         foreach (ushort address in target.Writes)
@@ -234,8 +235,14 @@ internal sealed class Wdc65C02VectorRunner
         cpu.HaltReason = HaltState.None;
     }
 
-    private string? Compare(Wdc65C02VectorCase test, ReadOnlySpan<byte> ram, int cycles)
+    private string? Compare(byte opcode, Wdc65C02VectorCase test, ReadOnlySpan<byte> ram, int cycles)
     {
+        // $5C only. SingleStepTests wdc65c02 lists 4 cycles for this unused NOP.
+        // Table 7-1 of the WDC W65C02S datasheet lists 8, and a W65C02S6TQG-14
+        // measurement agrees (https://github.com/SingleStepTests/65x02/issues/12, still open).
+        // Registers and RAM still use the vector. The vector's per-cycle bus list is not
+        // compared for $5C. No other opcode replaces the vector cycle count.
+        int expectedCycles = opcode == 0x5C ? 8 : test.Cycles;
         ref Registers regs = ref cpu.Registers;
         ushort pc = regs.PC.GetWord();
         byte a = regs.A.GetByte();
@@ -283,16 +290,16 @@ internal sealed class Wdc65C02VectorRunner
             }
         }
 
-        if (registersMatch && ramMismatches == 0 && strayWrites == 0 && cycles == test.Cycles)
+        if (registersMatch && ramMismatches == 0 && strayWrites == 0 && cycles == expectedCycles)
         {
             return null;
         }
 
         var text = new StringBuilder();
         text.Append(CultureInfo.InvariantCulture, $"{test.Name}:");
-        if (cycles != test.Cycles)
+        if (cycles != expectedCycles)
         {
-            text.Append(CultureInfo.InvariantCulture, $" cycles {cycles} != {test.Cycles};");
+            text.Append(CultureInfo.InvariantCulture, $" cycles {cycles} != {expectedCycles};");
         }
 
         if (!registersMatch)
