@@ -531,7 +531,7 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         for (byte i = 0; i < SwitchCount; i++)
         {
             byte offset = i;
-            handlers.Set(i, (o, in ctx) => HandleRead(offset, in ctx), (o, v, in ctx) => HandleWrite(offset, in ctx));
+            handlers.Set(i, (o, in ctx) => HandleRead(offset, in ctx), (o, v, in ctx) => HandleWrite(offset, v, in ctx));
         }
     }
 
@@ -546,15 +546,21 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         return 0xFF;
     }
 
-    private void HandleWrite(byte offset, in BusAccess context)
+    private void HandleWrite(byte offset, byte value, in BusAccess context)
     {
-        // Writes to Language Card soft switches have NO effect.
-        // Only reads trigger switch state changes. This is a common emulator misconception.
-        // The write is simply ignored.
+        // The IIe MMU strobes $C080-$C08F on the address, so a write selects the bank
+        // the same way a read does. ProDOS returns to ROM with STA $C082, and the
+        // enhanced self-test write-enables bank 2 with two STA $C083s.
+        _ = value;
+
+        if (!context.IsSideEffectFree)
+        {
+            ProcessSwitch(offset);
+        }
     }
 
     /// <summary>
-    /// Processes a soft switch read access and updates internal state.
+    /// Processes a soft switch access and updates internal state.
     /// </summary>
     /// <param name="offset">The offset within the I/O page (0x80-0x8F for slot 0).</param>
     /// <remarks>
@@ -562,16 +568,13 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     /// The Language Card soft switch encoding uses the low 4 bits of the address:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>Bit 0: Write enable address (1 = write enable possible with R�2)</description></item>
+    /// <item><description>Bit 0: Write enable address (1 = write enable possible after two accesses)</description></item>
     /// <item><description>Bits 0 and 1: Read source - RAM when bits are equal (00 or 11), ROM when different (01 or 10)</description></item>
     /// <item><description>Bit 3: Bank select (0 = Bank 2, 1 = Bank 1)</description></item>
     /// </list>
     /// <para>
-    /// The R�2 protocol requires two consecutive reads of the same odd address
-    /// to enable writes. This prevents accidental write enabling.
-    /// </para>
-    /// <para>
-    /// Note: Only reads trigger switch effects. Writes to these addresses are ignored.
+    /// Write enable requires two consecutive accesses, read or write, of the same odd
+    /// address. An access to any other switch clears that priming.
     /// </para>
     /// </remarks>
     private void ProcessSwitch(byte offset)
@@ -584,22 +587,22 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
 
         if (isWriteEnableAddr)
         {
-            // R�2 protocol: requires two consecutive reads of the same odd address
+            // Two consecutive accesses of the same odd address enable writes.
             if (preWrite && switchIndex == lastReadOffset)
             {
-                // Second consecutive read of same odd address - enable write
+                // Second consecutive access of the same odd address - enable write
                 writeEnabled = true;
                 preWrite = false;
             }
             else if (!writeEnabled)
             {
-                // First read of odd address (or different odd address) - prime the R�2 protocol
+                // First access of an odd address (or a different odd address) - prime write enable
                 preWrite = true;
                 lastReadOffset = switchIndex;
             }
             else
             {
-                // Write already enabled, reading odd address keeps it enabled but clears preWrite
+                // Write already enabled; another odd access keeps it enabled but clears priming
                 preWrite = false;
             }
         }

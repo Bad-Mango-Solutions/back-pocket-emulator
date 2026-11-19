@@ -360,31 +360,97 @@ public class LanguageCardDeviceTests
     }
 
     /// <summary>
-    /// Verifies that writes to soft switches have no effect on state.
+    /// Verifies that a write to $C082 selects ROM, the same as a read.
     /// </summary>
     /// <remarks>
-    /// Only reads trigger Language Card switch effects. Writes are ignored.
-    /// This is a common emulator misconception.
+    /// ProDOS returns from the MLI with <c>STA $C082</c>. The IIe MMU strobes the
+    /// switch on that write.
     /// </remarks>
     [Test]
-    public void Write_HasNoEffect()
+    public void Write_C082_SelectsRom()
     {
         var device = new LanguageCardDevice();
         var dispatcher = new IOPageDispatcher();
         device.RegisterHandlers(dispatcher);
 
         var context = CreateTestContext();
-
-        // Prime the R�2 protocol with first read
         dispatcher.Read(0x83, in context);
+        dispatcher.Read(0x83, in context);
+        Assert.That(device.IsRamReadEnabled, Is.True, "precondition: RAM is readable");
 
-        // Write to any switch - should have NO effect
+        dispatcher.Write(0x82, 0x00, in context);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(device.IsRamReadEnabled, Is.False, "STA $C082 selects ROM");
+            Assert.That(device.IsRamWriteEnabled, Is.False, "STA $C082 write-protects RAM");
+            Assert.That(device.SelectedBank, Is.EqualTo(2));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that two writes to $C083 enable language-card RAM writes.
+    /// </summary>
+    /// <remarks>
+    /// The enhanced IIe self-test write-enables bank 2 with two <c>STA $C083</c> instructions.
+    /// </remarks>
+    [Test]
+    public void Write_TwoAccessesOfC083_EnablesRamWrite()
+    {
+        var device = new LanguageCardDevice();
+        var dispatcher = new IOPageDispatcher();
+        device.RegisterHandlers(dispatcher);
+
+        var context = CreateTestContext();
+        dispatcher.Write(0x83, 0x00, in context);
+        Assert.That(device.IsRamWriteEnabled, Is.False, "the first STA $C083 only primes write enable");
+
+        dispatcher.Write(0x83, 0x00, in context);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(device.IsRamWriteEnabled, Is.True);
+            Assert.That(device.IsRamReadEnabled, Is.True);
+            Assert.That(device.SelectedBank, Is.EqualTo(2));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a write to a different switch clears write-enable priming.
+    /// </summary>
+    [Test]
+    public void Write_ToDifferentSwitch_BreaksWriteEnablePriming()
+    {
+        var device = new LanguageCardDevice();
+        var dispatcher = new IOPageDispatcher();
+        device.RegisterHandlers(dispatcher);
+
+        var context = CreateTestContext();
+        dispatcher.Read(0x83, in context);
         dispatcher.Write(0x80, 0x00, in context);
-
-        // Second read should still enable write (R�2 state was NOT cleared by write)
         dispatcher.Read(0x83, in context);
 
-        Assert.That(device.IsRamWriteEnabled, Is.True, "R�2 state should not be affected by writes");
+        Assert.That(device.IsRamWriteEnabled, Is.False, "STA $C080 is a real access and clears priming");
+    }
+
+    /// <summary>
+    /// Verifies that a side-effect-free write does not change the bank.
+    /// </summary>
+    [Test]
+    public void SideEffectFreeWrite_DoesNotChangeState()
+    {
+        var device = new LanguageCardDevice();
+        var dispatcher = new IOPageDispatcher();
+        device.RegisterHandlers(dispatcher);
+
+        var context = CreateTestContext();
+        dispatcher.Read(0x80, in context);
+        Assert.That(device.IsRamReadEnabled, Is.True);
+
+        var peek = CreateTestContext(isSideEffectFree: true);
+        dispatcher.Write(0x82, 0x00, in peek);
+
+        Assert.That(device.IsRamReadEnabled, Is.True, "a no-side-effect write must not select ROM");
     }
 
     /// <summary>
