@@ -184,13 +184,12 @@ public static class Cpu65C02OpcodeTableBuilder
         SetDirectOpcode(0xDC, Instructions.NOPDCAbsoluteDispatch, CpuInstructions.NOP, CpuAddressingModes.Absolute);
         SetDirectOpcode(0xFC, Instructions.NOPFCAbsoluteDispatch, CpuInstructions.NOP, CpuAddressingModes.Absolute);
 
-        // 3 bytes, 8 cycles: "loud" absolute NOP. Per the WDC datasheet this is
-        // the only unused-slot NOP that consumes 8 cycles (versus 4 for the
-        // other 3-byte absolute NOPs). Modelled with extra instruction cycles
-        // so the PC advances by 3 and the bus arbiter sees the correct cycle
-        // pressure; the actual bus read at the formed address is not performed
-        // since no shipping 65C02 software in scope for this emulator relies on
-        // the side effect.
+        // 3 bytes, 8 cycles: unused NOP $5C. Table 7-1 of the WDC W65C02S datasheet
+        // lists 8 cycles (the other 3-byte absolute NOPs, $DC and $FC, are 4).
+        // The bus pattern is the 3-byte fetch, one read of $FF concatenated with
+        // the low operand byte, then four reads of $FFFF. The high operand byte
+        // is fetched and discarded (KimKlone opcode map, cited by
+        // https://github.com/SingleStepTests/65x02/issues/12).
         SetDirectOpcode(0x5C, Instructions.NOP5CAbsoluteDispatch, CpuInstructions.NOP, CpuAddressingModes.Absolute);
 
         // 1 byte, 1 cycle: column-3 single-cycle NOPs. These are the slots

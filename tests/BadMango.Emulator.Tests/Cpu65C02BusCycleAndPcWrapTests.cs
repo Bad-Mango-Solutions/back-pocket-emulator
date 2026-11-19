@@ -80,6 +80,60 @@ public sealed class Cpu65C02BusCycleAndPcWrapTests
     }
 
     /// <summary>
+    /// Pins unused NOP <c>$5C</c>: a 3-byte fetch, one read of <c>$FF</c> plus the low operand byte,
+    /// then four reads of <c>$FFFF</c>. The step takes 8 cycles. The high operand byte is not an address.
+    /// </summary>
+    /// <param name="low">The low operand byte. The fourth bus read is <c>$FF00 | low</c>.</param>
+    /// <param name="high">The high operand byte. It is fetched and then discarded.</param>
+    /// <remarks>
+    /// Table 7-1 of the WDC W65C02S datasheet lists 8 cycles. KimKlone measured <c>5C 34 12</c> as one
+    /// read of <c>$FF34</c> and then four reads of <c>$FFFF</c>
+    /// (https://laughtonelectronics.com/Arcana/KimKlone/Kimklone_opcode_mapping.html), cited by
+    /// https://github.com/SingleStepTests/65x02/issues/12.
+    /// </remarks>
+    [TestCase((byte)0x34, (byte)0x12)]
+    [TestCase((byte)0xA7, (byte)0x56)]
+    public void Step_Nop5C_ReadsFfLowOperandThenFourTimesFfff(byte low, byte high)
+    {
+        SetResetVector(0x2000);
+        Write(0x2000, 0x5C);
+        Write(0x2001, low);
+        Write(0x2002, high);
+        cpu.Reset();
+        target.ClearAccesses();
+
+        var step = cpu.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(step.CyclesConsumed.Value, Is.EqualTo(8UL));
+            Assert.That(cpu.Registers.PC.GetWord(), Is.EqualTo(0x2003));
+            Assert.That(target.Accesses.Select(a => a.Address), Is.EqualTo(new Addr[]
+            {
+                0x2000,
+                0x2001,
+                0x2002,
+                (Addr)(0xFF00 | low),
+                0xFFFF,
+                0xFFFF,
+                0xFFFF,
+                0xFFFF,
+            }));
+            Assert.That(target.Accesses.Select(a => a.Intent), Is.EqualTo(new[]
+            {
+                AccessIntent.InstructionFetch,
+                AccessIntent.DataRead,
+                AccessIntent.DataRead,
+                AccessIntent.DataRead,
+                AccessIntent.DataRead,
+                AccessIntent.DataRead,
+                AccessIntent.DataRead,
+                AccessIntent.DataRead,
+            }));
+        });
+    }
+
+    /// <summary>
     /// Verifies that a one-byte opcode fetched at $FFFF wraps the PC to $0000.
     /// </summary>
     [Test]

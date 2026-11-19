@@ -23,6 +23,13 @@ using SingleStep;
 /// into the local cache, or reads <c>WDC65C02_VECTOR_DIR</c> when that variable is set.
 /// Per-cycle bus traces are not compared.
 /// </para>
+/// <para>
+/// Unused NOP <c>$5C</c> is not ignored. The vector file lists 4 cycles. The runner requires 8,
+/// from Table 7-1 of the WDC W65C02S datasheet and the W65C02S6TQG-14 measurement in
+/// https://github.com/SingleStepTests/65x02/issues/12 (still open). Register and RAM checks still
+/// use the vector. The vector's per-cycle bus list is not compared for <c>$5C</c>. No other opcode
+/// replaces its cycle count.
+/// </para>
 /// </remarks>
 [TestFixture]
 public sealed class Cpu65C02HardwareVectorTests
@@ -98,25 +105,7 @@ public sealed class Cpu65C02HardwareVectorTests
         {
             var data = new TestCaseData((byte)opcode);
             data.SetName($"Opcode_{opcode:X2}_{suffix}");
-            if (TryIgnore((byte)opcode, out string? reason))
-            {
-                data.Ignore(reason);
-            }
-
             yield return data;
-        }
-    }
-
-    private static bool TryIgnore(byte opcode, out string reason)
-    {
-        switch (opcode)
-        {
-            case 0x5C:
-                reason = "Tracked by #572";
-                return true;
-            default:
-                reason = string.Empty;
-                return false;
         }
     }
 }
