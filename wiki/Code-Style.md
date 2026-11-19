@@ -371,6 +371,10 @@ public void SetValue(int index, BasicValue value)
 
 ## LINQ and Functional Style
 
+The repository distinguishes hot and cold paths when choosing between LINQ and loops. See
+[LINQ vs Loops Guideline](../specs/coding/LINQ%20vs%20Loops%20Guideline.md) for the benchmarked
+decision and review policy.
+
 ### When to Use LINQ
 
 ```csharp
