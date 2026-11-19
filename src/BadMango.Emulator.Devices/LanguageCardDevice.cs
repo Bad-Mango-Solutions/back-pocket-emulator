@@ -531,7 +531,10 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         for (byte i = 0; i < SwitchCount; i++)
         {
             byte offset = i;
-            handlers.Set(i, (o, in ctx) => HandleRead(offset, in ctx), (o, v, in ctx) => HandleWrite(offset, v, in ctx));
+            handlers.Set(
+                i,
+                (o, in ctx) => HandleRead(offset, in ctx),
+                (o, v, in ctx) => HandleWrite(offset, v, in ctx));
         }
     }
 
@@ -539,7 +542,7 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     {
         if (!context.IsSideEffectFree)
         {
-            ProcessSwitch(offset);
+            ProcessSwitch(offset, isWrite: false);
         }
 
         // Language Card soft switches return floating bus value
@@ -548,14 +551,14 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
 
     private void HandleWrite(byte offset, byte value, in BusAccess context)
     {
-        // The IIe MMU strobes $C080-$C08F on the address, so a write selects the bank
-        // the same way a read does. ProDOS returns to ROM with STA $C082, and the
-        // enhanced self-test write-enables bank 2 with two STA $C083s.
+        // A write strobes the same bank and read-source select as a read.
+        // It never arms pre-write: any write clears that latch, and only a
+        // second odd read enables RAM writes (Sather p. 5-23; MAME lc_update).
         _ = value;
 
         if (!context.IsSideEffectFree)
         {
-            ProcessSwitch(offset);
+            ProcessSwitch(offset, isWrite: true);
         }
     }
 
@@ -563,54 +566,53 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     /// Processes a soft switch access and updates internal state.
     /// </summary>
     /// <param name="offset">The offset within the I/O page (0x80-0x8F for slot 0).</param>
+    /// <param name="isWrite">True when the CPU wrote the switch. Writes never arm pre-write.</param>
     /// <remarks>
     /// <para>
     /// The Language Card soft switch encoding uses the low 4 bits of the address:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>Bit 0: Write enable address (1 = write enable possible after two accesses)</description></item>
+    /// <item><description>Bit 0: Odd address. Two reads of the same odd address enable writes. A write never does.</description></item>
     /// <item><description>Bits 0 and 1: Read source - RAM when bits are equal (00 or 11), ROM when different (01 or 10)</description></item>
     /// <item><description>Bit 3: Bank select (0 = Bank 2, 1 = Bank 1)</description></item>
     /// </list>
     /// <para>
-    /// Write enable requires two consecutive accesses, read or write, of the same odd
-    /// address. An access to any other switch clears that priming.
+    /// Reads and writes both select the bank and the read source. Pre-write is set only by an
+    /// odd read and is cleared by any write. An even access also write-protects RAM. An odd
+    /// write leaves an already-enabled write alone.
     /// </para>
     /// </remarks>
-    private void ProcessSwitch(byte offset)
+    private void ProcessSwitch(byte offset, bool isWrite)
     {
         // The offset from the dispatcher is 0x80-0x8F for slot 0.
         // We need to mask to get the low 4 bits (0x0-0xF) for switch decoding.
         byte switchIndex = (byte)(offset & 0x0F);
+        bool odd = (switchIndex & 0x01) != 0;
 
-        bool isWriteEnableAddr = (switchIndex & 0x01) != 0;
-
-        if (isWriteEnableAddr)
+        if (!odd)
         {
-            // Two consecutive accesses of the same odd address enable writes.
-            if (preWrite && switchIndex == lastReadOffset)
-            {
-                // Second consecutive access of the same odd address - enable write
-                writeEnabled = true;
-                preWrite = false;
-            }
-            else if (!writeEnabled)
-            {
-                // First access of an odd address (or a different odd address) - prime write enable
-                preWrite = true;
-                lastReadOffset = switchIndex;
-            }
-            else
-            {
-                // Write already enabled; another odd access keeps it enabled but clears priming
-                preWrite = false;
-            }
+            // Even access write-protects and clears pre-write.
+            preWrite = false;
+            writeEnabled = false;
+        }
+        else if (isWrite)
+        {
+            // Odd write selects the bank below, but only resets pre-write.
+            preWrite = false;
+        }
+        else if (preWrite && switchIndex == lastReadOffset)
+        {
+            // Second consecutive read of the same odd address enables writes.
+            writeEnabled = true;
+        }
+        else if (!writeEnabled)
+        {
+            preWrite = true;
+            lastReadOffset = switchIndex;
         }
         else
         {
-            // Reading an even address disables write and clears R�2 state
             preWrite = false;
-            writeEnabled = false;
         }
 
         // Decode state from offset bits

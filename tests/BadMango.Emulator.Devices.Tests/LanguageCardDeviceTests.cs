@@ -389,13 +389,15 @@ public class LanguageCardDeviceTests
     }
 
     /// <summary>
-    /// Verifies that two writes to $C083 enable language-card RAM writes.
+    /// Verifies that two writes to $C083 select RAM reads but do not enable writes.
     /// </summary>
     /// <remarks>
-    /// The enhanced IIe self-test write-enables bank 2 with two <c>STA $C083</c> instructions.
+    /// The enhanced self-test at <c>$C63B</c> and <c>$C63E</c> is <c>STA $C083</c>, not
+    /// <c>LDA</c>. A write still selects bank 2 and RAM read, and it resets pre-write,
+    /// so the pair leaves RAM write-protected.
     /// </remarks>
     [Test]
-    public void Write_TwoAccessesOfC083_EnablesRamWrite()
+    public void Write_TwoAccessesOfC083_LeavesRamWriteDisabled()
     {
         var device = new LanguageCardDevice();
         var dispatcher = new IOPageDispatcher();
@@ -403,16 +405,37 @@ public class LanguageCardDeviceTests
 
         var context = CreateTestContext();
         dispatcher.Write(0x83, 0x00, in context);
-        Assert.That(device.IsRamWriteEnabled, Is.False, "the first STA $C083 only primes write enable");
-
         dispatcher.Write(0x83, 0x00, in context);
 
         Assert.Multiple(() =>
         {
-            Assert.That(device.IsRamWriteEnabled, Is.True);
-            Assert.That(device.IsRamReadEnabled, Is.True);
+            Assert.That(device.IsRamWriteEnabled, Is.False, "two STA $C083 do not enable writes");
+            Assert.That(device.IsRamReadEnabled, Is.True, "STA $C083 still selects RAM for reads");
             Assert.That(device.SelectedBank, Is.EqualTo(2));
         });
+    }
+
+    /// <summary>
+    /// Verifies that an odd write clears pre-write and leaves an enabled write enabled.
+    /// </summary>
+    [Test]
+    public void Write_OddWrite_ClearsPrewriteAndKeepsEnabledWrite()
+    {
+        var device = new LanguageCardDevice();
+        var dispatcher = new IOPageDispatcher();
+        device.RegisterHandlers(dispatcher);
+
+        var context = CreateTestContext();
+        dispatcher.Read(0x83, in context);
+        dispatcher.Write(0x83, 0x00, in context);
+        dispatcher.Read(0x83, in context);
+        Assert.That(device.IsRamWriteEnabled, Is.False, "STA $C083 between two reads clears pre-write");
+
+        dispatcher.Read(0x83, in context);
+        dispatcher.Read(0x83, in context);
+        Assert.That(device.IsRamWriteEnabled, Is.True);
+        dispatcher.Write(0x83, 0x00, in context);
+        Assert.That(device.IsRamWriteEnabled, Is.True, "an odd write does not write-protect RAM that is already enabled");
     }
 
     /// <summary>
