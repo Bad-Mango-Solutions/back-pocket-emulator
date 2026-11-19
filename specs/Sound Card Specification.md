@@ -69,11 +69,12 @@ Where this spec and a later sub-issue of #445 disagree, this spec wins until Jos
 
 - Shipping any Apple, Sweet Micro Systems, Applied Engineering, Votrax, or SSI ROM or disk image.
 - A Mockingboard D or any IIc-external form factor. The slot model is the IIe `ISlotCard`.
-- SC-01 / SSI-263 speech in the first music milestone. Section 12 reserves the wiring. Appendix A puts speech in its own issue.
+- SC-01 / Votrax speech. Phase 5 is the SSI-263 only (§12.1). That phase is after the music card.
+- A one-chip Sound I config. v1 is the two-VIA, two-PSG card.
 - Band-limited (BLEP) synthesis in the first milestone. The exact renderer is the reference. A later renderer may sit beside it.
-- Stereo at the host. v1 sums left and right into the mono `IAudioOutput` the speaker uses. Per-channel mute still distinguishes the chips.
+- Stereo at the host in v1. v1 sums left and right into the mono `IAudioOutput` the speaker uses. Stereo waits until the hash goldens exist. Per-channel mute still distinguishes the chips.
 - Changing the speaker's decay model, the `$C030` toggle, or the meaning of `ClockSpeedHz`.
-- Honor the unused profile `sampleRate` field. The mixer rate is 44 100 Hz until a later change reads that field on purpose.
+- Reading the profile `sampleRate` field. The mixer rate is 44 100 Hz. S11 deletes the unread key from the checked-in profiles.
 - Replacing PocketWatch in the existing Pocket2e profiles. The music layout is a separate profile.
 - Designing #444. This spec only says what the mixer does when the clock is zero or when a later acceleration window says "hold audio."
 - Cycle-stretched Apple II long cycles (the 65th cycle). The machine's cycle is uniform. The VIA counts those cycles. See §9.2.
@@ -254,7 +255,7 @@ The chip model follows the General Instrument AY-3-8910 / AY-3-8913 datasheet: 1
 
 Tone frequency is `clock / (16 * period)`. Noise frequency is `clock / (16 * period)`. Envelope frequency is `clock / (256 * period)`. On a Mockingboard, `clock` is φ2, the same cycle as §9.2. In Phasor native mode, `clock` is 2 × φ2 for the PSGs only (§13). The 6522 stays on φ2 in every mode.
 
-Period 0 is defined as period 1 for tone, noise, and envelope. The datasheet's formulas start at 1, and this choice avoids a stuck or infinite counter. It is called out in §20 in case a title depends on a different reading.
+Period 0 is defined as period 1 for tone, noise, and envelope. The datasheet's formulas start at 1, and this choice avoids a stuck or infinite counter. Josh confirmed this on 2026-11-19 (decision 4).
 
 Envelope shapes are the datasheet's 4 bits: Continue (bit 3), Attack (bit 2), Alternate (bit 1), Hold (bit 0). All 16 values are implemented, including the ones that repeat a single shape. A write to register 13 restarts the shape even when the value did not change.
 
@@ -334,7 +335,7 @@ All of these are slot cards with no ROM. v1 implements the row marked in the tab
 
 | Variant | 6522 | PSG | Speech | v1 |
 |---|---|---|---|---|
-| Sound I | 1 | 1 × AY-3-8910 | Optional SC-01 on the same VIA | No. A one-chip card is a config flag on the v1 type if a title needs it (§20). |
+| Sound I | 1 | 1 × AY-3-8910 | Optional SC-01 on the same VIA | No. Josh, 2026-11-19: no one-chip config. |
 | A / Sound II | 2 | 2 × AY-3-8910 or 8913 | None | Yes. This is the music card. |
 | C | 2 | 2 × AY-3-8913 | SSI-263 | Music path yes. Speech is phase 5. |
 | D | IIc external, not an IIe slot | Same idea as C | SSI-263 | No. |
@@ -344,7 +345,7 @@ The v1 `[DeviceType("mockingboard")]` card is the two-VIA, two-PSG card. It is w
 
 ### 12.1 Speech, later
 
-Phase 5 adds an optional SSI-263 on the C and on the Phasor, and an SC-01 only if a title in the test plan still needs Sound I. The SSI-263 is a phoneme synthesizer. Its IRQ is wired to the 6522 CA1 (the Mockingboard C path titles already use: PCR and IER bit 1 on the second VIA) and, on the Phasor, also directly onto the card IRQ. That direct wire is a third `deviceId` on `SignalLine.IRQ`. None of this is required for G4.
+Phase 5 adds an optional SSI-263 on the C and on the Phasor. There is no SC-01 and no Votrax. Josh, 2026-11-19. The SSI-263 is a phoneme synthesizer. Its IRQ is wired to the 6522 CA1 (the Mockingboard C path titles already use: PCR and IER bit 1 on the second VIA) and, on the Phasor, also directly onto the card IRQ. That direct wire is a third `deviceId` on `SignalLine.IRQ`. None of this is required for G4.
 
 The speech phase still ships no ROM and no phoneme table taken from a vendor disk. The phoneme audio model, if it is more than "the registers exist and IRQ toggles," is its own design note inside that issue.
 
@@ -436,9 +437,9 @@ Unknown keys MUST fail the build with the slot number in the message. A missing 
 
 ### 15.2 Where slot 4 goes
 
-The checked-in `pocket2e*.json` profiles keep PocketWatch in slot 4. A new profile, `profiles/pocket2e-mockingboard.json`, is a copy of `pocket2e.json` with slot 4 set to `mockingboard` and PocketWatch moved to slot 2. Slot 6 stays `disk-ii-compatible`. That is the Ultima IV layout.
+The checked-in `pocket2e*.json` profiles keep PocketWatch in slot 4. A new profile, `profiles/pocket2e-mockingboard.json`, is a copy of `pocket2e.json` with slot 4 set to `mockingboard` and PocketWatch moved to slot 5. Slot 2 stays empty so a serial card can go there later. Slot 6 stays `disk-ii-compatible`. That is the Ultima IV layout. Josh, 2026-11-19.
 
-A second example in the same profile's comments, or a second profile if comments are the wrong place for a worked example, shows two cards: `mockingboard` in slot 4 and `phasor` in slot 5 with `powerOnMode` native. The schema and `specs/reference/Machine Profile Configuration Guide.md` gain the two types when the profile issue lands. This document is the contract for those edits.
+A second example, in that profile's comments or in a second profile if a comment is the wrong place for a worked example, adds a `phasor` in slot 1 with `powerOnMode` native next to the slot 4 Mockingboard. Slot 5 stays PocketWatch. The schema and `specs/reference/Machine Profile Configuration Guide.md` gain the two types when the profile issue lands. This document is the contract for those edits.
 
 Installing both a Mockingboard and a Phasor is legal. Installing two of either is legal, up to the seven slots. Slot 0 stays the language card and is rejected by `SlotManager` as it is today.
 
@@ -542,7 +543,7 @@ Stimuli, each small enough to run in well under a second:
 
 ### 17.4 Guest probe
 
-One integration test builds a machine with `AsPocket2e` (or `FromProfile` on the new profile), no Apple ROM, installs the card in slot 4, writes a short program into RAM that performs the §14 probe, runs it, and asserts the program stored a "found" flag. `Assume.That` checks the card's `SlotNumber` is 4 and `INTCXROM` is off before the program runs. The found-flag is an `Assert`. A second test runs the probe against an empty slot 5 and asserts "not found."
+One integration test builds a machine with `AsPocket2e` (or `FromProfile` on the new profile), no Apple ROM, installs the card in slot 4, writes a short program into RAM that performs the §14 probe, runs it, and asserts the program stored a "found" flag. `Assume.That` checks the card's `SlotNumber` is 4 and `INTCXROM` is off before the program runs. The found-flag is an `Assert`. A second test runs the probe against the empty slot 2 on that profile and asserts "not found." Slot 5 is PocketWatch there, so it is the wrong negative case.
 
 A third test runs the same machine for a fixed cycle count after a tiny player (set DDRs, latch a period, start T1) and hashes the recording. That is the end-to-end golden. It does not load a commercial player.
 
@@ -569,22 +570,21 @@ Appendix A is the issue split. Sizes: S is one component and a handful of tests,
 6. **Unthrottled playback is silence**, state kept coherent. Throttled non-stock clocks pitch-shift with φ2.
 7. **v1 card is two VIAs and two PSGs.** Speech is a later issue. Phasor is its own type.
 8. **Phasor powers on in Mockingboard mode** unless `powerOnMode` says otherwise. Reset restores that configured mode.
-9. **Slot 4 is the music profile's slot.** Existing profiles keep PocketWatch in slot 4.
+9. **Slot 4 is the music profile's sound slot.** PocketWatch moves to slot 5 in that profile. Slot 2 stays empty for a later serial card. The other Pocket2e profiles keep PocketWatch in slot 4.
 10. **No ROMs, no commercial disks, hash goldens, Assume only as a precondition.**
 11. **Native Phasor PSG clock is 2 × φ2.** VIA clock stays φ2 in every mode.
+12. **Loudness stays at §11.1.** One AY channel near ±8192. Josh, 2026-11-19.
+13. **No one-chip Sound I.** The `mockingboard` type is two VIAs and two PSGs. Josh, 2026-11-19.
+14. **Reserved Phasor latch values keep Mockingboard routing.** Encodings other than 000, 101, and 111 do not change the address map. Josh, 2026-11-19.
+15. **Speech is the SSI-263 only.** No SC-01 and no Votrax. Josh, 2026-11-19.
+16. **Stereo is a follow-up after the hash goldens exist.** v1 stays mono. Josh, 2026-11-19.
+17. **The unread speaker `sampleRate` key is deleted by S11.** The mixer does not grow a reader for it. Josh, 2026-11-19.
 
-## 20. Open questions for Josh
+Decisions 4, 5, 6, and 8 were confirmed the same day: period 0 is 1, v1 is mono, unthrottled and #443 bursts are silence, and reset restores the configured Phasor mode.
 
-1. **Period 0.** Decision 4 treats it as 1. Some players hit period 0 on purpose. If you have a title that depends on a different behavior, say so before the AY issue is implemented and §10.1 changes.
-2. **Mono.** v1 sums both chips. A stereo `IAudioOutput` means an OpenAL format change and a speaker placement (center, or left). Worth doing in v1, or after the hash tests exist?
-3. **Loudness.** §11.1 puts one AY channel near ±8192, under the speaker's 16384 step. Three channels fit in a `short`; twelve Phasor channels will clamp. Too quiet next to a click, or too quick to clamp? The constant is easy to change before goldens are checked in; after that it is a golden update.
-4. **One-chip Sound I.** Is a `channels: 1` config on `mockingboard` needed for any title you care about, or is two-chip enough forever?
-5. **PocketWatch's new slot.** The music profile moves it to slot 2. Slot 5 is the other obvious choice if you want slot 2 free. The existing profiles stay as they are either way.
-6. **Phasor reserved latch values.** §13.1 keeps Mockingboard routing for encodings other than 000, 101, and 111. If you would rather they decode as native, or as "card inert," say so.
-7. **Reset versus the DIP.** Decision 8 restores the configured mode on reset. The other reading is "reset always forces Mockingboard, and the DIP is only the initial power-on." Real-card notes describe reset returning to Mockingboard when that is how the DIP is set. Which one do you want?
-8. **SC-01.** Phase 5 is SSI-263 unless you want the older Votrax as well. Ultima V speech is the SSI-263.
-9. **Profile `sampleRate: 48000`.** Left unread, on purpose. Should a follow-up delete it from the checked-in profiles so it stops looking live?
-10. **Hold versus time-compress** during #443 bursts. Decision 6 is silence. Time-compressing (play the burst at 1× and fall behind) keeps the music continuous and lies about duration. Silence matches "disk loads are a pause."
+## 20. Open questions
+
+None. The questions that were here are decisions 4, 5, 6, 8, and 12 through 17. Josh, 2026-11-19.
 
 ## 21. Sources
 
@@ -625,12 +625,13 @@ This appendix does not file issues. Sizes and owners are suggestions. "Depends o
 | S3 | `Ay3Psg`, `AyBus`, and the exact renderer | Datasheet register file, port protocol, period 0 = 1, logarithmic DAC from the GI table, integer ZOH renderer, LFSR seed. Hash goldens 1–3 in §17.3. No VIA. | M | — | Copilot |
 | S4 | `AudioMixer` and speaker as a source | Mixer owns OpenAL / null / recording. Speaker stops building its own sink. 10 ms `AudioTick`. 60 ms ring. Unthrottled hold (§11.4). Existing speaker sample tests stay green. Goldens 4–6. | M | — | Cursor |
 | S5 | `MockingboardCard` | Two VIAs, two PSGs, §8.1 decode, §10.3 wiring, two IRQ ids, factory `mockingboard` that rejects `rom`. Guest probe and the end-to-end hash (§17.4). | M | S1, S2, S3, S4 | Cursor |
-| S6 | Music profile and schema | `profiles/pocket2e-mockingboard.json`: slot 4 Mockingboard, PocketWatch in slot 2, Disk II in slot 6. A worked two-card example. Schema and the Machine Profile Configuration Guide. Do not edit the other Pocket2e profiles. | S | S5 | Copilot |
+| S6 | Music profile and schema | `profiles/pocket2e-mockingboard.json`: slot 4 Mockingboard, PocketWatch in slot 5, slot 2 empty, Disk II in slot 6. A worked example may add a Phasor in slot 1. Schema and the Machine Profile Configuration Guide. Do not edit the other Pocket2e profiles. | S | S5 | Copilot |
 | S7 | `mb` command, mute, WAV, `get_sound_card` | §16. Snapshot does not clear IFR. JSON is source-generated. WAV under the sandbox. MCP tool returns the snapshot. | M | S5, S4 | Copilot |
 | S8 | `PhasorCard` | Mode latch §13.1, routing §13.2, 2× PSG clock in native mode, `powerOnMode`, four PSGs. Speech windows not decoded. Tests for the latch table, the clock double, and Echo+ chip select. | L | S5 | Cursor |
-| S9 | SSI-263 speech, SC-01 only if still required | Phoneme registers, CA1 IRQ on the C, direct IRQ on the Phasor, address windows that phase 4 left as `$FF`. No vendor ROM or phoneme dump. | L | S5, and S8 for the Phasor path | Cursor |
-| S10 | Honor the #443 acceleration window | When #444 exposes the "hold audio" window, the mixer already treats it like `ClockSpeedHz == 0`. This issue is the wiring, not a new policy. | S | S4, #444 | Copilot |
+| S9 | SSI-263 speech | Phoneme registers, CA1 IRQ on the C, direct IRQ on the Phasor, address windows that phase 4 left as `$FF`. No SC-01, no Votrax, no vendor ROM or phoneme dump. | L | S5, and S8 for the Phasor path | Cursor |
+| S10 | Honor the #443 acceleration window | When #444 exposes the "hold audio" window, the mixer already treats it like `ClockSpeedHz == 0`. Playback during the burst is silence (decision 6). This issue is the wiring, not a new policy. | S | S4, #444 | Copilot |
+| S11 | Delete unread speaker `sampleRate` | Remove `config.sampleRate` from the checked-in speaker entries. The mixer stays at 44 100 Hz and does not read the key. Independent of the cards. | S | — | Copilot |
 
-S1–S4 are phase 1 and can land in any order, including in parallel. S5 is the first issue that makes a title's probe succeed. S6 and S7 follow S5 and can be parallel with each other. S8 follows S5. S9 follows the card it attaches to. S10 waits on the speed epic's design, not on the Phasor.
+S1–S4 are phase 1 and can land in any order, including in parallel. S5 is the first issue that makes a title's probe succeed. S6 and S7 follow S5 and can be parallel with each other. S8 follows S5. S9 follows the card it attaches to. S10 waits on the speed epic's design, not on the Phasor. S11 can land at any time.
 
-Out of the split on purpose: band-limited synthesis (§5, §10.4), stereo (§20.2), Mockingboard D, and any change to the speaker's decay. Those come back as their own issues if §20 is answered that way.
+Out of this split: band-limited synthesis (§5, §10.4), stereo (decision 16, after the hash goldens), Mockingboard D, Sound I, SC-01, and any change to the speaker's decay.
