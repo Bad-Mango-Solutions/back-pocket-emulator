@@ -28,11 +28,21 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore BackPocketEmulator.slnx
 
+    - name: Read pinned vector commit
+      id: vectors
+      run: |
+        commit=$(sed -n 's/.*UpstreamCommit = "\([0-9a-f]\{40\}\)".*/\1/p' tests/BadMango.Emulator.Tests/SingleStep/Wdc65C02VectorSet.cs)
+        if [ -z "$commit" ]; then
+          echo "::error::Could not read UpstreamCommit from Wdc65C02VectorSet.cs"
+          exit 1
+        fi
+        echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
     - name: Cache pinned WDC 65C02 vectors
       uses: actions/cache@v5
       with:
-        path: ~/.local/share/back-pocket-emulator/singlestep/65x02/2f6980a2d95757486c7bee24355c360e40e2a224
-        key: singlestep-wdc65c02-v1-2f6980a2d95757486c7bee24355c360e40e2a224
+        path: ~/.local/share/back-pocket-emulator/singlestep/65x02/${{ steps.vectors.outputs.commit }}
+        key: singlestep-wdc65c02-v1-${{ steps.vectors.outputs.commit }}
 
     - name: Run full SingleStepTests 65C02 vectors
       run: dotnet test tests/BadMango.Emulator.Tests/BadMango.Emulator.Tests.csproj --configuration Release --no-restore --verbosity minimal --logger trx --results-directory ./test-results/singlestep-full --settings tests/BadMango.Emulator.Tests/singlestep-full.runsettings
