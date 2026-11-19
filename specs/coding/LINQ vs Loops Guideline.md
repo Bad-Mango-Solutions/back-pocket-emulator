@@ -77,13 +77,13 @@ Use this note and normal code review as the initial enforcement. Do not disable 
 suggestion repo-wide: the rule is context-sensitive, and doing so would hide useful cold-path
 and test suggestions.
 
-If GitHub Code Quality suggestions identify a stable Roslyn rule ID, add a narrowly scoped
-suppression for the affected hot-path file or directory at `silent`/`none`, with the reason in
-this guideline. Do not suppress the rule for `tests/`, benchmark code, configuration code, or
-the entire repository. If the suggestion is a GitHub Code Quality configuration rather than a
-compiler analyzer, dismiss or configure only the hot-path path pattern. No
-`.editorconfig` change is needed for this spike because it must preserve the warning-free build
-and the available findings did not include a rule that can be scoped safely.
+Do not suppress a LINQ rule in `.editorconfig`: the repository forbids `severity = none` (or
+lower severities) there, as well as `<NoWarn>` and blanket `#pragma` suppressions. If a GitHub
+Code Quality suggestion targets hot-path code, dismiss it or configure only the hot-path path
+pattern in GitHub Code Quality. If a compiler analyzer flags a deliberate hot-path loop, a
+narrowly scoped, justified `#pragma` is acceptable only when the PR description explains why
+changing the source is not appropriate. Do not suppress the rule for `tests/`, benchmark code,
+configuration code, or the entire repository.
 
 ## Scope and follow-up
 
