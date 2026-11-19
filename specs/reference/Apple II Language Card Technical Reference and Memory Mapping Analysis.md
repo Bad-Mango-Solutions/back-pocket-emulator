@@ -42,20 +42,20 @@ Modern reproductions and FPGA implementations often use static RAM and programma
 
 ### Softswitch Address Map
 
-The Language Card's operation is controlled by reading from specific addresses in the $C080–$C08F range. Each address acts as a "softswitch," changing the card's internal state. The softswitches are divided into two groups, corresponding to the two 4 KB banks for $D000–$DFFF:
+The Language Card's operation is controlled by any access, read or write, to addresses in the $C080–$C08F range. Each address acts as a "softswitch," changing the card's internal state. The softswitches are divided into two groups, corresponding to the two 4 KB banks for $D000–$DFFF:
 
-| Address | Bank | Function               | Read/Write Behavior |
-| ------- | ---- | ---------------------- | ------------------- |
-| $C080   | 2    | Enable RAM read        | Read only           |
-| $C081   | 2    | Enable RAM write       | Read only           |
-| $C082   | 2    | Disable RAM read (ROM) | Read only           |
-| $C083   | 2    | Enable RAM read/write  | Read only           |
-| $C088   | 1    | Enable RAM read        | Read only           |
-| $C089   | 1    | Enable RAM write       | Read only           |
-| $C08A   | 1    | Disable RAM read (ROM) | Read only           |
-| $C08B   | 1    | Enable RAM read/write  | Read only           |
+| Address | Bank | Function               | Access        |
+| ------- | ---- | ---------------------- | ------------- |
+| $C080   | 2    | Enable RAM read        | Read or write |
+| $C081   | 2    | Enable RAM write       | Read or write |
+| $C082   | 2    | Disable RAM read (ROM) | Read or write |
+| $C083   | 2    | Enable RAM read/write  | Read or write |
+| $C088   | 1    | Enable RAM read        | Read or write |
+| $C089   | 1    | Enable RAM write       | Read or write |
+| $C08A   | 1    | Disable RAM read (ROM) | Read or write |
+| $C08B   | 1    | Enable RAM read/write  | Read or write |
 
-**Note:** Only reads from these addresses affect the card's state. Writes (e.g., STA $C080) do not reliably change the mapping on real hardware, though some emulators may incorrectly support this.
+**Note:** A read or a write selects the bank and the read source. Writing does not arm PRE-WRITE. Any write clears PRE-WRITE. Two consecutive odd reads enable RAM writing, and the two reads need not be the same address (`$C081` then `$C089`, or `$C08B` then `$C083`). An even access disables writing. This is the IIe rule in Sather, *Understanding the Apple IIe*, p. 5-23. Two `STA $C083` therefore select bank 2 and RAM read, and leave RAM write-protected.
 
 ### Softswitch Functionality
 
@@ -68,11 +68,11 @@ Each softswitch controls three aspects:
 #### Detailed Behavior
 
 - **Enable RAM Read ($C080/$C088):** Maps the selected bank's RAM into $D000–$DFFF for reading. Write-protect is enabled; RAM cannot be written.
-- **Enable RAM Write ($C081/$C089):** Maps ROM into $D000–$DFFF for reading, but enables writing to RAM at those addresses. This is a "pre-write latch" state; two consecutive reads to this address are required to fully enable RAM for writing.
-- **Disable RAM Read (ROM) ($C082/$C08A):** Maps ROM into $D000–$DFFF for both reading and writing. RAM is write-protected.
-- **Enable RAM Read/Write ($C083/$C08B):** Maps the selected bank's RAM into $D000–$DFFF for both reading and writing. Two consecutive reads to this address are required to fully enable read/write access.
+- **Enable RAM Write ($C081/$C089):** Maps ROM into $D000–$DFFF for reading. One odd read only arms PRE-WRITE. Writing is enabled by the next odd read, at this address or any other odd address.
+- **Disable RAM Read (ROM) ($C082/$C08A):** Maps ROM into $D000–$DFFF for reading. The access is even, so it also disables writing.
+- **Enable RAM Read/Write ($C083/$C08B):** Maps the selected bank's RAM into $D000–$DFFF for reading. As with $C081/$C089, writing is enabled only by a second consecutive odd read.
 
-**Quirk:** The card's write-enable logic is edge-sensitive; enabling write access requires two consecutive reads to the appropriate softswitch ($C083 or $C08B). This prevents accidental writes due to spurious reads and is a safeguard against programming errors.
+**Quirk:** PRE-WRITE is a single flag, not a remembered address (Sather, *Understanding the Apple IIe*, p. 5-23). Any odd read arms it. Any following odd read enables writing. Any write clears the flag and does not enable writing. An even access also disables writing.
 
 #### Address Decoding
 
@@ -108,22 +108,22 @@ When RAM is deselected (i.e., when the appropriate softswitch is accessed), the 
 
 ## Truth Table: Softswitch Combinations and Memory Visibility
 
-The following table summarizes all valid combinations of softswitch settings and their effects on memory mapping. Each row represents a softswitch read; the mapping is updated immediately after the read.
+The following table summarizes softswitch accesses and their effects on memory mapping. A read or a write updates the bank and the read source immediately. The RAM Write column is the result after the PRE-WRITE rule, not after a single store.
 
 | Softswitch | Bank | RAM Read | RAM Write | $D000–$DFFF Mapping            | $E000–$FFFF Mapping | $F800–$FFFF Mapping | Notes                                                     |
 | ---------- | ---- | -------- | --------- | ------------------------------ | ------------------- | ------------------- | --------------------------------------------------------- |
 | $C080      | 2    | Yes      | No        | Bank 2 RAM (read)              | RAM                 | RAM                 | Write-protect enabled                                     |
-| $C081      | 2    | No       | Yes*      | ROM (read), Bank 2 RAM (write) | RAM                 | RAM                 | Pre-write latch; two reads required for full write-enable |
-| $C082      | 2    | No       | No        | ROM                            | ROM                 | ROM                 | RAM write-protect enabled                                 |
-| $C083      | 2    | Yes      | Yes*      | Bank 2 RAM (read/write)        | RAM                 | RAM                 | Two reads required for full read/write enable             |
+| $C081      | 2    | No       | Yes*      | ROM (read), Bank 2 RAM (write) | RAM                 | RAM                 | Odd read arms PRE-WRITE; the next odd read enables writing |
+| $C082      | 2    | No       | No        | ROM                            | ROM                 | ROM                 | Even access: ROM read, writing disabled                    |
+| $C083      | 2    | Yes      | Yes*      | Bank 2 RAM (read/write)        | RAM                 | RAM                 | Same PRE-WRITE rule; a write here does not enable writing  |
 | $C088      | 1    | Yes      | No        | Bank 1 RAM (read)              | RAM                 | RAM                 | Write-protect enabled                                     |
-| $C089      | 1    | No       | Yes*      | ROM (read), Bank 1 RAM (write) | RAM                 | RAM                 | Pre-write latch; two reads required for full write-enable |
-| $C08A      | 1    | No       | No        | ROM                            | ROM                 | ROM                 | RAM write-protect enabled                                 |
-| $C08B      | 1    | Yes      | Yes*      | Bank 1 RAM (read/write)        | RAM                 | RAM                 | Two reads required for full read/write enable             |
+| $C089      | 1    | No       | Yes*      | ROM (read), Bank 1 RAM (write) | RAM                 | RAM                 | Odd read arms PRE-WRITE; the next odd read enables writing |
+| $C08A      | 1    | No       | No        | ROM                            | ROM                 | ROM                 | Even access: ROM read, writing disabled                    |
+| $C08B      | 1    | Yes      | Yes*      | Bank 1 RAM (read/write)        | RAM                 | RAM                 | Same PRE-WRITE rule; a write here does not enable writing  |
 
 **Legend:**
 
-- "Yes*" indicates that write-enable requires two consecutive reads to the softswitch.
+- "Yes*" is the state after two consecutive odd reads. The reads may use different odd addresses. One odd read only arms PRE-WRITE. A write of an odd address clears PRE-WRITE and does not enable writing.
 - "Bank 1" and "Bank 2" refer to the two 4 KB slices of RAM mapped into $D000–$DFFF.
 - "ROM" refers to the system ROM or the card's onboard ROM, depending on configuration.
 
@@ -131,11 +131,11 @@ The following table summarizes all valid combinations of softswitch settings and
 
 ### Detailed Explanation
 
-When a softswitch is read, the card's internal latches update the mapping as follows:
+When a softswitch is read or written, the card's internal latches update the mapping as follows (Sather, *Understanding the Apple IIe*, p. 5-23):
 
-- **Bank Selection:** Bit 3 of the address selects Bank 1 ($C088–$C08B) or Bank 2 ($C080–$C083).
-- **RAM/ROM Selection:** Bits 0–1 determine whether RAM is mapped for reading, writing, both, or neither.
-- **Write-Protect Logic:** Write access is only enabled after two consecutive reads to the appropriate softswitch ($C083 or $C08B). This prevents accidental writes and ensures that software must explicitly request write access.
+- **Bank Selection:** Bit 3 of the address selects Bank 1 ($C088–$C08B) or Bank 2 ($C080–$C083). A write selects the bank the same way a read does.
+- **RAM/ROM Selection:** Bits 0–1 determine whether RAM or ROM is readable. A write selects the read source the same way a read does.
+- **Write-Protect Logic:** Writing is enabled only by two consecutive odd reads, at any odd addresses. Any write clears PRE-WRITE. An even access disables writing.
 
 **Edge Cases:** If RAM is deselected (i.e., ROM is mapped), the card's RAM may still be written if write-enable is active, but it cannot be read. This is a rare state, typically used for initialization or testing purposes.
 
@@ -145,19 +145,19 @@ When a softswitch is read, the card's internal latches update the mapping as fol
 
 ### Pre-Write Latch Mechanism
 
-The Language Card employs a "pre-write latch" to control write access to its RAM. To enable writing, software must perform two consecutive reads to the write-enable softswitch ($C083 for Bank 2, $C08B for Bank 1). The first read arms the latch; the second read activates write access. This mechanism prevents accidental writes due to stray reads and ensures that only deliberate software actions enable writing.
+The Language Card employs a PRE-WRITE flag to control write access to its RAM (Sather, *Understanding the Apple IIe*, p. 5-23). The flag is not tied to one address. Any odd read arms it. Any following odd read, even at a different address, enables writing. Any write clears the flag and does not enable writing. An even access also disables writing.
 
 **Example Sequence:**
 
-1. LDA $C083      ; Arms the write-enable latch for Bank 2
-2. LDA $C083      ; Enables write access to Bank 2 RAM
-3. STA $D000      ; Writes to Bank 2 RAM at $D000
+1. LDA $C083      ; Arms PRE-WRITE and selects bank 2, RAM read
+2. LDA $C089      ; Different odd address; enables writing and selects bank 1, ROM read
+3. STA $D000      ; Writes bank 1 RAM; a read of $D000 still returns ROM
 
-If only one read is performed, write access is not enabled, and the RAM remains protected.
+Two `STA $C083` select bank 2 and RAM read, clear PRE-WRITE, and leave writing disabled. One odd read alone does not enable writing.
 
 ### Write-Protect Logic
 
-Write-protect is enforced by the card's latches and address decoders. When write-protect is active (i.e., after reading $C080/$C088 or $C082/$C08A), any attempt to write to the card's RAM is ignored. This protects critical data (such as loaded interpreters or language environments) from accidental modification.
+Write-protect is enforced by the card's latches and address decoders. An even access ($C080/$C084, $C082/$C086, $C088/$C08C, or $C08A/$C08E), whether a read or a write, disables writing. While writing is disabled, a store to language-card RAM is ignored.
 
 **Quirk:** If RAM is deselected (i.e., ROM is mapped), but write-enable is active, writes to the $D000–$DFFF region go to RAM, but reads return ROM data. This can be used for certain initialization routines but is generally avoided in normal operation.
 
@@ -184,7 +184,7 @@ UCSD Pascal and other advanced language environments require a full 64 KB of RAM
 
 ### Latch Chips and Decoders
 
-- **Latches:** Typically implemented with D-type flip-flops or SR latches, these hold the state of the softswitches and write-protect logic. They are level-sensitive and update immediately upon reading a softswitch address.
+- **Latches:** Typically implemented with D-type flip-flops or SR latches, these hold the state of the softswitches and write-protect logic. Bank and read-source latches update on a read or a write of the softswitch address. PRE-WRITE is armed only by an odd read (Sather, *Understanding the Apple IIe*, p. 5-23).
 - **Decoders:** 3-to-8 line decoders (e.g., SN74HCS137) are used to select which softswitch is being accessed and to route control signals to the appropriate memory bank.
 - **Bus Transceivers:** Octal bus transceivers (e.g., 74LS245) buffer data between the card and the system bus, allowing for bidirectional communication and isolation when the card is not active.
 - **Pull-ups:** Ensure defined logic levels on control lines, preventing floating inputs that could cause erratic behavior.
@@ -200,7 +200,7 @@ The card's logic ensures that only one memory source (RAM or ROM) drives the dat
 ### Original Language Card
 
 - **Physical Card:** Installed in slot 0; requires a ribbon cable connection to the mainboard.
-- **Softswitches:** Controlled via $C080–$C08F; only reads affect mapping.
+- **Softswitches:** Controlled via $C080–$C08F. A read or a write selects the bank and the read source. PRE-WRITE is armed only by an odd read.
 - **Bank-Switching:** Two 4 KB banks for $D000–$DFFF; 8 KB contiguous for $E000–$FFFF.
 - **Optional ROM:** F8 Autostart ROM socket for enhanced boot features.
 
@@ -222,7 +222,7 @@ The card's logic ensures that only one memory source (RAM or ROM) drives the dat
 Enthusiasts have reverse-engineered the Language Card's logic, producing schematics, FPGA implementations, and modern reproductions. Key findings include:
 
 - **Softswitch Redundancy:** Bit 2 of the softswitch address is ignored, allowing for multiple equivalent addresses.
-- **Write-Enable Quirk:** Two consecutive reads are required to enable writing; this is faithfully reproduced in modern emulators and hardware clones.
+- **Write-Enable Quirk:** Two consecutive odd reads, at any odd addresses, enable writing. Any write clears PRE-WRITE. An even access disables writing (Sather, *Understanding the Apple IIe*, p. 5-23).
 - **Bus Isolation:** Proper timing and isolation are critical for reliable operation; modern reproductions often use faster logic and static RAM to simplify design.
 
 ### FPGA and Static RAM Implementations
@@ -235,7 +235,7 @@ Modern reproductions use static RAM and programmable logic devices, eliminating 
 
 ### Invalid Combinations
 
-- **Writes to Softswitches:** Only reads from $C080–$C08F affect the card's state. Writes (e.g., STA $C080) do not reliably change mapping on real hardware, though some emulators may incorrectly support this.
+- **Writes to Softswitches:** A write selects the bank and the read source, the same as a read. It clears PRE-WRITE and does not enable writing. An even write also disables writing (Sather, *Understanding the Apple IIe*, p. 5-23). `STA $C082` is how ProDOS puts the motherboard ROM back.
 - **Uninitialized State:** On power-up, the card defaults to Bank 2 mapped into $D000–$DFFF, RAM enabled for writing, and ROM mapped into $F800–$FFFF.
 - **Redundant Addresses:** $C084–$C087 and $C08C–$C08F are equivalent to $C080–$C083 and $C088–$C08B, respectively; accessing these addresses does not cause errors but may be unnecessary.
 
@@ -262,13 +262,13 @@ On power-up, the Autostart ROM initializes the system, displays the "APPLE II" m
 | Softswitch  | Bank | RAM Read | RAM Write | $D000–$DFFF                    | $E000–$FFFF | $F800–$FFFF | Notes                 |
 | ----------- | ---- | -------- | --------- | ------------------------------ | ----------- | ----------- | --------------------- |
 | $C080/$C084 | 2    | Yes      | No        | Bank 2 RAM (read)              | RAM         | RAM         | Write-protect enabled |
-| $C081/$C085 | 2    | No       | Yes*      | ROM (read), Bank 2 RAM (write) | RAM         | RAM         | Pre-write latch       |
-| $C082/$C086 | 2    | No       | No        | ROM                            | ROM         | ROM         | Write-protect enabled |
-| $C083/$C087 | 2    | Yes      | Yes*      | Bank 2 RAM (read/write)        | RAM         | RAM         | Two reads required    |
+| $C081/$C085 | 2    | No       | Yes*      | ROM (read), Bank 2 RAM (write) | RAM         | RAM         | Next odd read enables writing |
+| $C082/$C086 | 2    | No       | No        | ROM                            | ROM         | ROM         | Even access disables writing  |
+| $C083/$C087 | 2    | Yes      | Yes*      | Bank 2 RAM (read/write)        | RAM         | RAM         | A write does not enable it    |
 | $C088/$C08C | 1    | Yes      | No        | Bank 1 RAM (read)              | RAM         | RAM         | Write-protect enabled |
-| $C089/$C08D | 1    | No       | Yes*      | ROM (read), Bank 1 RAM (write) | RAM         | RAM         | Pre-write latch       |
-| $C08A/$C08E | 1    | No       | No        | ROM                            | ROM         | ROM         | Write-protect enabled |
-| $C08B/$C08F | 1    | Yes      | Yes*      | Bank 1 RAM (read/write)        | RAM         | RAM         | Two reads required    |
+| $C089/$C08D | 1    | No       | Yes*      | ROM (read), Bank 1 RAM (write) | RAM         | RAM         | Next odd read enables writing |
+| $C08A/$C08E | 1    | No       | No        | ROM                            | ROM         | ROM         | Even access disables writing  |
+| $C08B/$C08F | 1    | Yes      | Yes*      | Bank 1 RAM (read/write)        | RAM         | RAM         | A write does not enable it    |
 
 ------
 
