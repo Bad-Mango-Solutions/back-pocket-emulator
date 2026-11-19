@@ -498,7 +498,8 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
             WriteProtect: drive.Media?.IsReadOnly ?? false,
             HasMedia: drive.Media is not null,
             MountedImagePath: drive.ImagePath,
-            Geometry: drive.Media?.Geometry);
+            Geometry: drive.Media?.Geometry,
+            UnflushedChanges: drive.IsTrackDirty);
     }
 
     /// <inheritdoc />

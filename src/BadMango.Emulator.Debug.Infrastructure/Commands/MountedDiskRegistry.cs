@@ -102,6 +102,59 @@ public sealed class MountedDiskRegistry : IDisposable
     }
 
     /// <summary>
+    /// Attempts to find a mounted image whose resolved source path matches <paramref name="path"/>.
+    /// </summary>
+    /// <param name="path">Resolved image path to match.</param>
+    /// <param name="slot">The 1-based slot containing the mounted image.</param>
+    /// <param name="driveIndex">The 0-based drive index containing the mounted image.</param>
+    /// <param name="open">The tracked open result, or <see langword="null"/> when not found.</param>
+    /// <returns><see langword="true"/> when a mounted image matches; otherwise <see langword="false"/>.</returns>
+    public bool TryGetByPath(string path, out int slot, out int driveIndex, out DiskImageOpenResult? open)
+    {
+        slot = 0;
+        driveIndex = 0;
+        open = null;
+
+        if (this.disposed)
+        {
+            return false;
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+
+        foreach (var entry in this.entries)
+        {
+            string mountedPath;
+            try
+            {
+                mountedPath = Path.GetFullPath(entry.Value.Path);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                continue;
+            }
+
+            if (string.Equals(mountedPath, fullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                slot = entry.Key.Slot;
+                driveIndex = entry.Key.DriveIndex;
+                open = entry.Value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Disposes and removes the open result tracked for the given drive, releasing its
     /// underlying file handle. Safe to call when no entry exists.
     /// </summary>

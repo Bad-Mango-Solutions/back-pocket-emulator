@@ -592,6 +592,34 @@ public sealed class DiskRuntimeCommandsTests
     }
 
     /// <summary>
+    /// <c>disk info</c> reports a mounted image from the retained open result without reopening the file.
+    /// </summary>
+    [Test]
+    public void DiskInfo_MountedImage_ReportsMountedDriveAndDoesNotReopen()
+    {
+        var (card, controller) = MakeMockController(slot: 6, driveCount: 2);
+        this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
+        var path = this.WriteBlankSectorImage(".dsk");
+        controller.Setup(c => c.GetDriveSnapshot(0)).Returns(EmptySnapshot() with
+        {
+            HasMedia = true,
+            MountedImagePath = path,
+            UnflushedChanges = true,
+        });
+
+        Assert.That(new DiskInsertCommand().Execute(this.debugContext, ["6:1", path]).Success, Is.True);
+
+        var result = new DiskInfoCommand().Execute(this.debugContext, [path]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(this.outputWriter.ToString(), Does.Contain("Mounted:          yes (slot 6, drive 1)"));
+            Assert.That(this.outputWriter.ToString(), Does.Contain("Unflushed changes: yes"));
+        });
+    }
+
+    /// <summary>
     /// Re-inserting on the same drive disposes the prior open result rather than leaking
     /// its file handle.
     /// </summary>

@@ -26,6 +26,7 @@ namespace BadMango.Emulator.Storage.Media;
 /// Empty drives report <see langword="null"/>; mounted drives whose media exposes
 /// <see cref="I525Media.Geometry"/> report a populated value.
 /// </param>
+/// <param name="UnflushedChanges">Whether dirty cached track changes have not been flushed.</param>
 public readonly record struct DriveSnapshot(
     bool Selected,
     bool MotorOn,
@@ -34,4 +35,5 @@ public readonly record struct DriveSnapshot(
     bool WriteProtect,
     bool HasMedia,
     string? MountedImagePath,
-    DiskGeometry? Geometry = null);
+    DiskGeometry? Geometry = null,
+    bool UnflushedChanges = false);

@@ -260,6 +260,25 @@ public class CommandDispatcherTests
     }
 
     /// <summary>
+    /// Verifies that a handler exception is converted to an error result.
+    /// </summary>
+    [Test]
+    public void Dispatch_HandlerThrows_ReturnsErrorResult()
+    {
+        var dispatcher = new CommandDispatcher();
+        dispatcher.Register(new ThrowingCommand());
+        var context = CreateTestContext(dispatcher);
+
+        var result = dispatcher.Dispatch(context, "throw");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Is.EqualTo("file is locked"));
+        });
+    }
+
+    /// <summary>
     /// Verifies that ParseCommandLine handles simple commands.
     /// </summary>
     [Test]
@@ -328,6 +347,21 @@ public class CommandDispatcherTests
     private static CommandContext CreateTestContext(ICommandDispatcher dispatcher)
     {
         return new(dispatcher, TextWriter.Null, TextWriter.Null);
+    }
+
+    private sealed class ThrowingCommand : CommandHandlerBase
+    {
+        public ThrowingCommand()
+            : base("throw", "Throws an I/O exception")
+        {
+        }
+
+        public override IReadOnlyList<string> Aliases => [];
+
+        public override CommandResult Execute(ICommandContext context, string[] args)
+        {
+            throw new IOException("file is locked");
+        }
     }
 
     private sealed class TestCommand : CommandHandlerBase

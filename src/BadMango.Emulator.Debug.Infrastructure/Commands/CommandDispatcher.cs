@@ -80,7 +80,18 @@ public sealed class CommandDispatcher : ICommandDispatcher
             return CommandResult.Error($"Unknown command: '{commandName}'. Type 'help' for a list of commands.");
         }
 
-        return handler.Execute(context, args);
+        try
+        {
+            return handler.Execute(context, args);
+        }
+        catch (Exception ex) when (ex is IOException
+                                   or UnauthorizedAccessException
+                                   or InvalidDataException
+                                   or NotSupportedException
+                                   or ArgumentException)
+        {
+            return CommandResult.Error(ex.Message);
+        }
     }
 
     /// <summary>
