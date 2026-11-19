@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -73,47 +75,49 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for ROR absolute,X.</summary>
     internal static readonly OpcodeDispatch RORAbsoluteXDispatch = DispatchRORAbsoluteX;
 
-    private static void DispatchASLAccumulator(ICpu cpu, in OpcodeEntry entry) => OpASLa<AccumulatorMode>(cpu);
+    private static void DispatchASLAccumulator(ICpu cpu, in OpcodeEntry entry) => OpASLa<Cpu65C02, AccumulatorMode>(As65C02(cpu));
 
-    private static void DispatchASLZeroPage(ICpu cpu, in OpcodeEntry entry) => OpASL<ZeroPageMode>(cpu);
+    private static void DispatchASLZeroPage(ICpu cpu, in OpcodeEntry entry) => OpASL<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchASLZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpASL<ZeroPageXMode>(cpu);
+    private static void DispatchASLZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpASL<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchASLAbsolute(ICpu cpu, in OpcodeEntry entry) => OpASL<AbsoluteMode>(cpu);
+    private static void DispatchASLAbsolute(ICpu cpu, in OpcodeEntry entry) => OpASL<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchASLAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpASL<AbsoluteXMode>(cpu);
+    private static void DispatchASLAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpASL<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchLSRAccumulator(ICpu cpu, in OpcodeEntry entry) => OpLSRa<AccumulatorMode>(cpu);
+    private static void DispatchLSRAccumulator(ICpu cpu, in OpcodeEntry entry) => OpLSRa<Cpu65C02, AccumulatorMode>(As65C02(cpu));
 
-    private static void DispatchLSRZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLSR<ZeroPageMode>(cpu);
+    private static void DispatchLSRZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLSR<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchLSRZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpLSR<ZeroPageXMode>(cpu);
+    private static void DispatchLSRZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpLSR<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchLSRAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLSR<AbsoluteMode>(cpu);
+    private static void DispatchLSRAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLSR<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchLSRAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpLSR<AbsoluteXMode>(cpu);
+    private static void DispatchLSRAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpLSR<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchROLAccumulator(ICpu cpu, in OpcodeEntry entry) => OpROLa<AccumulatorMode>(cpu);
+    private static void DispatchROLAccumulator(ICpu cpu, in OpcodeEntry entry) => OpROLa<Cpu65C02, AccumulatorMode>(As65C02(cpu));
 
-    private static void DispatchROLZeroPage(ICpu cpu, in OpcodeEntry entry) => OpROL<ZeroPageMode>(cpu);
+    private static void DispatchROLZeroPage(ICpu cpu, in OpcodeEntry entry) => OpROL<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchROLZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpROL<ZeroPageXMode>(cpu);
+    private static void DispatchROLZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpROL<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchROLAbsolute(ICpu cpu, in OpcodeEntry entry) => OpROL<AbsoluteMode>(cpu);
+    private static void DispatchROLAbsolute(ICpu cpu, in OpcodeEntry entry) => OpROL<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchROLAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpROL<AbsoluteXMode>(cpu);
+    private static void DispatchROLAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpROL<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchRORAccumulator(ICpu cpu, in OpcodeEntry entry) => OpRORa<AccumulatorMode>(cpu);
+    private static void DispatchRORAccumulator(ICpu cpu, in OpcodeEntry entry) => OpRORa<Cpu65C02, AccumulatorMode>(As65C02(cpu));
 
-    private static void DispatchRORZeroPage(ICpu cpu, in OpcodeEntry entry) => OpROR<ZeroPageMode>(cpu);
+    private static void DispatchRORZeroPage(ICpu cpu, in OpcodeEntry entry) => OpROR<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchRORZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpROR<ZeroPageXMode>(cpu);
+    private static void DispatchRORZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpROR<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchRORAbsolute(ICpu cpu, in OpcodeEntry entry) => OpROR<AbsoluteMode>(cpu);
+    private static void DispatchRORAbsolute(ICpu cpu, in OpcodeEntry entry) => OpROR<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchRORAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpROR<AbsoluteXMode>(cpu);
+    private static void DispatchRORAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpROR<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void OpASLa<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpASLa<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -136,7 +140,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpASL<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpASL<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -163,7 +169,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpLSRa<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpLSRa<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -186,7 +194,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpLSR<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpLSR<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -213,7 +223,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpROLa<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpROLa<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -237,7 +249,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpROL<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpROL<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -266,7 +280,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpRORa<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpRORa<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -290,7 +306,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpROR<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpROR<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;

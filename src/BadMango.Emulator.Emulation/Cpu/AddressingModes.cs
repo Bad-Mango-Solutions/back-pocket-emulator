@@ -16,6 +16,8 @@ using Core.Interfaces.Cpu;
 /// Each addressing mode is a function that computes an effective address given a CPU instance.
 /// The CPU provides access to both state and memory through its interface.
 /// This allows clean composition with instruction handlers.
+/// The resolvers are aggressively inlined into the opcode handler. When that handler is closed
+/// over a concrete CPU, the inlined bus and register calls see that CPU.
 /// Mode-aware behavior:
 /// - In 65C02 mode: Standard 6502 behavior
 /// - In 65816 emulation mode (E=1): 6502-compatible with stack pointer forced to page 1
@@ -33,6 +35,7 @@ public static class AddressingModes
     /// typically operate only on registers or the stack (e.g., NOP, CLC, SEI).
     /// Mode-agnostic: behavior is identical across all CPU modes.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr Implied(ICpu cpu)
     {
         // No addressing needed, no PC increment, no cycles
@@ -61,6 +64,7 @@ public static class AddressingModes
     /// - In native mode with M=0: Would fetch 16-bit immediate (handled by instruction, not addressing mode)
     /// - In native mode with X=0: Would fetch 16-bit immediate for index operations.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr Immediate(ICpu cpu)
     {
         Addr address = cpu.Registers.PC.GetDWord();
@@ -79,6 +83,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The zero-page/direct-page address.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr ZeroPage(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -118,6 +123,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective zero-page/direct-page address with X offset (wraps within direct page).</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr ZeroPageX(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -162,6 +168,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective zero-page/direct-page address with Y offset (wraps within direct page).</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr ZeroPageY(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -206,6 +213,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The 16-bit absolute address.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr Absolute(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -240,6 +248,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective address with X offset.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr AbsoluteX(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -279,6 +288,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective address with Y offset.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr AbsoluteY(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -318,6 +328,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective address read from the X-indexed zero-page pointer.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr IndirectX(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -374,6 +385,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective address with Y offset applied to the zero-page pointer.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr IndirectY(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -433,6 +445,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective address with X offset.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr AbsoluteXWrite(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -466,6 +479,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective address with Y offset.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr AbsoluteYWrite(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -499,6 +513,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The effective address with Y offset applied to the zero-page pointer.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr IndirectYWrite(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -552,6 +567,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>Returns zero as a placeholder address since the operation is on the accumulator.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr Accumulator(ICpu cpu)
     {
         if (cpu.IsDebuggerAttached)
@@ -572,6 +588,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The target address for the branch (PC + signed offset).</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr Relative(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -605,6 +622,7 @@ public static class AddressingModes
     /// </summary>
     /// <param name="cpu">The CPU instance providing state and memory access.</param>
     /// <returns>The address read from the indirect pointer.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr Indirect(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -648,6 +666,7 @@ public static class AddressingModes
     /// The pointer fetch wraps within zero page: if the pointer is at $FF, the high byte
     /// is read from $00, not $100. This is consistent with other zero-page indirect modes.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr ZeroPageIndirect(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -701,6 +720,7 @@ public static class AddressingModes
     /// Used by JMP ($abs,X). Unlike NMOS 6502's JMP ($abs) page-wrap bug, this mode
     /// correctly reads the target address across page boundaries. Total 6 cycles.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr AbsoluteIndirectX(ICpu cpu)
     {
         byte addrCycles = 0;
@@ -758,6 +778,7 @@ public static class AddressingModes
     /// is not an effective address and must not be used as one.
     /// </para>
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Addr ZeroPageRelative(ICpu cpu)
     {
         byte addrCycles = 0;

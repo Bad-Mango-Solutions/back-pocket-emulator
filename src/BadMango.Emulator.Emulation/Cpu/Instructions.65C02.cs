@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -31,20 +33,22 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for STP implied.</summary>
     internal static readonly OpcodeDispatch STPImpliedDispatch = DispatchSTPImplied;
 
-    private static void DispatchTSBZeroPage(ICpu cpu, in OpcodeEntry entry) => OpTSB<ZeroPageMode>(cpu);
+    private static void DispatchTSBZeroPage(ICpu cpu, in OpcodeEntry entry) => OpTSB<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchTSBAbsolute(ICpu cpu, in OpcodeEntry entry) => OpTSB<AbsoluteMode>(cpu);
+    private static void DispatchTSBAbsolute(ICpu cpu, in OpcodeEntry entry) => OpTSB<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchTRBZeroPage(ICpu cpu, in OpcodeEntry entry) => OpTRB<ZeroPageMode>(cpu);
+    private static void DispatchTRBZeroPage(ICpu cpu, in OpcodeEntry entry) => OpTRB<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchTRBAbsolute(ICpu cpu, in OpcodeEntry entry) => OpTRB<AbsoluteMode>(cpu);
+    private static void DispatchTRBAbsolute(ICpu cpu, in OpcodeEntry entry) => OpTRB<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchWAIImplied(ICpu cpu, in OpcodeEntry entry) => OpWAI(cpu);
+    private static void DispatchWAIImplied(ICpu cpu, in OpcodeEntry entry) => OpWAI<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchSTPImplied(ICpu cpu, in OpcodeEntry entry) => OpSTP(cpu);
+    private static void DispatchSTPImplied(ICpu cpu, in OpcodeEntry entry) => OpSTP<Cpu65C02>(As65C02(cpu));
 
     // TSB tests A AND M into Z, then sets the memory bits that are set in A (M = M OR A).
-    private static void OpTSB<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpTSB<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         Addr address = TMode.Resolve(cpu);
@@ -70,7 +74,9 @@ public static partial class Instructions
     }
 
     // TRB tests A AND M into Z, then clears the memory bits that are set in A (M = M AND NOT A).
-    private static void OpTRB<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpTRB<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         Addr address = TMode.Resolve(cpu);
@@ -95,7 +101,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 3; // Memory read + Memory write + internal operation
     }
 
-    private static void OpWAI(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpWAI<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         cpu.HaltReason = HaltState.Wai;
@@ -103,7 +111,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 2;
     }
 
-    private static void OpSTP(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSTP<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         cpu.HaltReason = HaltState.Stp;

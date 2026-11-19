@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -58,37 +60,39 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for CPY absolute.</summary>
     internal static readonly OpcodeDispatch CPYAbsoluteDispatch = DispatchCPYAbsolute;
 
-    private static void DispatchCMPImmediate(ICpu cpu, in OpcodeEntry entry) => OpCMP<ImmediateMode>(cpu);
+    private static void DispatchCMPImmediate(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchCMPZeroPage(ICpu cpu, in OpcodeEntry entry) => OpCMP<ZeroPageMode>(cpu);
+    private static void DispatchCMPZeroPage(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchCMPZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpCMP<ZeroPageXMode>(cpu);
+    private static void DispatchCMPZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchCMPAbsolute(ICpu cpu, in OpcodeEntry entry) => OpCMP<AbsoluteMode>(cpu);
+    private static void DispatchCMPAbsolute(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchCMPAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpCMP<AbsoluteXMode>(cpu);
+    private static void DispatchCMPAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchCMPAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpCMP<AbsoluteYMode>(cpu);
+    private static void DispatchCMPAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, AbsoluteYMode>(As65C02(cpu));
 
-    private static void DispatchCMPIndirectX(ICpu cpu, in OpcodeEntry entry) => OpCMP<IndirectXMode>(cpu);
+    private static void DispatchCMPIndirectX(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, IndirectXMode>(As65C02(cpu));
 
-    private static void DispatchCMPIndirectY(ICpu cpu, in OpcodeEntry entry) => OpCMP<IndirectYMode>(cpu);
+    private static void DispatchCMPIndirectY(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, IndirectYMode>(As65C02(cpu));
 
-    private static void DispatchCMPZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpCMP<ZeroPageIndirectMode>(cpu);
+    private static void DispatchCMPZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpCMP<Cpu65C02, ZeroPageIndirectMode>(As65C02(cpu));
 
-    private static void DispatchCPXImmediate(ICpu cpu, in OpcodeEntry entry) => OpCPX<ImmediateMode>(cpu);
+    private static void DispatchCPXImmediate(ICpu cpu, in OpcodeEntry entry) => OpCPX<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchCPXZeroPage(ICpu cpu, in OpcodeEntry entry) => OpCPX<ZeroPageMode>(cpu);
+    private static void DispatchCPXZeroPage(ICpu cpu, in OpcodeEntry entry) => OpCPX<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchCPXAbsolute(ICpu cpu, in OpcodeEntry entry) => OpCPX<AbsoluteMode>(cpu);
+    private static void DispatchCPXAbsolute(ICpu cpu, in OpcodeEntry entry) => OpCPX<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchCPYImmediate(ICpu cpu, in OpcodeEntry entry) => OpCPY<ImmediateMode>(cpu);
+    private static void DispatchCPYImmediate(ICpu cpu, in OpcodeEntry entry) => OpCPY<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchCPYZeroPage(ICpu cpu, in OpcodeEntry entry) => OpCPY<ZeroPageMode>(cpu);
+    private static void DispatchCPYZeroPage(ICpu cpu, in OpcodeEntry entry) => OpCPY<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchCPYAbsolute(ICpu cpu, in OpcodeEntry entry) => OpCPY<AbsoluteMode>(cpu);
+    private static void DispatchCPYAbsolute(ICpu cpu, in OpcodeEntry entry) => OpCPY<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void OpCMP<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpCMP<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -121,7 +125,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpCPX<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpCPX<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -154,7 +160,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpCPY<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpCPY<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;

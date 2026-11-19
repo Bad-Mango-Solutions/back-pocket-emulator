@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -113,71 +115,73 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for BBS7 zero page relative.</summary>
     internal static readonly OpcodeDispatch BBS7ZeroPageRelativeDispatch = DispatchBBS7ZeroPageRelative;
 
-    private static void DispatchRMB0ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<ZeroPageMode>(cpu, 0x01);
+    private static void DispatchRMB0ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x01);
 
-    private static void DispatchRMB1ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<ZeroPageMode>(cpu, 0x02);
+    private static void DispatchRMB1ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x02);
 
-    private static void DispatchRMB2ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<ZeroPageMode>(cpu, 0x04);
+    private static void DispatchRMB2ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x04);
 
-    private static void DispatchRMB3ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<ZeroPageMode>(cpu, 0x08);
+    private static void DispatchRMB3ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x08);
 
-    private static void DispatchRMB4ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<ZeroPageMode>(cpu, 0x10);
+    private static void DispatchRMB4ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x10);
 
-    private static void DispatchRMB5ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<ZeroPageMode>(cpu, 0x20);
+    private static void DispatchRMB5ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x20);
 
-    private static void DispatchRMB6ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<ZeroPageMode>(cpu, 0x40);
+    private static void DispatchRMB6ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x40);
 
-    private static void DispatchRMB7ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<ZeroPageMode>(cpu, 0x80);
+    private static void DispatchRMB7ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpRMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x80);
 
-    private static void DispatchSMB0ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<ZeroPageMode>(cpu, 0x01);
+    private static void DispatchSMB0ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x01);
 
-    private static void DispatchSMB1ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<ZeroPageMode>(cpu, 0x02);
+    private static void DispatchSMB1ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x02);
 
-    private static void DispatchSMB2ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<ZeroPageMode>(cpu, 0x04);
+    private static void DispatchSMB2ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x04);
 
-    private static void DispatchSMB3ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<ZeroPageMode>(cpu, 0x08);
+    private static void DispatchSMB3ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x08);
 
-    private static void DispatchSMB4ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<ZeroPageMode>(cpu, 0x10);
+    private static void DispatchSMB4ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x10);
 
-    private static void DispatchSMB5ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<ZeroPageMode>(cpu, 0x20);
+    private static void DispatchSMB5ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x20);
 
-    private static void DispatchSMB6ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<ZeroPageMode>(cpu, 0x40);
+    private static void DispatchSMB6ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x40);
 
-    private static void DispatchSMB7ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<ZeroPageMode>(cpu, 0x80);
+    private static void DispatchSMB7ZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSMB<Cpu65C02, ZeroPageMode>(As65C02(cpu), 0x80);
 
-    private static void DispatchBBR0ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<ZeroPageRelativeMode>(cpu, 0x01);
+    private static void DispatchBBR0ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x01);
 
-    private static void DispatchBBR1ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<ZeroPageRelativeMode>(cpu, 0x02);
+    private static void DispatchBBR1ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x02);
 
-    private static void DispatchBBR2ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<ZeroPageRelativeMode>(cpu, 0x04);
+    private static void DispatchBBR2ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x04);
 
-    private static void DispatchBBR3ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<ZeroPageRelativeMode>(cpu, 0x08);
+    private static void DispatchBBR3ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x08);
 
-    private static void DispatchBBR4ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<ZeroPageRelativeMode>(cpu, 0x10);
+    private static void DispatchBBR4ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x10);
 
-    private static void DispatchBBR5ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<ZeroPageRelativeMode>(cpu, 0x20);
+    private static void DispatchBBR5ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x20);
 
-    private static void DispatchBBR6ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<ZeroPageRelativeMode>(cpu, 0x40);
+    private static void DispatchBBR6ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x40);
 
-    private static void DispatchBBR7ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<ZeroPageRelativeMode>(cpu, 0x80);
+    private static void DispatchBBR7ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBR<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x80);
 
-    private static void DispatchBBS0ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<ZeroPageRelativeMode>(cpu, 0x01);
+    private static void DispatchBBS0ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x01);
 
-    private static void DispatchBBS1ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<ZeroPageRelativeMode>(cpu, 0x02);
+    private static void DispatchBBS1ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x02);
 
-    private static void DispatchBBS2ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<ZeroPageRelativeMode>(cpu, 0x04);
+    private static void DispatchBBS2ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x04);
 
-    private static void DispatchBBS3ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<ZeroPageRelativeMode>(cpu, 0x08);
+    private static void DispatchBBS3ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x08);
 
-    private static void DispatchBBS4ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<ZeroPageRelativeMode>(cpu, 0x10);
+    private static void DispatchBBS4ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x10);
 
-    private static void DispatchBBS5ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<ZeroPageRelativeMode>(cpu, 0x20);
+    private static void DispatchBBS5ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x20);
 
-    private static void DispatchBBS6ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<ZeroPageRelativeMode>(cpu, 0x40);
+    private static void DispatchBBS6ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x40);
 
-    private static void DispatchBBS7ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<ZeroPageRelativeMode>(cpu, 0x80);
+    private static void DispatchBBS7ZeroPageRelative(ICpu cpu, in OpcodeEntry entry) => OpBBS<Cpu65C02, ZeroPageRelativeMode>(As65C02(cpu), 0x80);
 
-    private static void OpRMB<TMode>(ICpu cpu, byte mask)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpRMB<TCpu, TMode>(TCpu cpu, byte mask)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -193,7 +197,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpSMB<TMode>(ICpu cpu, byte mask)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSMB<TCpu, TMode>(TCpu cpu, byte mask)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -212,7 +218,9 @@ public static partial class Instructions
     // 3-byte instruction. ZeroPageRelative adds 2 cycles. This method adds the
     // memory read and the branch-decision cycle, plus one when the branch is
     // taken and one more when that branch crosses a page. Flags are unchanged.
-    private static void OpBBR<TMode>(ICpu cpu, byte mask)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBBR<TCpu, TMode>(TCpu cpu, byte mask)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -253,7 +261,9 @@ public static partial class Instructions
     }
 
     // Same cycle rules as BBR. The branch is taken when the tested bit is set.
-    private static void OpBBS<TMode>(ICpu cpu, byte mask)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBBS<TCpu, TMode>(TCpu cpu, byte mask)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;

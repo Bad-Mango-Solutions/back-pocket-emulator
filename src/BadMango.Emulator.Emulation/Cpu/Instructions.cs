@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core;
 using Core.Cpu;
 using Core.Interfaces.Cpu;
@@ -14,9 +16,19 @@ using Core.Interfaces.Cpu;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Each opcode is a static method cached as one <see cref="OpcodeDispatch"/> delegate.
-/// Addressing modes are <see cref="IAddressingMode"/> structs, so a shared operation
-/// can be specialized per mode without allocating a closure.
+/// Each opcode is one <see cref="OpcodeDispatch"/> cached in its own <c>static readonly</c> field.
+/// That method casts to <see cref="Cpu65C02"/> and calls <c>Op&lt;TCpu, TMode&gt;</c>
+/// (or <c>Op&lt;TCpu&gt;</c> when the instruction has no addressing-mode argument) closed over
+/// <see cref="Cpu65C02"/>, so register and bus access see the concrete CPU.
+/// A 65816 or 65832 table adds its own dispatch methods on this partial class, calls the same
+/// <c>Op</c> method closed over its CPU, and stores that delegate in its own cache.
+/// It does not reuse the 65C02 delegates.
+/// Addressing modes stay <see cref="IAddressingMode"/> structs, so one operation specializes
+/// per mode without allocating a closure.
+/// </para>
+/// <para>
+/// Opcode $42 is <see cref="WdmDispatch"/>. It is not one of the shared NOP delegates.
+/// On the 65C02 the handler is a 2-byte, 2-cycle NOP.
 /// </para>
 /// <para>
 /// This partial class is split across multiple files by instruction category:
@@ -290,99 +302,114 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for the 1-byte NOP at $FB.</summary>
     internal static readonly OpcodeDispatch NOPFBImpliedDispatch = DispatchNopOneByte;
 
-    private static void DispatchBRKImplied(ICpu cpu, in OpcodeEntry entry) => OpBRK<ImpliedMode>(cpu);
+    /// <summary>
+    /// Narrows the dispatch argument to <see cref="Cpu65C02"/>.
+    /// </summary>
+    /// <param name="cpu">The CPU passed into the cached <see cref="OpcodeDispatch"/>.</param>
+    /// <returns>The same instance, typed as <see cref="Cpu65C02"/>.</returns>
+    /// <remarks>
+    /// Each 65C02 opcode stores one <see cref="OpcodeDispatch"/> that calls <c>Op&lt;Cpu65C02, ...&gt;</c>
+    /// through this cast. A 65816 or 65832 dispatch method on this partial class casts to its own
+    /// CPU instead, and does not reuse these delegates.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Cpu65C02 As65C02(ICpu cpu) => (Cpu65C02)cpu;
 
-    private static void DispatchNopImplied(ICpu cpu, in OpcodeEntry entry) => OpNop<ImpliedMode>(cpu, 1);
+    private static void DispatchBRKImplied(ICpu cpu, in OpcodeEntry entry) => OpBRK<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchNopImmediate(ICpu cpu, in OpcodeEntry entry) => OpNop<ImmediateMode>(cpu, 1);
+    private static void DispatchNopImplied(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, ImpliedMode>(As65C02(cpu), 1);
 
-    private static void DispatchWdm(ICpu cpu, in OpcodeEntry entry) => OpWdm(cpu);
+    private static void DispatchNopImmediate(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, ImmediateMode>(As65C02(cpu), 1);
 
-    private static void DispatchNopZeroPage(ICpu cpu, in OpcodeEntry entry) => OpNop<ZeroPageMode>(cpu, 1);
+    private static void DispatchWdm(ICpu cpu, in OpcodeEntry entry) => OpWdm<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchNopZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpNop<ZeroPageXMode>(cpu, 1);
+    private static void DispatchNopZeroPage(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, ZeroPageMode>(As65C02(cpu), 1);
 
-    private static void DispatchNopAbsolute(ICpu cpu, in OpcodeEntry entry) => OpNop<AbsoluteMode>(cpu, 1);
+    private static void DispatchNopZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, ZeroPageXMode>(As65C02(cpu), 1);
 
-    private static void DispatchNop5C(ICpu cpu, in OpcodeEntry entry) => OpNop<AbsoluteMode>(cpu, 5);
+    private static void DispatchNopAbsolute(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, AbsoluteMode>(As65C02(cpu), 1);
 
-    private static void DispatchNopOneByte(ICpu cpu, in OpcodeEntry entry) => OpNop<ImpliedMode>(cpu, 0);
+    private static void DispatchNop5C(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, AbsoluteMode>(As65C02(cpu), 5);
 
-    private static void DispatchLDAImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDA<ImmediateMode>(cpu);
+    private static void DispatchNopOneByte(ICpu cpu, in OpcodeEntry entry) => OpNop<Cpu65C02, ImpliedMode>(As65C02(cpu), 0);
 
-    private static void DispatchLDAZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDA<ZeroPageMode>(cpu);
+    private static void DispatchLDAImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchLDAZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpLDA<ZeroPageXMode>(cpu);
+    private static void DispatchLDAZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchLDAAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDA<AbsoluteMode>(cpu);
+    private static void DispatchLDAZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchLDAAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpLDA<AbsoluteXMode>(cpu);
+    private static void DispatchLDAAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchLDAAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpLDA<AbsoluteYMode>(cpu);
+    private static void DispatchLDAAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchLDAIndirectX(ICpu cpu, in OpcodeEntry entry) => OpLDA<IndirectXMode>(cpu);
+    private static void DispatchLDAAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, AbsoluteYMode>(As65C02(cpu));
 
-    private static void DispatchLDAIndirectY(ICpu cpu, in OpcodeEntry entry) => OpLDA<IndirectYMode>(cpu);
+    private static void DispatchLDAIndirectX(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, IndirectXMode>(As65C02(cpu));
 
-    private static void DispatchLDAZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpLDA<ZeroPageIndirectMode>(cpu);
+    private static void DispatchLDAIndirectY(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, IndirectYMode>(As65C02(cpu));
 
-    private static void DispatchLDXImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDX<ImmediateMode>(cpu);
+    private static void DispatchLDAZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpLDA<Cpu65C02, ZeroPageIndirectMode>(As65C02(cpu));
 
-    private static void DispatchLDXZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDX<ZeroPageMode>(cpu);
+    private static void DispatchLDXImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDX<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchLDXZeroPageY(ICpu cpu, in OpcodeEntry entry) => OpLDX<ZeroPageYMode>(cpu);
+    private static void DispatchLDXZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDX<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchLDXAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDX<AbsoluteMode>(cpu);
+    private static void DispatchLDXZeroPageY(ICpu cpu, in OpcodeEntry entry) => OpLDX<Cpu65C02, ZeroPageYMode>(As65C02(cpu));
 
-    private static void DispatchLDXAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpLDX<AbsoluteYMode>(cpu);
+    private static void DispatchLDXAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDX<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchLDYImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDY<ImmediateMode>(cpu);
+    private static void DispatchLDXAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpLDX<Cpu65C02, AbsoluteYMode>(As65C02(cpu));
 
-    private static void DispatchLDYZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDY<ZeroPageMode>(cpu);
+    private static void DispatchLDYImmediate(ICpu cpu, in OpcodeEntry entry) => OpLDY<Cpu65C02, ImmediateMode>(As65C02(cpu));
 
-    private static void DispatchLDYZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpLDY<ZeroPageXMode>(cpu);
+    private static void DispatchLDYZeroPage(ICpu cpu, in OpcodeEntry entry) => OpLDY<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchLDYAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDY<AbsoluteMode>(cpu);
+    private static void DispatchLDYZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpLDY<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchLDYAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpLDY<AbsoluteXMode>(cpu);
+    private static void DispatchLDYAbsolute(ICpu cpu, in OpcodeEntry entry) => OpLDY<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchSTAZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTA<ZeroPageMode>(cpu);
+    private static void DispatchLDYAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpLDY<Cpu65C02, AbsoluteXMode>(As65C02(cpu));
 
-    private static void DispatchSTAZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTA<ZeroPageXMode>(cpu);
+    private static void DispatchSTAZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTA<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchSTAAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTA<AbsoluteMode>(cpu);
+    private static void DispatchSTAZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTA<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchSTAAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpSTA<AbsoluteXWriteMode>(cpu);
+    private static void DispatchSTAAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTA<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchSTAAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpSTA<AbsoluteYWriteMode>(cpu);
+    private static void DispatchSTAAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpSTA<Cpu65C02, AbsoluteXWriteMode>(As65C02(cpu));
 
-    private static void DispatchSTAIndirectX(ICpu cpu, in OpcodeEntry entry) => OpSTA<IndirectXMode>(cpu);
+    private static void DispatchSTAAbsoluteY(ICpu cpu, in OpcodeEntry entry) => OpSTA<Cpu65C02, AbsoluteYWriteMode>(As65C02(cpu));
 
-    private static void DispatchSTAIndirectY(ICpu cpu, in OpcodeEntry entry) => OpSTA<IndirectYWriteMode>(cpu);
+    private static void DispatchSTAIndirectX(ICpu cpu, in OpcodeEntry entry) => OpSTA<Cpu65C02, IndirectXMode>(As65C02(cpu));
 
-    private static void DispatchSTAZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpSTA<ZeroPageIndirectMode>(cpu);
+    private static void DispatchSTAIndirectY(ICpu cpu, in OpcodeEntry entry) => OpSTA<Cpu65C02, IndirectYWriteMode>(As65C02(cpu));
 
-    private static void DispatchSTXZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTX<ZeroPageMode>(cpu);
+    private static void DispatchSTAZeroPageIndirect(ICpu cpu, in OpcodeEntry entry) => OpSTA<Cpu65C02, ZeroPageIndirectMode>(As65C02(cpu));
 
-    private static void DispatchSTXZeroPageY(ICpu cpu, in OpcodeEntry entry) => OpSTX<ZeroPageYMode>(cpu);
+    private static void DispatchSTXZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTX<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchSTXAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTX<AbsoluteMode>(cpu);
+    private static void DispatchSTXZeroPageY(ICpu cpu, in OpcodeEntry entry) => OpSTX<Cpu65C02, ZeroPageYMode>(As65C02(cpu));
 
-    private static void DispatchSTYZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTY<ZeroPageMode>(cpu);
+    private static void DispatchSTXAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTX<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchSTYZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTY<ZeroPageXMode>(cpu);
+    private static void DispatchSTYZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTY<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchSTYAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTY<AbsoluteMode>(cpu);
+    private static void DispatchSTYZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTY<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchSTZZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTZ<ZeroPageMode>(cpu);
+    private static void DispatchSTYAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTY<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchSTZZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTZ<ZeroPageXMode>(cpu);
+    private static void DispatchSTZZeroPage(ICpu cpu, in OpcodeEntry entry) => OpSTZ<Cpu65C02, ZeroPageMode>(As65C02(cpu));
 
-    private static void DispatchSTZAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTZ<AbsoluteMode>(cpu);
+    private static void DispatchSTZZeroPageX(ICpu cpu, in OpcodeEntry entry) => OpSTZ<Cpu65C02, ZeroPageXMode>(As65C02(cpu));
 
-    private static void DispatchSTZAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpSTZ<AbsoluteXWriteMode>(cpu);
+    private static void DispatchSTZAbsolute(ICpu cpu, in OpcodeEntry entry) => OpSTZ<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void OpLDA<TMode>(ICpu cpu)
+    private static void DispatchSTZAbsoluteX(ICpu cpu, in OpcodeEntry entry) => OpSTZ<Cpu65C02, AbsoluteXWriteMode>(As65C02(cpu));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpLDA<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -407,7 +434,9 @@ public static partial class Instructions
         cpu.Registers.A.SetValue(value, size);
     }
 
-    private static void OpLDX<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpLDX<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -432,7 +461,9 @@ public static partial class Instructions
         cpu.Registers.X.SetValue(value, size);
     }
 
-    private static void OpLDY<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpLDY<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -457,7 +488,9 @@ public static partial class Instructions
         cpu.Registers.Y.SetValue(value, size);
     }
 
-    private static void OpSTA<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSTA<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         Addr address = TMode.Resolve(cpu);
@@ -467,7 +500,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1; // Memory write cycle
     }
 
-    private static void OpSTX<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSTX<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         Addr address = TMode.Resolve(cpu);
@@ -477,7 +512,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1; // Memory write cycle
     }
 
-    private static void OpSTY<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSTY<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         Addr address = TMode.Resolve(cpu);
@@ -487,7 +524,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1; // Memory write cycle
     }
 
-    private static void OpSTZ<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSTZ<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         Addr address = TMode.Resolve(cpu);
@@ -501,10 +540,13 @@ public static partial class Instructions
     /// added on top of the cycles <typeparamref name="TMode"/> already charged.
     /// Zero leaves only those addressing-mode cycles, which is the 1-byte unused NOP.
     /// </summary>
+    /// <typeparam name="TCpu">The concrete CPU. The 65C02 table closes this over <see cref="Cpu65C02"/>.</typeparam>
     /// <typeparam name="TMode">The addressing mode that advances PC and charges its own cycles.</typeparam>
     /// <param name="cpu">The CPU instance.</param>
     /// <param name="instructionCycles">Extra cycles after the addressing mode. <c>$EA</c> uses 1. <c>$5C</c> uses 5.</param>
-    private static void OpNop<TMode>(ICpu cpu, int instructionCycles)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpNop<TCpu, TMode>(TCpu cpu, int instructionCycles)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -521,8 +563,11 @@ public static partial class Instructions
     /// cycle, on top of the opcode fetch performed by the CPU. This method is not a
     /// shared NOP so a 65816 or 65832 table can replace <see cref="WdmDispatch"/> alone.
     /// </summary>
+    /// <typeparam name="TCpu">The concrete CPU. The 65C02 table closes this over <see cref="Cpu65C02"/>.</typeparam>
     /// <param name="cpu">The CPU instance.</param>
-    private static void OpWdm(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpWdm<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImmediateMode.Resolve(cpu);
         cpu.Registers.TCU += 1;
@@ -531,9 +576,12 @@ public static partial class Instructions
     /// <summary>
     /// BRK. Pushes PC+1 and status with B and the reserved bit set, sets I, clears D, and loads the IRQ vector.
     /// </summary>
+    /// <typeparam name="TCpu">The concrete CPU. The 65C02 table closes this over <see cref="Cpu65C02"/>.</typeparam>
     /// <typeparam name="TMode">The addressing mode. The 65C02 form is implied.</typeparam>
     /// <param name="cpu">The CPU instance.</param>
-    private static void OpBRK<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpBRK<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;

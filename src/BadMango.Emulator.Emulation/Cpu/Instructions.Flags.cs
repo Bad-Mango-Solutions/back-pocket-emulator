@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -34,21 +36,23 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for CLV implied.</summary>
     internal static readonly OpcodeDispatch CLVImpliedDispatch = DispatchCLVImplied;
 
-    private static void DispatchCLCImplied(ICpu cpu, in OpcodeEntry entry) => OpCLC<ImpliedMode>(cpu);
+    private static void DispatchCLCImplied(ICpu cpu, in OpcodeEntry entry) => OpCLC<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchSECImplied(ICpu cpu, in OpcodeEntry entry) => OpSEC<ImpliedMode>(cpu);
+    private static void DispatchSECImplied(ICpu cpu, in OpcodeEntry entry) => OpSEC<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchCLIImplied(ICpu cpu, in OpcodeEntry entry) => OpCLI<ImpliedMode>(cpu);
+    private static void DispatchCLIImplied(ICpu cpu, in OpcodeEntry entry) => OpCLI<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchSEIImplied(ICpu cpu, in OpcodeEntry entry) => OpSEI<ImpliedMode>(cpu);
+    private static void DispatchSEIImplied(ICpu cpu, in OpcodeEntry entry) => OpSEI<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchCLDImplied(ICpu cpu, in OpcodeEntry entry) => OpCLD<ImpliedMode>(cpu);
+    private static void DispatchCLDImplied(ICpu cpu, in OpcodeEntry entry) => OpCLD<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchSEDImplied(ICpu cpu, in OpcodeEntry entry) => OpSED<ImpliedMode>(cpu);
+    private static void DispatchSEDImplied(ICpu cpu, in OpcodeEntry entry) => OpSED<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void DispatchCLVImplied(ICpu cpu, in OpcodeEntry entry) => OpCLV<ImpliedMode>(cpu);
+    private static void DispatchCLVImplied(ICpu cpu, in OpcodeEntry entry) => OpCLV<Cpu65C02, ImpliedMode>(As65C02(cpu));
 
-    private static void OpCLC<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpCLC<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -56,7 +60,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpSEC<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSEC<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -64,7 +70,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpCLI<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpCLI<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -72,7 +80,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpSEI<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSEI<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -80,7 +90,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpCLD<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpCLD<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -88,7 +100,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpSED<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpSED<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);
@@ -96,7 +110,9 @@ public static partial class Instructions
         cpu.Registers.TCU += 1;
     }
 
-    private static void OpCLV<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpCLV<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         TMode.Resolve(cpu);

@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core.Cpu;
 using Core.Interfaces.Cpu;
 
@@ -51,37 +53,43 @@ public static partial class Instructions
     internal static ProcessorStatusFlags PulledProcessorStatus(byte status)
         => (ProcessorStatusFlags)((status | (byte)ProcessorStatusFlags.R) & ~(byte)ProcessorStatusFlags.B);
 
-    private static void DispatchPHAImplied(ICpu cpu, in OpcodeEntry entry) => OpPHA(cpu);
+    private static void DispatchPHAImplied(ICpu cpu, in OpcodeEntry entry) => OpPHA<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchPHPImplied(ICpu cpu, in OpcodeEntry entry) => OpPHP(cpu);
+    private static void DispatchPHPImplied(ICpu cpu, in OpcodeEntry entry) => OpPHP<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchPLAImplied(ICpu cpu, in OpcodeEntry entry) => OpPLA(cpu);
+    private static void DispatchPLAImplied(ICpu cpu, in OpcodeEntry entry) => OpPLA<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchPLPImplied(ICpu cpu, in OpcodeEntry entry) => OpPLP(cpu);
+    private static void DispatchPLPImplied(ICpu cpu, in OpcodeEntry entry) => OpPLP<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchPHXImplied(ICpu cpu, in OpcodeEntry entry) => OpPHX(cpu);
+    private static void DispatchPHXImplied(ICpu cpu, in OpcodeEntry entry) => OpPHX<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchPLXImplied(ICpu cpu, in OpcodeEntry entry) => OpPLX(cpu);
+    private static void DispatchPLXImplied(ICpu cpu, in OpcodeEntry entry) => OpPLX<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchPHYImplied(ICpu cpu, in OpcodeEntry entry) => OpPHY(cpu);
+    private static void DispatchPHYImplied(ICpu cpu, in OpcodeEntry entry) => OpPHY<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchPLYImplied(ICpu cpu, in OpcodeEntry entry) => OpPLY(cpu);
+    private static void DispatchPLYImplied(ICpu cpu, in OpcodeEntry entry) => OpPLY<Cpu65C02>(As65C02(cpu));
 
-    private static void OpPHA(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpPHA<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), cpu.Registers.A.GetByte());
         cpu.Registers.TCU += 2;
     }
 
-    private static void OpPHP(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpPHP<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), (byte)(cpu.Registers.P | ProcessorStatusFlags.B | ProcessorStatusFlags.R));
         cpu.Registers.TCU += 2;
     }
 
-    private static void OpPLA(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpPLA<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         byte value = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
@@ -90,21 +98,27 @@ public static partial class Instructions
         cpu.Registers.TCU += 3;
     }
 
-    private static void OpPLP(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpPLP<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         cpu.Registers.P = PulledProcessorStatus(cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase)));
         cpu.Registers.TCU += 3;
     }
 
-    private static void OpPHX(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpPHX<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), cpu.Registers.X.GetByte());
         cpu.Registers.TCU += 2;
     }
 
-    private static void OpPLX(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpPLX<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         byte value = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));
@@ -113,14 +127,18 @@ public static partial class Instructions
         cpu.Registers.TCU += 3;
     }
 
-    private static void OpPHY(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpPHY<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         cpu.Write8(cpu.PushByte(Cpu65C02Constants.StackBase), cpu.Registers.Y.GetByte());
         cpu.Registers.TCU += 2;
     }
 
-    private static void OpPLY(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpPLY<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         ImpliedMode.Resolve(cpu);
         byte value = cpu.Read8(cpu.PopByte(Cpu65C02Constants.StackBase));

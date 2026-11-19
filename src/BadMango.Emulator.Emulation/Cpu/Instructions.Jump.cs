@@ -5,6 +5,8 @@
 // ReSharper disable InconsistentNaming
 namespace BadMango.Emulator.Emulation.Cpu;
 
+using System.Runtime.CompilerServices;
+
 using Core;
 using Core.Cpu;
 using Core.Interfaces.Cpu;
@@ -32,26 +34,30 @@ public static partial class Instructions
     /// <summary>Cached direct-dispatch delegate for RTI implied.</summary>
     internal static readonly OpcodeDispatch RTIImpliedDispatch = DispatchRTIImplied;
 
-    private static void DispatchJMPAbsolute(ICpu cpu, in OpcodeEntry entry) => OpJMP<AbsoluteMode>(cpu);
+    private static void DispatchJMPAbsolute(ICpu cpu, in OpcodeEntry entry) => OpJMP<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchJMPIndirect(ICpu cpu, in OpcodeEntry entry) => OpJMP<IndirectMode>(cpu);
+    private static void DispatchJMPIndirect(ICpu cpu, in OpcodeEntry entry) => OpJMP<Cpu65C02, IndirectMode>(As65C02(cpu));
 
-    private static void DispatchJMPAbsoluteIndirectX(ICpu cpu, in OpcodeEntry entry) => OpJMP<AbsoluteIndirectXMode>(cpu);
+    private static void DispatchJMPAbsoluteIndirectX(ICpu cpu, in OpcodeEntry entry) => OpJMP<Cpu65C02, AbsoluteIndirectXMode>(As65C02(cpu));
 
-    private static void DispatchJSRAbsolute(ICpu cpu, in OpcodeEntry entry) => OpJSR<AbsoluteMode>(cpu);
+    private static void DispatchJSRAbsolute(ICpu cpu, in OpcodeEntry entry) => OpJSR<Cpu65C02, AbsoluteMode>(As65C02(cpu));
 
-    private static void DispatchRTSImplied(ICpu cpu, in OpcodeEntry entry) => OpRTS(cpu);
+    private static void DispatchRTSImplied(ICpu cpu, in OpcodeEntry entry) => OpRTS<Cpu65C02>(As65C02(cpu));
 
-    private static void DispatchRTIImplied(ICpu cpu, in OpcodeEntry entry) => OpRTI(cpu);
+    private static void DispatchRTIImplied(ICpu cpu, in OpcodeEntry entry) => OpRTI<Cpu65C02>(As65C02(cpu));
 
-    private static void OpJMP<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpJMP<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         Addr targetAddr = TMode.Resolve(cpu);
         cpu.Registers.PC.SetWord((Word)targetAddr);
     }
 
-    private static void OpJSR<TMode>(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpJSR<TCpu, TMode>(TCpu cpu)
+        where TCpu : class, ICpu
         where TMode : struct, IAddressingMode
     {
         byte opCycles = 0;
@@ -71,7 +77,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpRTS(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpRTS<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         ImpliedMode.Resolve(cpu);
@@ -86,7 +94,9 @@ public static partial class Instructions
         cpu.Registers.TCU += opCycles;
     }
 
-    private static void OpRTI(ICpu cpu)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OpRTI<TCpu>(TCpu cpu)
+        where TCpu : class, ICpu
     {
         byte opCycles = 0;
         ImpliedMode.Resolve(cpu);
