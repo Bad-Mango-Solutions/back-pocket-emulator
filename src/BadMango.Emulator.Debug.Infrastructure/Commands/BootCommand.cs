@@ -59,13 +59,13 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
     }
 
     /// <inheritdoc/>
-    public override IReadOnlyList<string> Aliases { get; } = ["startup"];
+    public override IReadOnlyList<string> Aliases { get; } = ["startup", "power"];
 
     /// <inheritdoc/>
-    public override string Usage => "boot";
+    public override string Usage => "boot [--on|--off]";
 
     /// <inheritdoc/>
-    public string Synopsis => "boot";
+    public string Synopsis => "boot [--on|--off]";
 
     /// <inheritdoc/>
     public string DetailedDescription =>
@@ -78,13 +78,19 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         "If the profile has autoVideoWindowOpen enabled, the video window opens automatically.";
 
     /// <inheritdoc/>
-    public IReadOnlyList<CommandOption> Options { get; } = [];
+    public IReadOnlyList<CommandOption> Options { get; } =
+    [
+        new("--on", null, "flag", "Power on the machine and begin execution.", "off"),
+        new("--off", null, "flag", "Power off the machine, flush disks, and reset devices.", "off"),
+    ];
 
     /// <inheritdoc/>
     public IReadOnlyList<string> Examples { get; } =
     [
         "boot                    Reset and start the machine",
         "startup                 Alias for boot",
+        "power --off            Power off the machine",
+        "power --on             Power on the machine",
     ];
 
     /// <inheritdoc/>
@@ -109,6 +115,36 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         if (debugContext.Machine is null)
         {
             return CommandResult.Error("No machine attached to debug context.");
+        }
+
+        bool powerOn = true;
+        foreach (string arg in args)
+        {
+            if (arg.Equals("--off", StringComparison.OrdinalIgnoreCase))
+            {
+                powerOn = false;
+            }
+            else if (arg.Equals("--on", StringComparison.OrdinalIgnoreCase))
+            {
+                powerOn = true;
+            }
+            else
+            {
+                return CommandResult.UsageError($"Unknown boot option '{arg}'.");
+            }
+        }
+
+        if (!powerOn)
+        {
+            try
+            {
+                debugContext.Machine.PowerOffAsync().GetAwaiter().GetResult();
+                return CommandResult.Ok("Machine powered off.");
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                return CommandResult.Error($"Power-off failed: {ex.Message}");
+            }
         }
 
         // Check if auto video window open is enabled

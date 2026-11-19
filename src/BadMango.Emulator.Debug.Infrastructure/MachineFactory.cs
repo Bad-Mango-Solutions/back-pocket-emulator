@@ -71,6 +71,8 @@ public static class MachineFactory
             .WithCpuFactory(CreateCpuFactory(profile.Cpu))
             .Build();
 
+        ConfigurePowerOnMemory(machine, profile);
+
         // Wire the trap registry to the CPU so that traps fire during execution.
         // The MachineBuilder creates and registers the TrapRegistry as a component;
         // we assign it to the CPU here since the TrapRegistry property is on the
@@ -82,8 +84,7 @@ public static class MachineFactory
         var disassembler = new Disassembler(opcodeTable, machine.Bus);
         var info = MachineInfo.FromProfile(profile);
 
-        // Reset the CPU to initialize it
-        machine.Reset();
+        ConfigurePowerOnMemory(machine, profile);
 
         return (machine, disassembler, info);
     }
@@ -128,6 +129,30 @@ public static class MachineFactory
         WireTrapRegistry(machine);
 
         return machine;
+    }
+
+    private static void ConfigurePowerOnMemory(IMachine machine, MachineProfile profile)
+    {
+        if (profile.Boot?.PowerOnMemory is not { } powerOnMemory)
+        {
+            return;
+        }
+
+        machine.PowerOnMemoryPattern = new PowerOnMemoryPattern(
+            ParsePowerOnMemoryPatternKind(powerOnMemory.Pattern),
+            powerOnMemory.Seed ?? 0);
+        machine.PowerOnMemorySeed = powerOnMemory.Seed;
+    }
+
+    private static PowerOnMemoryPatternKind ParsePowerOnMemoryPatternKind(string pattern)
+    {
+        return pattern.Trim().ToLowerInvariant() switch
+        {
+            "zero" => PowerOnMemoryPatternKind.Zero,
+            "alternating-00-ff" => PowerOnMemoryPatternKind.Alternating00FF,
+            "random" => PowerOnMemoryPatternKind.Random,
+            _ => PowerOnMemoryPatternKind.AppleIIe,
+        };
     }
 
     /// <summary>

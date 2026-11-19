@@ -466,6 +466,22 @@
                     "description": "Slot to boot from (1-7)",
                     "minimum": 1,
                     "maximum": 7
+                },
+                "powerOnMemory": {
+                    "type": "object",
+                    "description": "Memory pattern applied whenever the machine powers on",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "enum": ["zero", "apple-iie", "alternating-00-ff", "random"],
+                            "default": "apple-iie"
+                        },
+                        "seed": {
+                            "type": "integer",
+                            "description": "Optional deterministic seed; omitted derives a host-clock seed per power-on"
+                        }
+                    },
+                    "additionalProperties": false
                 }
             }
         }

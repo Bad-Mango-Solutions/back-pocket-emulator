@@ -192,6 +192,7 @@ public partial class StatusMonitorWindow : Window
         MachineStateText.Text = state.ToString();
         MachineStateText.Foreground = state switch
         {
+            MachineState.Off => Brushes.Gray,
             MachineState.Running => Brushes.LimeGreen,
             MachineState.Paused => Brushes.Yellow,
             MachineState.Stopped => Brushes.Orange,

@@ -21,6 +21,7 @@ public class MachineStateTests
             Assert.That(MachineState.Stopped, Is.EqualTo((MachineState)0));
             Assert.That(MachineState.Running, Is.EqualTo((MachineState)1));
             Assert.That(MachineState.Paused, Is.EqualTo((MachineState)2));
+            Assert.That(MachineState.Off, Is.EqualTo((MachineState)3));
         });
     }
 
@@ -46,6 +47,7 @@ public class MachineStateTests
             Assert.That(MachineState.Stopped.ToString(), Is.EqualTo("Stopped"));
             Assert.That(MachineState.Running.ToString(), Is.EqualTo("Running"));
             Assert.That(MachineState.Paused.ToString(), Is.EqualTo("Paused"));
+            Assert.That(MachineState.Off.ToString(), Is.EqualTo("Off"));
         });
     }
 }

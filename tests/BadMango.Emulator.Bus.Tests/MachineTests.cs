@@ -1273,6 +1273,7 @@ public class MachineTests
 
         var machine = new Machine(mockCpu.Object, bus, scheduler, signals, devices);
         scheduler.SetEventContext(machine);
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
         return machine;
     }

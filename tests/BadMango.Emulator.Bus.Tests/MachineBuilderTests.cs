@@ -33,7 +33,7 @@ public class MachineBuilderTests
         {
             Assert.That(machine, Is.Not.Null);
             Assert.That(machine.Cpu, Is.SameAs(mockCpu.Object));
-            Assert.That(machine.State, Is.EqualTo(MachineState.Stopped));
+            Assert.That(machine.State, Is.EqualTo(MachineState.Off));
         });
     }
 

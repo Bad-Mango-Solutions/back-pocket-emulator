@@ -53,4 +53,9 @@ public enum MachineState
     /// The machine can be resumed via Run or advanced one instruction via Step.
     /// </remarks>
     Paused,
+
+    /// <summary>
+    /// Machine is explicitly powered off and not executing instructions.
+    /// </summary>
+    Off,
 }

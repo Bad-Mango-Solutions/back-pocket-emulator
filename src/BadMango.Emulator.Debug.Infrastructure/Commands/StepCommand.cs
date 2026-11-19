@@ -90,6 +90,11 @@ public sealed class StepCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error("Debug context required for this command.");
         }
 
+        if (debugContext.Machine?.State == MachineState.Off)
+        {
+            return CommandResult.Error("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
         if (debugContext.Cpu is null)
         {
             return CommandResult.Error("No CPU attached to debug context.");

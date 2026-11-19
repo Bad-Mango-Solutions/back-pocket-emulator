@@ -107,6 +107,11 @@ public sealed class RunCommand : ExecutionCommandBase
             return CommandResult.Error("Debug context required for this command.");
         }
 
+        if (GuardOff(debugContext) is { } offResult)
+        {
+            return offResult;
+        }
+
         if (debugContext.Cpu is null)
         {
             return CommandResult.Error("No CPU attached to debug context.");

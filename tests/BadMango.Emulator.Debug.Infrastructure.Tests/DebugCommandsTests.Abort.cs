@@ -136,6 +136,7 @@ public partial class DebugCommandsTests
         ctx.AttachMachine(machine);
         var session = new MachineDebugSession(ctx);
         session.AbortReaction = AbortReaction.HostBreak;
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
         machine.Reset();
         machine.Reset(hardReset: true);

@@ -223,6 +223,7 @@ public class MachineLifecycleTests
             }))
             .Build();
         IMachine machine = built!;
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
         var runThread = new Thread(() => machine.Run())
         {

@@ -391,7 +391,11 @@ The `boot` section controls startup behavior.
 ```json
 "boot": {
     "autoStart": false,
-    "autoVideoWindowOpen": true
+    "autoVideoWindowOpen": true,
+    "powerOnMemory": {
+        "pattern": "apple-iie",
+        "seed": 12345
+    }
 }
 ```
 
@@ -400,6 +404,8 @@ The `boot` section controls startup behavior.
 | `autoStart` | Start emulation automatically when profile loads |
 | `autoVideoWindowOpen` | Open the video display window automatically |
 | `startupSlot` | (Optional) Slot number to boot from (e.g., 6 for disk) |
+| `powerOnMemory.pattern` | Power-on RAM pattern: `zero`, `apple-iie`, `alternating-00-ff`, or `random` |
+| `powerOnMemory.seed` | (Optional) Deterministic seed; omitted uses a host-clock seed for each power-on |
 
 ---
 

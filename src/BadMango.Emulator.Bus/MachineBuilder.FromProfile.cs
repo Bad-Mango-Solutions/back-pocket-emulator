@@ -850,6 +850,8 @@ public sealed partial class MachineBuilder
     private sealed record ProfilePhysicalRamHardResetMemory(PhysicalMemory Memory) : IHardResetMemory
     {
         public void ClearForHardReset() => Memory.Clear();
+
+        public void ApplyPowerOnPattern(PowerOnMemoryPattern pattern) => pattern.Apply(Memory.AsSpan());
     }
 
     /// <summary>

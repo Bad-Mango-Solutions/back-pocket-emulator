@@ -116,13 +116,15 @@ public sealed class MachineStatsProvider : IMachineStatsProvider, IDisposable
     public ulong TotalInstructions { get; private set; }
 
     /// <inheritdoc/>
-    public double InstructionsPerSecond => instructionsPerSecond;
+    public double InstructionsPerSecond =>
+        State == MachineState.Off ? 0 : instructionsPerSecond;
 
     /// <inheritdoc/>
     public double AverageCyclesPerInstruction => averageCyclesPerInstruction;
 
     /// <inheritdoc/>
-    public double ActualMHz => actualMHz;
+    public double ActualMHz =>
+        State == MachineState.Off ? 0 : actualMHz;
 
     /// <inheritdoc/>
     public double TargetMHz => AppleIIeClockMHz;

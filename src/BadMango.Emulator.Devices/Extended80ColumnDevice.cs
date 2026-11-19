@@ -435,6 +435,12 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
         auxiliaryRam.Clear();
     }
 
+    /// <inheritdoc />
+    public void ApplyPowerOnPattern(PowerOnMemoryPattern pattern)
+    {
+        pattern.Apply(auxiliaryRam.AsSpan());
+    }
+
     /// <summary>
     /// Configures the auxiliary memory layers and swap groups on the bus.
     /// </summary>

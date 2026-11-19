@@ -102,7 +102,9 @@ public sealed class Machine : IMachine
     /// </summary>
     private readonly ILogger logger;
 
-    private volatile MachineState state = MachineState.Stopped;
+    private volatile MachineState state = MachineState.Off;
+    private PowerOnMemoryPattern powerOnMemoryPattern = PowerOnMemoryPattern.Default;
+    private int? powerOnMemorySeed;
 
     /// <summary>
     /// Signals lifecycle transitions that may release waiters blocked on run-loop ownership.
@@ -233,6 +235,24 @@ public sealed class Machine : IMachine
     public MachineState State => state;
 
     /// <inheritdoc />
+    public PowerOnMemoryPattern PowerOnMemoryPattern
+    {
+        get => powerOnMemoryPattern;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            powerOnMemoryPattern = value;
+        }
+    }
+
+    /// <inheritdoc />
+    public int? PowerOnMemorySeed
+    {
+        get => powerOnMemorySeed;
+        set => powerOnMemorySeed = value;
+    }
+
+    /// <inheritdoc />
     public long ClockSpeedHz { get; set; }
 
     /// <inheritdoc />
@@ -267,6 +287,7 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public void Reset(bool hardReset = false)
     {
+        ThrowIfOff();
         PulseResetCore(
             () => Signals.Assert(SignalLine.Reset, MachineResetSourceId, Scheduler.Now),
             () => Signals.Deassert(SignalLine.Reset, MachineResetSourceId, Scheduler.Now),
@@ -285,6 +306,7 @@ public sealed class Machine : IMachine
     public void Run()
     {
         ThrowIfDisposed();
+        ThrowIfOff();
         if (!TryBeginRunLoop(requirePaused: false, out int generation))
         {
             return;
@@ -324,6 +346,7 @@ public sealed class Machine : IMachine
     public CpuStepResult Step()
     {
         ThrowIfDisposed();
+        ThrowIfOff();
         if (executingMachine == this && cpuStepDepth > 0)
         {
             // Called from inside a CPU step (a scheduled callback or a request serviced at an
@@ -398,6 +421,7 @@ public sealed class Machine : IMachine
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ThrowIfOff();
         if (!TryBeginRunLoop(requirePaused: false, out int generation))
         {
             return;
@@ -409,6 +433,11 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public void Pause()
     {
+        if (state == MachineState.Off)
+        {
+            return;
+        }
+
         if (!TryLeaveRunning(MachineState.Paused, out int generation))
         {
             return;
@@ -421,6 +450,8 @@ public sealed class Machine : IMachine
     public async Task ResumeAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ThrowIfOff();
+
         if (!TryBeginRunLoop(requirePaused: true, out int generation))
         {
             return;
@@ -432,14 +463,68 @@ public sealed class Machine : IMachine
     /// <inheritdoc />
     public async Task BootAsync(CancellationToken cancellationToken = default)
     {
-        Reset();
+        if (state == MachineState.Off)
+        {
+            await PowerOnCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            Reset();
+        }
+
         await RunAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task PowerOnAsync(CancellationToken cancellationToken = default)
+    {
+        await PowerOnCoreAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task PowerOffAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
+        StopRunLoop();
+
+        await Task.Yield();
+        lock (lifecycleSync)
+        {
+            if (executingMachine == this)
+            {
+                throw new InvalidOperationException("Machine cannot be powered off from the machine thread.");
+            }
+
+            RunAsMachine(() =>
+            {
+                foreach (var controller in GetDiskControllers())
+                {
+                    var driveCountProperty = controller.GetType().GetProperty("DriveCount");
+                    int driveCount = driveCountProperty?.GetValue(controller) is int count ? count : 0;
+                    var flushMethod = controller.GetType().GetMethod("Flush", [typeof(int)]);
+                    for (int drive = 0; drive < driveCount; drive++)
+                    {
+                        flushMethod?.Invoke(controller, [drive]);
+                    }
+                }
+
+                PowerOnResetDevices([]);
+                ApplyPowerOnPattern();
+                SetState(MachineState.Off);
+            });
+        }
     }
 
     /// <inheritdoc />
     public void Halt()
     {
-        // Force CPU into halted state (equivalent to STP). The halt reason is CPU state, so it
+        if (state == MachineState.Off)
+        {
+            return;
+        }
+
+        // Force CPU into halted state (equivalent to STP). the halt reason is CPU state, so it
         // is applied on the machine thread (immediately when quiescent, otherwise at the next
         // instruction boundary or when the loop exits).
         Post(() => Cpu.HaltReason = HaltState.Stp);
@@ -597,6 +682,90 @@ public sealed class Machine : IMachine
             if (component is IPowerOnReset powerOn && done.Add(component))
             {
                 powerOn.PowerOnReset();
+            }
+        }
+    }
+
+    private bool IsDiskController(object component)
+    {
+        return component.GetType().GetInterfaces().Any(type => type.Name == "IDiskController");
+    }
+
+    private async Task PowerOnCoreAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        int seed = powerOnMemorySeed ?? unchecked((int)Environment.TickCount64);
+        if (powerOnMemorySeed is null)
+        {
+            logger.Information(
+                "Power-on memory seed {Seed} for pattern {Pattern}.",
+                seed,
+                powerOnMemoryPattern.Kind);
+        }
+
+        var pattern = new PowerOnMemoryPattern(powerOnMemoryPattern.Kind, seed);
+        await Task.Yield();
+
+        Post(() =>
+        {
+            ApplyPowerOnPattern(pattern);
+            PowerOnResetDevices([]);
+            powerOnResetPending = true;
+            ExecuteResetPulse(
+                () => Signals.Assert(SignalLine.Reset, MachineResetSourceId, Scheduler.Now),
+                () => Signals.Deassert(SignalLine.Reset, MachineResetSourceId, Scheduler.Now),
+                false);
+        });
+        SetState(MachineState.Stopped);
+    }
+
+    private void ApplyPowerOnPattern(PowerOnMemoryPattern? pattern = null)
+    {
+        PowerOnMemoryPattern selected = pattern ?? powerOnMemoryPattern;
+        if (powerOnMemorySeed is { } fixedSeed)
+        {
+            selected = new PowerOnMemoryPattern(selected.Kind, fixedSeed);
+        }
+
+        bool anyRegistered = false;
+        foreach (var memory in components.OfType<IHardResetMemory>())
+        {
+            memory.ApplyPowerOnPattern(selected);
+            anyRegistered = true;
+        }
+
+        if (!anyRegistered)
+        {
+            if (selected.Kind == PowerOnMemoryPatternKind.Zero)
+            {
+                Bus.Clear();
+            }
+            else
+            {
+                Bus.Clear();
+            }
+        }
+    }
+
+    private IEnumerable<object> GetDiskControllers()
+    {
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        foreach (var controller in components.Where(IsDiskController))
+        {
+            if (seen.Add(controller))
+            {
+                yield return controller;
+            }
+        }
+
+        if (GetComponent<ISlotManager>() is { } slotManager)
+        {
+            foreach (var card in slotManager.Slots.Values)
+            {
+                if (IsDiskController(card) && seen.Add(card))
+                {
+                    yield return card;
+                }
             }
         }
     }
@@ -1134,6 +1303,11 @@ public sealed class Machine : IMachine
             Task waitTask;
             lock (lifecycleSync)
             {
+                if (state == MachineState.Off)
+                {
+                    throw new InvalidOperationException("Machine is off. Use 'power --on' (or 'boot') first.");
+                }
+
                 bool allowed = requirePaused ? state == MachineState.Paused : state != MachineState.Running;
                 if (!allowed)
                 {
@@ -1265,12 +1439,26 @@ public sealed class Machine : IMachine
     /// Moves the machine to <see cref="MachineState.Stopped"/>, requests the CPU to stop, and
     /// waits for the active run loop (if any) to exit.
     /// </summary>
+    private void ThrowIfOff()
+    {
+        if (state == MachineState.Off)
+        {
+            throw new InvalidOperationException(
+                "Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+    }
+
     private void StopRunLoop()
     {
         int generation;
         bool changed;
         lock (lifecycleSync)
         {
+            if (state == MachineState.Off && activeLoopGeneration == 0)
+            {
+                return;
+            }
+
             if (state == MachineState.Stopped && activeLoopGeneration == 0)
             {
                 return;

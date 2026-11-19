@@ -79,6 +79,11 @@ public sealed class TraceCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error("Debug context required for this command.");
         }
 
+        if (debugContext.Machine?.State == BadMango.Emulator.Bus.MachineState.Off)
+        {
+            return CommandResult.Error("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
         if (debugContext.TracingListener is null)
         {
             return CommandResult.Error("No tracing listener attached. Boot a profile first.");
