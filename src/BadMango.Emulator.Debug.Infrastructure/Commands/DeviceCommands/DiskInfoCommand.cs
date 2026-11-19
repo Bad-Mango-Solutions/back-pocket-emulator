@@ -120,12 +120,22 @@ public sealed class DiskInfoCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error($"File not found: '{path}'.");
         }
 
-        // Read the 2MG header (if any) BEFORE opening through the factory: the factory
-        // takes a writable handle with FileShare.None for non-read-only opens, which
-        // would otherwise block this read.
+        var mounted = false;
+        var mountedSlot = 0;
+        var mountedDriveIndex = 0;
+        DiskImageOpenResult? mountedOpen = null;
+        if (context is IDebugContext mountedContext
+            && mountedContext.MountedDisks.TryGetByPath(path, out mountedSlot, out mountedDriveIndex, out mountedOpen)
+            && mountedOpen is not null)
+        {
+            mounted = true;
+        }
+
+        // Read the 2MG header (if any) before opening an unmounted image. Mounted 2MG
+        // images are reported from the retained open result instead.
         var ext = Path.GetExtension(path).ToLowerInvariant();
         TwoImgHeader? twoImgHeader = null;
-        if (ext is ".2mg" or ".2img")
+        if (!mounted && ext is ".2mg" or ".2img")
         {
             try
             {
@@ -135,44 +145,64 @@ public sealed class DiskInfoCommand : CommandHandlerBase, ICommandHelp
                     twoImgHeader = TwoImgHeader.Parse(head);
                 }
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Reported below, with the rest of disk-info.
+                return CommandResult.Error($"Cannot read '{path}': {ex.Message}");
             }
         }
 
         DiskImageOpenResult open;
-        try
+        if (mountedOpen is not null)
         {
-            // Always open read-only to avoid leaking a writable file handle: the underlying
-            // FileStorageBackend uses FileShare.None for writable opens (and FileShare.Read
-            // for read-only opens), either of which would prevent the user from renaming or
-            // deleting the file with their OS until the process exits.
-            // The intrinsic write-protect state is computed separately below.
-            // The result is disposed at the end of this method via the using declaration so
-            // the file handle is released as soon as 'disk info' completes.
-            open = factory.Open(path, forceReadOnly: true);
+            open = mountedOpen;
         }
-        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
+        else
         {
-            return CommandResult.Error($"Cannot identify '{path}': {ex.Message}");
+            try
+            {
+                open = factory.Open(path, forceReadOnly: true);
+            }
+            catch (Exception ex) when (ex is IOException
+                                       or UnauthorizedAccessException
+                                       or InvalidDataException
+                                       or NotSupportedException)
+            {
+                return CommandResult.Error($"Cannot identify '{path}': {ex.Message}");
+            }
         }
 
-        using (open)
+        try
         {
-            // Intrinsic write-protect: OS read-only attribute, OR 2MG header bit if present.
-            // We do NOT consult open.IsReadOnly because we forced read-only above, which would
-            // always report "yes" regardless of the file's true state.
+            // Effective write-protect: OS read-only attribute, the mount-time read-only state
+            // when the image is mounted, OR the 2MG header bit if present.
             var fileInfo = new FileInfo(path);
             var osReadOnly = (fileInfo.Attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly;
-            var intrinsicWriteProtected = osReadOnly || (twoImgHeader is TwoImgHeader hdr && hdr.IsWriteProtected);
+            var effectiveWriteProtected = osReadOnly
+                || (mountedOpen is not null && open.IsReadOnly)
+                || (twoImgHeader is TwoImgHeader hdr && hdr.IsWriteProtected);
 
             var output = context.Output;
             output.WriteLine();
             output.WriteLine($"Disk image: {path}");
+            if (mounted)
+            {
+                output.WriteLine($"  Mounted:          yes (slot {mountedSlot}, drive {mountedDriveIndex + 1})");
+                var unflushedChanges = "unknown";
+                if (DiskRuntimeHelpers.TryGetSlotManager(context, out var slotManager, out _)
+                    && slotManager is not null
+                    && DiskRuntimeHelpers.TryGetController(slotManager, mountedSlot, mountedDriveIndex + 1, out var controller, out var driveIndex, out _)
+                    && controller is not null)
+                {
+                    var snapshot = controller.GetDriveSnapshot(driveIndex);
+                    unflushedChanges = snapshot.UnflushedChanges ? "yes" : "no";
+                }
+
+                output.WriteLine($"  Unflushed changes: {unflushedChanges}");
+            }
+
             output.WriteLine($"  File size:        {fileInfo.Length} bytes");
             output.WriteLine($"  Detected format:  {open.Format}");
-            output.WriteLine($"  Write-protected:  {(intrinsicWriteProtected ? "yes" : "no")}");
+            output.WriteLine($"  Write-protected:  {(effectiveWriteProtected ? "yes" : "no")}");
             output.WriteLine($"  Bootable:         {DescribeBootability(open, context.Error)}");
 
             switch (open)
@@ -238,12 +268,18 @@ public sealed class DiskInfoCommand : CommandHandlerBase, ICommandHelp
             output.WriteLine();
             return CommandResult.Ok();
         }
+        finally
+        {
+            if (!mounted)
+            {
+                open.Dispose();
+            }
+        }
     }
 
     private static byte[] ReadFirstBytes(string path, int count)
     {
-        // Use FileShare.ReadWrite so this read still succeeds when another handle (e.g.
-        // the open returned by DiskImageFactory) holds the file with FileShare.None.
+        // Use FileShare.ReadWrite so this read can coexist with another open handle.
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         var len = (int)Math.Min(count, fs.Length);
         var buf = new byte[len];

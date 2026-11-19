@@ -40,7 +40,7 @@ public class FileStorageBackend : IStorageBackend
         }
 
         var access = readOnly ? FileAccess.Read : FileAccess.ReadWrite;
-        var share = readOnly ? FileShare.Read : FileShare.None;
+        var share = readOnly ? FileShare.ReadWrite : FileShare.Read;
         this.stream = new FileStream(path, FileMode.Open, access, share);
         this.canWrite = !readOnly;
     }

@@ -82,6 +82,32 @@ public class StorageBackendTests
     }
 
     /// <summary>
+    /// Verifies that a read-only peek can open while a writable backend holds the file.
+    /// </summary>
+    [Test]
+    public void WritableBackend_AllowsReadOnlyPeek()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"bms-storage-{Guid.NewGuid():N}.dsk");
+        try
+        {
+            File.WriteAllBytes(path, [0x01, 0x02, 0x03, 0x04]);
+            using var backend = new FileStorageBackend(path);
+
+            Assert.DoesNotThrow(() =>
+            {
+                using var peek = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                Span<byte> bytes = stackalloc byte[4];
+                peek.ReadExactly(bytes);
+                Assert.That(bytes[0], Is.EqualTo(0x01));
+            });
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
     /// Verifies that opening a missing file throws.
     /// </summary>
     [Test]

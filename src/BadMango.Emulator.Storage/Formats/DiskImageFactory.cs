@@ -85,7 +85,7 @@ public class DiskImageFactory
 
     private static byte[] PeekFirstBytes(string path, int count)
     {
-        using var fs = File.OpenRead(path);
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         var len = (int)Math.Min(count, fs.Length);
         var buf = new byte[len];
         var read = 0;
