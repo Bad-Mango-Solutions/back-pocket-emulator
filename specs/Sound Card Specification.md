@@ -8,7 +8,7 @@
 | Epic | #445 (Mockingboard and Phasor) |
 | Baseline | `main` as of this document. No 6522, AY-3-8910, Mockingboard, or Phasor type exists in `src/`. |
 | Related | #443 (clock rate, unthrottled, disk acceleration; its design is #444), `VIDEO-PIPELINE-PRD.md` (hot-thread and headless rules), `DISK-EMULATION-PRD.md` (slot cards, no shipped ROMs) |
-| ROM policy | These cards have no firmware ROM. This epic ships none. Apple and third-party ROMs stay out of the tree. `pocket2-charset.rom` remains the only ROM-byte exception. |
+| ROM policy | These cards have no firmware ROM. This epic ships none. Apple and third-party ROMs stay out of the tree. The repository's existing ROM bytes stay what they are: `pocket2-charset.rom` and the homebrew `boot.rom` from #437. |
 
 ---
 
@@ -35,9 +35,9 @@ Where this spec and a later sub-issue of #445 disagree, this spec wins until Jos
 
 ## 3. Problem
 
-**The speaker is a motherboard device with its own host stream.** `SpeakerController` (`[DeviceType("speaker")]`) toggles on `$C030` through `IOPageDispatcher`, records `(cycle, level)` pairs, and synthesizes 16-bit mono PCM at a hardcoded 44 100 Hz. The cycle-to-sample conversion divides by `IMachine.ClockSpeedHz` when that value is greater than zero, and by `1_020_484` otherwise. A one-pole decay (`SpeakerDecayTimeConstantSeconds = 0.005`) pulls the cone back to silence. A 50 ms `System.Timers.Timer` calls `Flush()`, which hands a `short[]` to `IAudioOutput.Play`. The default constructor builds `OpenAlAudioOutput` and falls back to `NullAudioOutput` if OpenAL cannot start. Profile `config.sampleRate` (48000 on the checked-in Pocket2e profiles) is not read.
+**The speaker is a motherboard device with its own host stream.** `SpeakerController` (`[DeviceType("speaker")]`) toggles on `$C030` through `IOPageDispatcher`, records `(cycle, state)` pairs where `state` is the bool level after the toggle, and synthesizes 16-bit mono PCM at a hardcoded 44 100 Hz. The decaying sample amplitude is a separate `double`, not that queued state. The cycle-to-sample conversion divides by `IMachine.ClockSpeedHz` when that value is greater than zero, and by `1_020_484` otherwise. A one-pole decay (`SpeakerDecayTimeConstantSeconds = 0.005`) pulls the cone back to silence. A 50 ms `System.Timers.Timer` calls `Flush()`, which hands a `short[]` to `IAudioOutput.Play`. The default constructor builds `OpenAlAudioOutput` and falls back to `NullAudioOutput` if OpenAL cannot start. Profile `config.sampleRate` (48000 on the checked-in Pocket2e profiles) is not read.
 
-`OpenAlAudioOutput` is mono, 16-bit, three 1024-sample buffers, and a ring of `sampleRate * 200 / 1000` samples (8820 at 44.1 kHz, about 200 ms). Overrun drops the oldest samples. The playback thread is the only consumer. `IAudioOutput` has one method, `Play(short[])`. There is no gain, no second source, and no clock domain shared with a slot card.
+`OpenAlAudioOutput` is mono, 16-bit, three 1024-sample buffers, and a ring of `sampleRate * 200 / 1000` samples (8820 at 44.1 kHz, about 200 ms). Overrun drops the oldest samples. The playback thread is the only consumer. `IAudioOutput` extends `IDisposable` and its only playback method is `Play(short[])`. `Dispose` is the lifetime: `OpenAlAudioOutput.Dispose` cancels the playback thread and joins it (2 s timeout) before releasing the OpenAL device and context. `SpeakerController.Dispose` disposes that sink today, because the speaker constructed it. There is no gain, no second source, and no clock domain shared with a slot card.
 
 `ScheduledEventKind.AudioTick` exists. The speaker does not schedule it. Synthesis is driven by bus-access timestamps plus the wall-clock flush timer.
 
@@ -132,10 +132,10 @@ Suggested types, all new unless named as existing:
 | `MockingboardCard` | `ISlotCard`, `IResetReceiver`. Two VIAs, two PSGs. `[DeviceType("mockingboard")]`. |
 | `PhasorCard` | Same shape plus the mode latch, four PSGs, and the native / Echo+ maps. `[DeviceType("phasor")]`. |
 | `IAudioSource` | `Render(Span<int> into, Cycle from, Cycle to)` adding into a 32-bit mix. |
-| `AudioMixer` | Owns `IAudioOutput`. Sums sources. Implements the speed policy in §11. |
+| `AudioMixer` | Owns the one `IAudioOutput`. Sums sources. Implements the speed policy in §11. `Dispose` disposes the sink. |
 | `ISoundCardDebug` | Register snapshot, mute, the mixer recording hook. |
 
-`SpeakerController` grows an `IAudioSource` implementation and stops constructing `OpenAlAudioOutput`. The machine builder creates one mixer when the profile has a speaker or a sound card, passes it in, and the mixer owns the sink. Tests keep using the internal speaker constructor with a recording `IAudioOutput`, and the mixer has the same seam.
+`SpeakerController` grows an `IAudioSource` implementation and stops constructing `OpenAlAudioOutput`. The machine builder creates one mixer when the profile has a speaker or a sound card, and the mixer constructs the sink. One owner disposes it: `AudioMixer.Dispose` calls `IAudioOutput.Dispose`, which joins the playback thread. The machine disposes the mixer with the rest of its components. `SpeakerController.Dispose` keeps disposing the flush timer until §11.2 removes that timer, and it MUST NOT dispose the shared sink. The internal test constructor that takes an `IAudioOutput` still owns that instance and still disposes it, which is how `SpeakerControllerTests` pass a recording sink today. The mixer tests use the same shape: the test passes a recording sink, and disposing the mixer disposes the sink. A production speaker and a production card never see the sink.
 
 ## 8. Bus placement
 
@@ -308,7 +308,7 @@ Left and right chips both add at full scale. Mute (§16) zeros a channel before 
 
 ### 11.2 Quantum and latency
 
-The mixer schedules `AudioTick` every 10 ms of emulated time at the current pitch divisor (441 samples at 44.1 kHz while `ClockSpeedHz` is the nominal 1 020 484, fewer samples per tick when the throttled clock is higher, so wall-clock latency stays put). The tick runs on the machine thread, renders, and enqueues.
+The mixer schedules `AudioTick` on a fixed host-sample quantum: 441 samples, which is 10 ms at 44.1 kHz. That sample count does not change with `ClockSpeedHz`. What changes is how many bus cycles those 441 samples cover. The pitch divisor is `ClockSpeedHz` when it is greater than zero, else `1_020_484`, the same split `SpeakerController.GetCyclesPerSecond` uses. At the nominal clock a tick spans about 10 205 cycles. At a throttled 4 MHz it spans about four times that many cycles, so the same latch sounds higher, and each tick is still 10 ms of host audio. Wall-clock latency stays put because the ring is filled in sample time, not in bus-cycle time. The tick runs on the machine thread, renders, and enqueues.
 
 The OpenAL ring SHOULD shrink from 200 ms to about 60 ms (three quanta plus one buffer of slack) so a register write is audible in under 100 ms at 1×. The three 1024-sample AL buffers stay. End-to-end target at 1× is ≤ 100 ms. The speaker's 50 ms `System.Timers.Timer` goes away once the mixer tick is flushing it; the decay math does not change, and the existing sample-count tests keep passing because they drive `Flush` themselves.
 
