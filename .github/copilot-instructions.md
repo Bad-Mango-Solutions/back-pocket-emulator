@@ -18,7 +18,7 @@ The 65C02 SingleStepTests full category is not part of that test command. CI run
 
 ## Project Overview
 
-This repository is a .NET emulator for the WDC 65C02 (an Apple IIe-class Pocket2e machine), structured so it can grow into the 65816 and a theoretical 32-bit 65832. The Applesoft BASIC interpreter projects (`BadMango.Basic`, `BadMango.Basic.Console`, and `BadMango.Basic.Tests`) moved to [back-pocket-basic-legacy](https://github.com/Bad-Mango-Solutions/back-pocket-basic-legacy). The current project layout is in [CONTRIBUTING.md](../CONTRIBUTING.md#project-structure).
+This repository is a .NET emulator for the WDC 65C02 (an Apple IIe-class Pocket2e machine), structured so it can grow into the 65816 and a theoretical 32-bit 65832. Start architecture navigation at [ARCHITECTURE.md](../ARCHITECTURE.md). The Applesoft BASIC interpreter projects (`BadMango.Basic`, `BadMango.Basic.Console`, and `BadMango.Basic.Tests`) moved to [back-pocket-basic-legacy](https://github.com/Bad-Mango-Solutions/back-pocket-basic-legacy). The current project layout is in [CONTRIBUTING.md](../CONTRIBUTING.md#project-structure).
 
 ### Target Framework
 

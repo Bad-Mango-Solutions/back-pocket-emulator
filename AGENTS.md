@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for coding agents working in this repository. Coding standards, Serilog, and the Release warn-as-error bar live in `.github/copilot-instructions.md`. This file is how to drive `emudbg`.
+Guidance for coding agents working in this repository. Start architecture navigation at [`ARCHITECTURE.md`](ARCHITECTURE.md). Coding standards, Serilog, and the Release warn-as-error bar live in `.github/copilot-instructions.md`. This file is how to drive `emudbg`.
 
 ## Build
 
