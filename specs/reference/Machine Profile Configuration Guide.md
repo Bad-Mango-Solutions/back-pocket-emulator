@@ -349,6 +349,44 @@ The `devices.slots` section configures the peripheral slot system.
     "enabled": true,
     "internalC3Rom": false,
     "internalCxRom": false,
+    "defaultSet": "game",
+    "cards": [
+        {
+            "slot": 6,
+            "type": "disk-ii-compatible"
+        }
+    ],
+    "sets": {
+        "game": {
+            "description": "Mockingboard setup",
+            "cards": [
+                { "slot": 4, "type": "mockingboard" }
+            ]
+        },
+        "workstation": {
+            "description": "Clock setup",
+            "cards": [
+                { "slot": 4, "type": "pocketwatch" }
+            ]
+        },
+        "minimal": {
+            "description": "No card in slot 4",
+            "cards": [
+                { "slot": 4, "type": null }
+            ]
+        }
+    }
+}
+```
+
+For backward compatibility, profiles may still provide only `cards` with no named sets.
+
+```json
+"slots": {
+    "io-region": "io-region",
+    "enabled": true,
+    "internalC3Rom": false,
+    "internalCxRom": false,
     "cards": [
         {
             "slot": 4,
@@ -364,7 +402,9 @@ The `devices.slots` section configures the peripheral slot system.
 | `enabled` | Enable/disable slot system |
 | `internalC3Rom` | Use internal ROM at $C300 instead of slot 3 card |
 | `internalCxRom` | Use internal ROM at $C100-$CFFF instead of peripheral ROMs |
-| `cards` | Array of slot card configurations |
+| `cards` | Base array of slot card configurations |
+| `defaultSet` | (Optional) Name of the default set to apply when `sets` is configured |
+| `sets` | (Optional) Named slot-set overlays for runtime switching |
 
 #### Slot Card Configuration
 
@@ -381,6 +421,17 @@ The `devices.slots` section configures the peripheral slot system.
 | `slot` | Slot number (1-7) |
 | `type` | Card type identifier |
 | `config` | Card-specific configuration |
+
+#### Slot Set Card Override
+
+When using named sets, set an entry's `type` to `null` to clear that slot in that set.
+
+```json
+{
+    "slot": 4,
+    "type": null
+}
+```
 
 ---
 

@@ -423,6 +423,63 @@
                     "items": {
                         "$ref": "#/$defs/slotCard"
                     }
+                },
+                "defaultSet": {
+                    "type": "string",
+                    "description": "Default named slot set applied at build time when sets are configured"
+                },
+                "sets": {
+                    "type": "object",
+                    "description": "Named slot-set overlays. Each set applies on top of cards and may clear a slot by setting type to null.",
+                    "propertyNames": {
+                        "minLength": 1
+                    },
+                    "additionalProperties": {
+                        "$ref": "#/$defs/slotCardSet"
+                    }
+                }
+            }
+        },
+        "slotCardSet": {
+            "type": "object",
+            "description": "A named set of slot-card overrides",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of this set"
+                },
+                "cards": {
+                    "type": "array",
+                    "description": "Slot overrides for this set. Null type removes the slot from this set.",
+                    "items": {
+                        "$ref": "#/$defs/slotSetCard"
+                    }
+                }
+            }
+        },
+        "slotSetCard": {
+            "type": "object",
+            "description": "A slot override entry used by a named slot set",
+            "required": ["slot"],
+            "properties": {
+                "slot": {
+                    "type": "integer",
+                    "description": "Slot number (1-7)",
+                    "minimum": 1,
+                    "maximum": 7
+                },
+                "type": {
+                    "type": ["string", "null"],
+                    "description": "Card type identifier, or null to clear the slot in this set"
+                },
+                "preset": {
+                    "type": "string",
+                    "description": "Preset configuration name"
+                },
+                "config": {
+                    "type": "object",
+                    "description": "Card-specific configuration",
+                    "additionalProperties": true
                 }
             }
         },
