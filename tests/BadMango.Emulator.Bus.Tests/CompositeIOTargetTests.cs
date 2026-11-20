@@ -252,11 +252,57 @@ public class CompositeIOTargetTests
     public void Write8_SlotRom_TriggersExpansionRomSelection()
     {
         mockSlotManager.Setup(m => m.SelectExpansionSlot(6));
+        mockSlotManager.Setup(m => m.GetSlotRomRegion(6)).Returns((IBusTarget?)null);
 
         var access = CreateTestAccess(0xC600, AccessIntent.DataWrite);
         ioPage.Write8(0x600, 0x42, in access);
 
         mockSlotManager.Verify(m => m.SelectExpansionSlot(6), Times.Once);
+    }
+
+    /// <summary>
+    /// Verifies that slot ROM writes are forwarded to a card-published ROM region.
+    /// </summary>
+    [Test]
+    public void Write8_SlotRom_ForwardsWriteToCardRegion()
+    {
+        var slotRom = new RecordingSlotRomRegion();
+        mockSlotManager.Setup(m => m.SelectExpansionSlot(4));
+        mockSlotManager.Setup(m => m.GetSlotRomRegion(4)).Returns(slotRom);
+
+        var access = CreateTestAccess(0xC4AB, AccessIntent.DataWrite);
+        ioPage.Write8(0x4AB, 0x5C, in access);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(slotRom.WriteCount, Is.EqualTo(1));
+            Assert.That(slotRom.LastOffset, Is.EqualTo(0xAB));
+            Assert.That(slotRom.LastValue, Is.EqualTo(0x5C));
+            Assert.That(slotRom.LastIntent, Is.EqualTo(AccessIntent.DataWrite));
+        });
+        mockSlotManager.Verify(m => m.SelectExpansionSlot(4), Times.Once);
+    }
+
+    /// <summary>
+    /// Verifies that publishing a RomTarget as slot ROM region still ignores guest writes.
+    /// </summary>
+    [Test]
+    public void Write8_SlotRom_WithRomTargetRegion_KeepsReadBackUnchanged()
+    {
+        var memory = new PhysicalMemory(256, "SlotRom");
+        memory.AsSpan()[0xAB] = 0x7E;
+        var slotRom = new RomTarget(memory.Slice(0, 0x100));
+
+        mockSlotManager.Setup(m => m.SelectExpansionSlot(4));
+        mockSlotManager.Setup(m => m.GetSlotRomRegion(4)).Returns(slotRom);
+
+        var writeAccess = CreateTestAccess(0xC4AB, AccessIntent.DataWrite);
+        ioPage.Write8(0x4AB, 0x2A, in writeAccess);
+
+        var readAccess = CreateTestAccess(0xC4AB, AccessIntent.DataRead);
+        byte value = ioPage.Read8(0x4AB, in readAccess);
+
+        Assert.That(value, Is.EqualTo(0x7E));
     }
 
     /// <summary>
@@ -485,6 +531,31 @@ public class CompositeIOTargetTests
         ioPage.Write8(0x600, 0x42, in access);
 
         mockSlotManager.VerifyNoOtherCalls();
+    }
+
+    /// <summary>
+    /// Verifies that INTCXROM suppresses slot ROM-region writes until disabled.
+    /// </summary>
+    [Test]
+    public void Write8_IntCxRomEnabled_SuppressesCardWrite_UntilDisabled()
+    {
+        var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
+        var slotRom = new RecordingSlotRomRegion();
+
+        ioPage.SetInternalRom(internalRom);
+        ioPage.SetIntCxRom(true);
+        mockSlotManager.Setup(m => m.GetSlotRomRegion(6)).Returns(slotRom);
+        mockSlotManager.Setup(m => m.SelectExpansionSlot(6));
+
+        var access = CreateTestAccess(0xC600, AccessIntent.DataWrite);
+        ioPage.Write8(0x600, 0x11, in access);
+        ioPage.SetIntCxRom(false);
+        ioPage.Write8(0x600, 0x22, in access);
+
+        Assert.That(slotRom.WriteCount, Is.EqualTo(1));
+        Assert.That(slotRom.LastValue, Is.EqualTo(0x22));
+        mockSlotManager.Verify(m => m.SelectExpansionSlot(6), Times.Once);
     }
 
     /// <summary>
@@ -932,6 +1003,29 @@ public class CompositeIOTargetTests
     }
 
     /// <summary>
+    /// Verifies that INTC3ROM blocks forwarding slot-3 writes to a card ROM region.
+    /// </summary>
+    [Test]
+    public void Write8_IntC3RomEnabled_DoesNotForwardWriteToSlot3CardRegion()
+    {
+        var internalMemory = new PhysicalMemory(PageSize, "InternalRom");
+        var internalRom = new RomTarget(internalMemory.Slice(0, PageSize));
+        var slot3Rom = new RecordingSlotRomRegion();
+
+        ioPage.SetInternalRom(internalRom);
+        ioPage.SetIntC3Rom(true);
+
+        mockSlotManager.Setup(m => m.SelectExpansionSlot(3));
+        mockSlotManager.Setup(m => m.GetSlotRomRegion(3)).Returns(slot3Rom);
+
+        var access = CreateTestAccess(0xC3A0, AccessIntent.DataWrite);
+        ioPage.Write8(0x3A0, 0x44, in access);
+
+        Assert.That(slot3Rom.WriteCount, Is.EqualTo(0));
+        mockSlotManager.Verify(m => m.SelectExpansionSlot(3), Times.Once);
+    }
+
+    /// <summary>
     /// Verifies that INTCXROM fully disables slot 3 expansion ROM selection
     /// (unlike INTC3ROM which only provides internal ROM data but still selects).
     /// </summary>
@@ -1118,6 +1212,37 @@ public class CompositeIOTargetTests
             SourceId: 0,
             Cycle: 0,
             Flags: AccessFlags.None);
+    }
+
+    private sealed class RecordingSlotRomRegion : IBusTarget
+    {
+        private readonly byte[] data = new byte[0x100];
+
+        public string Name => "RecordingSlotRomRegion";
+
+        public TargetCaps Capabilities => TargetCaps.SupportsPeek | TargetCaps.SupportsPoke;
+
+        public int WriteCount { get; private set; }
+
+        public Addr LastOffset { get; private set; }
+
+        public byte LastValue { get; private set; }
+
+        public AccessIntent LastIntent { get; private set; }
+
+        public byte Read8(Addr offset, in BusAccess access)
+        {
+            return data[offset & 0x00FF];
+        }
+
+        public void Write8(Addr offset, byte value, in BusAccess access)
+        {
+            data[offset & 0x00FF] = value;
+            WriteCount++;
+            LastOffset = offset;
+            LastValue = value;
+            LastIntent = access.Intent;
+        }
     }
 
     #endregion

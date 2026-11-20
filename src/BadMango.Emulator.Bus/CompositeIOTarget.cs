@@ -140,8 +140,8 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
                 }
                 else
                 {
-                    // Slot ROM: Ignore write, but still trigger expansion ROM selection!
-                    WriteSlotRom(maskedOffset);
+                    // Slot ROM: Trigger expansion ROM selection and forward to card ROM region when present.
+                    WriteSlotRom(maskedOffset, value, in access);
                 }
 
                 break;
@@ -339,11 +339,21 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
     /// Handles writes to the slot ROM region ($x100-$x7FF).
     /// </summary>
     /// <param name="offset">Offset within the 4KB I/O page.</param>
+    /// <param name="value">The value being written.</param>
+    /// <param name="access">The bus access context.</param>
     /// <remarks>
-    /// Writes to ROM are ignored, but the access still triggers expansion ROM selection
-    /// (except when INTCXROM is enabled, which disables all slot ROM access).
+    /// <para>
+    /// The access triggers expansion ROM selection for the slot, then the write is forwarded
+    /// to the card's published slot ROM region, if any. A plain ROM region ignores the write;
+    /// a card region that opts in (for example, one exposing I/O in its $Cn00 page) handles it.
+    /// </para>
+    /// <para>
+    /// When INTCXROM is enabled, no slot selection occurs and the write is not forwarded.
+    /// When INTC3ROM is enabled, a $C3xx write arms INTC8ROM and selects slot 3's expansion
+    /// ROM but is not forwarded to a card.
+    /// </para>
     /// </remarks>
-    private void WriteSlotRom(Word offset)
+    private void WriteSlotRom(Word offset, byte value, in BusAccess access)
     {
         // Extract slot number from address: $xn00 ? slot n
         int slot = (offset >> 8) & 0x07;
@@ -375,6 +385,15 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
         {
             slotManager.SelectExpansionSlot(slot);
         }
+
+        var rom = slotManager.GetSlotRomRegion(slot);
+        if (rom is null)
+        {
+            return;
+        }
+
+        Word romOffset = (Word)(offset & 0x00FF);
+        rom.Write8(romOffset, value, in access);
     }
 
     /// <summary>
