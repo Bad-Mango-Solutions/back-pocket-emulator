@@ -162,6 +162,147 @@ public class VideoWindowTests
     }
 
     /// <summary>
+    /// Verifies entering Off clears the rendered frame and display snapshot.
+    /// </summary>
+    [AvaloniaTest]
+    public void MachineStateChanged_ToOff_BlanksFrameAndSnapshot()
+    {
+        var window = new VideoWindow();
+        var mockMachine = CreateMockMachineWithPhysicalRam(
+            VideoMode.HiRes,
+            false,
+            out var mainMemory,
+            out var mockVideoDevice,
+            out _);
+        MachineState machineState = MachineState.Stopped;
+        mockMachine.SetupGet(m => m.State).Returns(() => machineState);
+
+        mainMemory.AsSpan().Slice(0x2000, 0x2000).Fill(0x7F);
+        window.AttachMachine(mockMachine.Object);
+        mockVideoDevice.Raise(v => v.VBlankOccurred += null);
+        Dispatcher.UIThread.RunJobs();
+
+        var renderedBeforePowerOff = GetWindowPixels(window);
+        Assume.That(renderedBeforePowerOff.Any(pixel => pixel != DisplayColors.Black), Is.True);
+        Assume.That(ReadSnapshotByte(window, 0x2000), Is.Not.EqualTo(0));
+
+        machineState = MachineState.Off;
+        mockMachine.Raise(m => m.StateChanged += null, MachineState.Off);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(GetWindowPixels(window).All(pixel => pixel == DisplayColors.Black), Is.True);
+            Assert.That(ReadSnapshotByte(window, 0x2000), Is.EqualTo(0));
+            Assert.That(GetSnapshotValid(window), Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Verifies VBlank and forced redraw do not render emulated memory while Off.
+    /// </summary>
+    [AvaloniaTest]
+    public void OffState_IgnoresVBlankAndForceRedraw()
+    {
+        var window = new VideoWindow();
+        var mockMachine = CreateMockMachineWithPhysicalRam(
+            VideoMode.HiRes,
+            false,
+            out var mainMemory,
+            out var mockVideoDevice,
+            out _);
+        MachineState machineState = MachineState.Stopped;
+        mockMachine.SetupGet(m => m.State).Returns(() => machineState);
+
+        window.AttachMachine(mockMachine.Object);
+        machineState = MachineState.Off;
+        mockMachine.Raise(m => m.StateChanged += null, MachineState.Off);
+        Dispatcher.UIThread.RunJobs();
+
+        mainMemory.AsSpan().Slice(0x2000, 0x2000).Fill(0x7F);
+        var wouldRenderIfEnabled = RenderReference(VideoMode.HiRes, false, mainMemory, null);
+        Assume.That(wouldRenderIfEnabled.Any(pixel => pixel != DisplayColors.Black), Is.True);
+
+        mockVideoDevice.Raise(v => v.VBlankOccurred += null);
+        window.ForceRedraw();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(GetWindowPixels(window).All(pixel => pixel == DisplayColors.Black), Is.True);
+            Assert.That(GetWindowPixels(window), Is.Not.EqualTo(wouldRenderIfEnabled));
+        });
+    }
+
+    /// <summary>
+    /// Verifies attaching a machine already Off clears any previously rendered frame.
+    /// </summary>
+    [AvaloniaTest]
+    public void AttachMachine_WhenMachineIsOff_BlanksDisplay()
+    {
+        var window = new VideoWindow();
+
+        var runningMachine = CreateMockMachineWithPhysicalRam(
+            VideoMode.HiRes,
+            false,
+            out var runningMemory,
+            out var runningVideoDevice,
+            out _);
+        runningMachine.SetupGet(m => m.State).Returns(MachineState.Stopped);
+        runningMemory.AsSpan().Slice(0x2000, 0x2000).Fill(0x7F);
+
+        window.AttachMachine(runningMachine.Object);
+        runningVideoDevice.Raise(v => v.VBlankOccurred += null);
+        Dispatcher.UIThread.RunJobs();
+        Assume.That(GetWindowPixels(window).Any(pixel => pixel != DisplayColors.Black), Is.True);
+
+        var offMachine = CreateMockMachineWithPhysicalRam(
+            VideoMode.HiRes,
+            false,
+            out _,
+            out _,
+            out _);
+        offMachine.SetupGet(m => m.State).Returns(MachineState.Off);
+
+        window.AttachMachine(offMachine.Object);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.That(GetWindowPixels(window).All(pixel => pixel == DisplayColors.Black), Is.True);
+    }
+
+    /// <summary>
+    /// Verifies rendering resumes after leaving Off.
+    /// </summary>
+    [AvaloniaTest]
+    public void LeavingOff_EnablesForceRedrawFromMemory()
+    {
+        var window = new VideoWindow();
+        var mockMachine = CreateMockMachineWithPhysicalRam(
+            VideoMode.HiRes,
+            false,
+            out var mainMemory,
+            out _,
+            out _);
+        MachineState machineState = MachineState.Off;
+        mockMachine.SetupGet(m => m.State).Returns(() => machineState);
+
+        window.AttachMachine(mockMachine.Object);
+        Dispatcher.UIThread.RunJobs();
+        Assume.That(GetWindowPixels(window).All(pixel => pixel == DisplayColors.Black), Is.True);
+
+        mainMemory.AsSpan().Slice(0x2000, 0x2000).Fill(0x7F);
+        var expected = RenderReference(VideoMode.HiRes, false, mainMemory, null);
+        Assume.That(expected.Any(pixel => pixel != DisplayColors.Black), Is.True);
+
+        machineState = MachineState.Stopped;
+        mockMachine.Raise(m => m.StateChanged += null, MachineState.Stopped);
+        window.ForceRedraw();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.That(GetWindowPixels(window), Is.EqualTo(expected));
+    }
+
+    /// <summary>
     /// Verifies that VBlank frames are marshaled at Normal priority rather than Render.
     /// Avalonia 12.1.5's render-priority band can drop Render-priority work while
     /// Background timers (the FPS overlay) still run, which looks like FPS 0.0.
@@ -1019,6 +1160,23 @@ public class VideoWindowTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var buffer = (PixelBuffer)field!.GetValue(window)!;
         return buffer.GetPixels().ToArray();
+    }
+
+    private static bool GetSnapshotValid(VideoWindow window)
+    {
+        var field = typeof(VideoWindow).GetField(
+            "snapshotValid",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        return (bool)field!.GetValue(window)!;
+    }
+
+    private static byte ReadSnapshotByte(VideoWindow window, ushort address)
+    {
+        var field = typeof(VideoWindow).GetField(
+            "displaySnapshot",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var snapshot = (DisplayMemorySnapshot)field!.GetValue(window)!;
+        return snapshot.ReadMain(address);
     }
 
     /// <summary>
