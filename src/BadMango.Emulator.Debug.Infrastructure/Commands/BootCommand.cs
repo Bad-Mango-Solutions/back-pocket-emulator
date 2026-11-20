@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
+using System.Diagnostics.CodeAnalysis;
+
 using BadMango.Emulator.Core.Configuration;
 using Serilog;
 
@@ -110,7 +112,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
     /// </summary>
     /// <param name="profile">The profile to inspect.</param>
     /// <returns><see langword="true"/> when <c>boot.autoStart</c> is explicitly enabled.</returns>
-    public static bool ShouldAutoStart(MachineProfile? profile) => profile?.Boot?.AutoStart == true;
+    public static bool ShouldAutoStart([NotNullWhen(true)] MachineProfile? profile) => profile?.Boot?.AutoStart == true;
 
     /// <summary>
     /// Performs the shared machine power-on flow used by both profile auto-start and the boot command.
@@ -158,7 +160,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         {
             logger?.Information(
                 "Profile {ProfileName} auto-start skipped because the machine is {State}, not Off.",
-                profile?.Name ?? "unknown",
+                profile.Name,
                 machine.State);
             return false;
         }
@@ -171,16 +173,16 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            logger?.Information("Profile {ProfileName} auto-start was cancelled.", profile?.Name ?? "unknown");
+            logger?.Information("Profile {ProfileName} auto-start was cancelled.", profile.Name);
             return false;
         }
         catch (Exception ex)
         {
-            logger?.Error(ex, "Profile {ProfileName} auto-start failed.", profile?.Name ?? "unknown");
+            logger?.Error(ex, "Profile {ProfileName} auto-start failed.", profile.Name);
             return false;
         }
 
-        logger?.Information("Profile {ProfileName} auto-started after load.", profile?.Name ?? "unknown");
+        logger?.Information("Profile {ProfileName} auto-started after load.", profile.Name);
         return true;
     }
 

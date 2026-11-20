@@ -576,7 +576,7 @@ public class MachineProfileLoaderTests
     public void LoadProfile_Pocket2eA2Enhanced_AutoStartRemainsFalse()
     {
         string repositoryRoot = this.LocateRepositoryRoot();
-        string repositoryProfiles = Path.Combine(repositoryRoot, "profiles");
+        string repositoryProfiles = Path.Join(repositoryRoot, "profiles");
         var loader = new MachineProfileLoader(repositoryProfiles);
 
         var profile = loader.LoadProfile("pocket2e-a2-enh");
