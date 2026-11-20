@@ -401,7 +401,7 @@ The `boot` section controls startup behavior.
 
 | Field | Description |
 |-------|-------------|
-| `autoStart` | Start emulation automatically when profile loads |
+| `autoStart` | Start emulation automatically when profile loads (default: `false`; omitted means stay powered off) |
 | `autoVideoWindowOpen` | Open the video display window automatically |
 | `startupSlot` | (Optional) Slot number to boot from (e.g., 6 for disk) |
 | `powerOnMemory.pattern` | Power-on RAM pattern: `zero`, `apple-iie`, `alternating-00-ff`, or `random` |
