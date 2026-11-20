@@ -6,6 +6,7 @@ namespace BadMango.Emulator.Bus.Tests;
 
 using System.Reflection;
 
+using BadMango.Emulator.Core;
 using BadMango.Emulator.Core.Cpu;
 using BadMango.Emulator.Core.Interfaces.Cpu;
 
@@ -490,6 +491,52 @@ public class MachineLifecycleTests
         });
     }
 
+    /// <summary>
+    /// A machine built in <see cref="MachineState.Off"/> starts with no pending events even when
+    /// devices schedule during initialization, and power-off clears both machine work and deferred work.
+    /// </summary>
+    [Test]
+    public void PowerOff_FlushesScheduledAndDeferredWork_AndPowerCycleDoesNotDoubleFire()
+    {
+        var device = new ResetSchedulingDevice();
+        IMachine machine = new MachineBuilder()
+            .WithCpuFactory(_ => CreateCpu().Object)
+            .AddDevice(device)
+            .Build();
+
+        Assert.That(machine.Scheduler.PendingEventCount, Is.Zero, "Off machines must not start with queued device work.");
+
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+        bool deferredFired = false;
+        machine.Scheduler.ScheduleAfter(1, ScheduledEventKind.DeferredWork, 0, _ => deferredFired = true, "deferred");
+
+        Assume.That(machine.State, Is.Not.EqualTo(MachineState.Off));
+        Assume.That(machine.Scheduler.PendingEventCount, Is.GreaterThan(0), "Power-on should arm at least one event.");
+
+        machine.PowerOffAsync().GetAwaiter().GetResult();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(machine.State, Is.EqualTo(MachineState.Off));
+            Assert.That(machine.Scheduler.PendingEventCount, Is.Zero);
+            Assert.That(machine.Scheduler.PeekNextDue(), Is.Null);
+            Assert.That(machine.Scheduler.JumpToNextEventAndDispatch(), Is.False, "No queued work should run while off.");
+            Assert.That(device.FiredCount, Is.Zero);
+            Assert.That(deferredFired, Is.False);
+        });
+
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+        bool dispatched = machine.Scheduler.JumpToNextEventAndDispatch();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dispatched, Is.True, "Power-on should reschedule one reset-era event.");
+            Assert.That(device.FiredCount, Is.EqualTo(1), "Exactly one device event should fire after power-on.");
+            Assert.That(machine.Scheduler.JumpToNextEventAndDispatch(), Is.False, "No stale pre-off events should remain.");
+            Assert.That(deferredFired, Is.False, "Deferred work queued before power-off must be dropped.");
+        });
+    }
+
     private static int LoggedSeed(CollectingSink sink)
     {
         LogEvent? logged = null;
@@ -586,6 +633,63 @@ public class MachineLifecycleTests
 
     private sealed class Marker
     {
+    }
+
+    private sealed class ResetSchedulingDevice : IPeripheral, IResetReceiver
+    {
+        private IEventContext? context;
+        private EventHandle? pending;
+
+        public string Name => "ResetSchedulingDevice";
+
+        public string DeviceType => "ResetSchedulingDevice";
+
+        public PeripheralKind Kind => PeripheralKind.Internal;
+
+        public int FiredCount { get; private set; }
+
+        public void Initialize(IEventContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            this.context = context;
+            ScheduleNext();
+        }
+
+        public void Reset()
+        {
+            CancelPending();
+            ScheduleNext();
+        }
+
+        public void OnResetAsserted(Cycle cycle)
+        {
+            _ = cycle;
+            CancelPending();
+            ScheduleNext();
+        }
+
+        public void OnResetReleased(Cycle cycle)
+        {
+            _ = cycle;
+        }
+
+        private void CancelPending()
+        {
+            if (context is not null && pending is { } handle)
+            {
+                context.Scheduler.Cancel(handle);
+            }
+        }
+
+        private void ScheduleNext()
+        {
+            if (context is null)
+            {
+                return;
+            }
+
+            pending = context.Scheduler.ScheduleAfter(5, ScheduledEventKind.VideoBlank, 0, _ => FiredCount++, this);
+        }
     }
 
     private sealed class RecordingStorage : IFlushableStorage

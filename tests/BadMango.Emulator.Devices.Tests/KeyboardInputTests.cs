@@ -600,11 +600,12 @@ public sealed class KeyboardInputTests
             return true;
         }
 
-        public void FlushPending()
+        public void FlushPending(bool keepDeferredWork = true)
         {
             foreach (Scheduled evt in events)
             {
-                if (!evt.Consumed && evt.Kind != ScheduledEventKind.DeferredWork)
+                if (!evt.Consumed
+                    && (!keepDeferredWork || evt.Kind != ScheduledEventKind.DeferredWork))
                 {
                     evt.Consumed = true;
                 }

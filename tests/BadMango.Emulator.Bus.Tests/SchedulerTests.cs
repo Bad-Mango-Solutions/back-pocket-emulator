@@ -670,6 +670,35 @@ public class SchedulerTests
     }
 
     /// <summary>
+    /// Verifies that flush can drop deferred work when requested.
+    /// </summary>
+    [Test]
+    public void FlushPending_WithKeepDeferredWorkFalse_DropsDeferredWork()
+    {
+        bool deferredFired = false;
+        bool timerFired = false;
+
+        scheduler.ScheduleAt(10ul, ScheduledEventKind.DeferredWork, 0, _ => deferredFired = true);
+        scheduler.ScheduleAt(10ul, ScheduledEventKind.DeviceTimer, 0, _ => timerFired = true);
+
+        scheduler.FlushPending(keepDeferredWork: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(scheduler.PendingEventCount, Is.Zero);
+            Assert.That(scheduler.PeekNextDue(), Is.Null);
+        });
+
+        scheduler.Advance(20ul);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(deferredFired, Is.False);
+            Assert.That(timerFired, Is.False);
+        });
+    }
+
+    /// <summary>
     /// Verifies that cancelling a pre-reset handle does not prevent post-reset
     /// events from dispatching, even though handle IDs may overlap.
     /// </summary>

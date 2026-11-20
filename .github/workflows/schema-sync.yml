@@ -19,6 +19,7 @@ jobs:
   sync-schemas:
     name: Sync Schemas to GitHub Pages
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout main repo
