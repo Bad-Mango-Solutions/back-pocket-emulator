@@ -304,6 +304,17 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     /// <exception cref="InvalidOperationException">
     /// Thrown when the machine is not <see cref="MachineState.Off"/>, or no slot manager is available.
     /// </exception>
+    /// <remarks>
+    /// <para>
+    /// The card is installed, initialized once, and registered for this session. The loaded
+    /// profile and the profile file on disk are left unchanged.
+    /// </para>
+    /// <para>
+    /// Initialization may schedule events. Those events are discarded so the scheduler queue
+    /// stays empty while the machine is <see cref="MachineState.Off"/>. Power-on reset re-arms
+    /// periodic device work.
+    /// </para>
+    /// </remarks>
     void InsertSlotCard(int slot, ISlotCard card);
 
     /// <summary>
@@ -313,6 +324,17 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     /// <exception cref="InvalidOperationException">
     /// Thrown when the machine is not <see cref="MachineState.Off"/>, or no slot manager is available.
     /// </exception>
+    /// <remarks>
+    /// <para>
+    /// Flushes the card's storage, removes it from the slot, and unregisters it before disposal.
+    /// A disposal failure still leaves the registry entry removed, and the exception propagates.
+    /// The loaded profile and the profile file on disk are left unchanged.
+    /// </para>
+    /// <para>
+    /// Events scheduled during removal are discarded so the scheduler queue stays empty while
+    /// the machine is <see cref="MachineState.Off"/>.
+    /// </para>
+    /// </remarks>
     void RemoveSlotCard(int slot);
 
     /// <summary>

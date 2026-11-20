@@ -572,8 +572,15 @@ public sealed class Machine : IMachine
 
         slotManager.Install(slot, card);
         scheduledDevices.Add(card);
-        card.Initialize(this);
-        RegisterSlotCardInDeviceRegistry(slot, card);
+        try
+        {
+            card.Initialize(this);
+            RegisterSlotCardInDeviceRegistry(slot, card);
+        }
+        finally
+        {
+            FlushOffStateSchedulerQueue();
+        }
     }
 
     /// <inheritdoc />
@@ -597,8 +604,17 @@ public sealed class Machine : IMachine
 
         slotManager.Remove(slot);
         scheduledDevices.Remove(card);
-        DisposeSlotCard(card);
+
+        // Unregister before disposal so a throwing Dispose cannot leave a stale registry entry.
         UnregisterSlotCardFromDeviceRegistry(slot, card);
+        try
+        {
+            DisposeSlotCard(card);
+        }
+        finally
+        {
+            FlushOffStateSchedulerQueue();
+        }
     }
 
     /// <inheritdoc />
@@ -1558,6 +1574,26 @@ public sealed class Machine : IMachine
         {
             throw new InvalidOperationException(SlotChangesRequireOffMessage);
         }
+    }
+
+    /// <summary>
+    /// Drops every pending scheduler event, including deferred work.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An off machine keeps an empty scheduler queue, the same rule startup and power-off
+    /// enforce with <see cref="IScheduler.FlushPending"/>. Slot-card initialization and disposal
+    /// may schedule periodic or deferred work while the machine is still off.
+    /// </para>
+    /// <para>
+    /// Those events are discarded here rather than left queued. Power-on calls
+    /// <see cref="IPeripheral.Reset"/>, which re-arms periodic device work. Work that was
+    /// queued only for the insert or remove does not survive.
+    /// </para>
+    /// </remarks>
+    private void FlushOffStateSchedulerQueue()
+    {
+        RunAsMachine(() => Scheduler.FlushPending(keepDeferredWork: false));
     }
 
     private void RegisterSlotCardInDeviceRegistry(int slot, ISlotCard card)

@@ -9,6 +9,7 @@ using System.Text.Json;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 using BadMango.Emulator.Devices;
 
 /// <summary>
@@ -90,7 +91,7 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
 
     private static CommandResult ExecuteList(IDebugContext context)
     {
-        if (!TryGetSlotManager(context, out var slotManager, out var error))
+        if (!DiskRuntimeHelpers.TryGetSlotManager(context, out var slotManager, out var error))
         {
             return CommandResult.Error(error!);
         }
@@ -221,32 +222,6 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
         }
 
         return CommandResult.Ok($"Removed slot card from slot {slot}.");
-    }
-
-    private static bool TryGetSlotManager(ICommandContext context, out ISlotManager? slotManager, out string? error)
-    {
-        slotManager = null;
-        error = null;
-        if (context is not IDebugContext debugContext)
-        {
-            error = "Debug context required for this command.";
-            return false;
-        }
-
-        if (debugContext.Machine is null)
-        {
-            error = "No machine attached.";
-            return false;
-        }
-
-        slotManager = debugContext.Machine.GetComponent<ISlotManager>();
-        if (slotManager is null)
-        {
-            error = "No slot manager available on the attached machine.";
-            return false;
-        }
-
-        return true;
     }
 
     private static bool TryParseSlot(string token, out int slot)

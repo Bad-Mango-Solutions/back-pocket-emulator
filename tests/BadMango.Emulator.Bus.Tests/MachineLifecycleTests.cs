@@ -537,6 +537,84 @@ public class MachineLifecycleTests
         });
     }
 
+    /// <summary>
+    /// A card that schedules during insert leaves the off-state queue empty. Power-on reset
+    /// re-arms one periodic event, and deferred work queued only at insert time does not run.
+    /// </summary>
+    [Test]
+    public void InsertSlotCard_WhileOff_FlushesScheduledWorkUntilPowerOn()
+    {
+        var slotManager = new SlotManager(new IOPageDispatcher());
+        var card = new SchedulingSlotCard();
+        IMachine machine = new MachineBuilder()
+            .WithCpuFactory(_ => CreateCpu().Object)
+            .Build();
+        ((Machine)machine).AddComponent<ISlotManager>(slotManager);
+
+        Assume.That(machine.State, Is.EqualTo(MachineState.Off));
+        Assume.That(machine.Scheduler.PendingEventCount, Is.Zero);
+
+        machine.InsertSlotCard(5, card);
+
+        Assume.That(card.InitializeCount, Is.EqualTo(1));
+        Assume.That(card.EventsScheduledDuringInitialize, Is.EqualTo(2));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(machine.State, Is.EqualTo(MachineState.Off));
+            Assert.That(machine.Scheduler.PendingEventCount, Is.Zero);
+            Assert.That(machine.Scheduler.PeekNextDue(), Is.Null);
+            Assert.That(machine.Scheduler.JumpToNextEventAndDispatch(), Is.False);
+            Assert.That(card.FiredCount, Is.Zero);
+            Assert.That(card.DeferredFired, Is.False);
+        });
+
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+        bool dispatched = machine.Scheduler.JumpToNextEventAndDispatch();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dispatched, Is.True, "Power-on reset should re-arm the card's periodic event.");
+            Assert.That(card.FiredCount, Is.EqualTo(1));
+            Assert.That(card.DeferredFired, Is.False, "Deferred work queued at insert time must be dropped.");
+            Assert.That(machine.Scheduler.JumpToNextEventAndDispatch(), Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Disposal failures still unregister the card and leave the off-state scheduler queue empty.
+    /// </summary>
+    [Test]
+    public void RemoveSlotCard_WhenDisposeThrows_UnregistersCardAndFlushesScheduler()
+    {
+        var slotManager = new SlotManager(new IOPageDispatcher());
+        var card = new ThrowingDisposeSlotCard();
+        IMachine machine = new MachineBuilder()
+            .WithCpuFactory(_ => CreateCpu().Object)
+            .Build();
+        ((Machine)machine).AddComponent<ISlotManager>(slotManager);
+
+        machine.InsertSlotCard(4, card);
+        Assume.That(machine.Devices.GetAll().Any(device => device.WiringPath == "Slot/4/throwing-dispose-slot-card"), Is.True);
+        Assume.That(machine.Scheduler.PendingEventCount, Is.Zero);
+
+        var thrown = Assert.Throws<InvalidOperationException>(() => machine.RemoveSlotCard(4));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(thrown!.Message, Is.EqualTo("dispose failed"));
+            Assert.That(card.DisposeCount, Is.EqualTo(1));
+            Assert.That(card.ScheduledDuringDispose, Is.True);
+            Assert.That(slotManager.GetCard(4), Is.Null);
+            Assert.That(
+                machine.Devices.GetAll().Any(device => device.WiringPath == "Slot/4/throwing-dispose-slot-card"),
+                Is.False);
+            Assert.That(machine.Scheduler.PendingEventCount, Is.Zero);
+            Assert.That(machine.Scheduler.JumpToNextEventAndDispatch(), Is.False);
+            Assert.That(card.DeferredFired, Is.False);
+        });
+    }
+
     private static int LoggedSeed(CollectingSink sink)
     {
         LogEvent? logged = null;
@@ -836,6 +914,128 @@ public class MachineLifecycleTests
         public void Dispose()
         {
             DisposeCount++;
+        }
+    }
+
+    private sealed class SchedulingSlotCard : ISlotCard
+    {
+        private IEventContext? context;
+        private EventHandle? pending;
+
+        public int SlotNumber { get; set; }
+
+        public SlotIOHandlers? IOHandlers => null;
+
+        public IBusTarget? ROMRegion => null;
+
+        public IBusTarget? ExpansionROMRegion => null;
+
+        public string Name => "Scheduling Slot Card";
+
+        public string DeviceType => "scheduling-slot-card";
+
+        public PeripheralKind Kind => PeripheralKind.SlotCard;
+
+        public int InitializeCount { get; private set; }
+
+        public int EventsScheduledDuringInitialize { get; private set; }
+
+        public int FiredCount { get; private set; }
+
+        public bool DeferredFired { get; private set; }
+
+        public void Initialize(IEventContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            this.context = context;
+            InitializeCount++;
+            context.Scheduler.ScheduleAfter(5, ScheduledEventKind.VideoBlank, 0, _ => FiredCount++, this);
+            EventsScheduledDuringInitialize++;
+            context.Scheduler.ScheduleAfter(1, ScheduledEventKind.DeferredWork, 0, _ => DeferredFired = true, "insert-deferred");
+            EventsScheduledDuringInitialize++;
+        }
+
+        public void Reset()
+        {
+            if (context is null)
+            {
+                return;
+            }
+
+            if (pending is { } handle)
+            {
+                context.Scheduler.Cancel(handle);
+            }
+
+            pending = context.Scheduler.ScheduleAfter(5, ScheduledEventKind.VideoBlank, 0, _ => FiredCount++, this);
+        }
+
+        public void OnExpansionROMSelected()
+        {
+        }
+
+        public void OnExpansionROMDeselected()
+        {
+        }
+    }
+
+    private sealed class ThrowingDisposeSlotCard : ISlotCard, IDisposable
+    {
+        private IEventContext? context;
+
+        public int SlotNumber { get; set; }
+
+        public SlotIOHandlers? IOHandlers => null;
+
+        public IBusTarget? ROMRegion => null;
+
+        public IBusTarget? ExpansionROMRegion => null;
+
+        public string Name => "Throwing Dispose Slot Card";
+
+        public string DeviceType => "throwing-dispose-slot-card";
+
+        public PeripheralKind Kind => PeripheralKind.SlotCard;
+
+        public int DisposeCount { get; private set; }
+
+        public bool ScheduledDuringDispose { get; private set; }
+
+        public bool DeferredFired { get; private set; }
+
+        public void Initialize(IEventContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            this.context = context;
+        }
+
+        public void Reset()
+        {
+        }
+
+        public void OnExpansionROMSelected()
+        {
+        }
+
+        public void OnExpansionROMDeselected()
+        {
+        }
+
+        public void Dispose()
+        {
+            DisposeCount++;
+            if (context is not null)
+            {
+                context.Scheduler.ScheduleAfter(
+                    1,
+                    ScheduledEventKind.DeferredWork,
+                    0,
+                    _ => DeferredFired = true,
+                    "dispose-deferred");
+                ScheduledDuringDispose = true;
+            }
+
+            throw new InvalidOperationException("dispose failed");
         }
     }
 }

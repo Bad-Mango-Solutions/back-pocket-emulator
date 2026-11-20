@@ -10,6 +10,7 @@ using System.Text.Json;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Devices;
+using BadMango.Emulator.Emulation.Cpu;
 
 using Moq;
 
@@ -95,7 +96,6 @@ public partial class DebugCommandsTests
     {
         const string testType = "test-config-slot-card";
         JsonElement? capturedConfig = null;
-        using var configDoc = JsonDocument.Parse("{}");
         var insertedCard = new TestConfigSlotCard();
         var machine = new Mock<IMachine>();
         machine.SetupGet(m => m.State).Returns(MachineState.Off);
@@ -181,6 +181,52 @@ public partial class DebugCommandsTests
             Assert.That(unknownType.Success, Is.False);
             Assert.That(unknownType.Message, Does.Contain("Unknown slot-card type"));
         });
+    }
+
+    /// <summary>
+    /// Insert and remove change the live session only. The profile file on disk is left byte-for-byte unchanged.
+    /// </summary>
+    [Test]
+    public void SlotCommand_InsertRemove_DoesNotModifyProfileFile()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "bpe-slot-profile-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string profilePath = Path.Combine(directory, "session.json");
+            File.WriteAllText(profilePath, "{\"name\":\"session\",\"devices\":{\"slots\":{\"cards\":[]}}}");
+            byte[] before = File.ReadAllBytes(profilePath);
+            string[] beforeFiles = Directory.GetFiles(directory, "*", SearchOption.AllDirectories);
+
+            var slotManager = new SlotManager(new IOPageDispatcher());
+            IMachine machine = new MachineBuilder()
+                .WithAddressSpace(16)
+                .WithCpuFactory(static ctx => new Cpu65C02(ctx))
+                .AddComponent(slotManager)
+                .Build();
+            debugContext.AttachMachine(machine);
+            Assume.That(machine.State, Is.EqualTo(MachineState.Off));
+            Assume.That(File.ReadAllBytes(profilePath), Is.EqualTo(before));
+
+            var command = new SlotCommand();
+            var insert = command.Execute(debugContext, ["insert", "5", "pocketwatch"]);
+            var remove = command.Execute(debugContext, ["remove", "5"]);
+            byte[] after = File.ReadAllBytes(profilePath);
+            string[] afterFiles = Directory.GetFiles(directory, "*", SearchOption.AllDirectories);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(insert.Success, Is.True, insert.Message);
+                Assert.That(remove.Success, Is.True, remove.Message);
+                Assert.That(slotManager.GetCard(5), Is.Null);
+                Assert.That(after, Is.EqualTo(before));
+                Assert.That(afterFiles, Is.EqualTo(beforeFiles));
+            });
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     private static IDisposable RegisterTemporarySlotCardFactory(
