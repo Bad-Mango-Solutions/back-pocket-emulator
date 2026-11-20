@@ -1071,6 +1071,10 @@ public sealed partial class MachineBuilder
             }
         }
 
+        // Machines start Off, so startup scheduling from device initialization must not
+        // leave runnable work queued until a later power-on.
+        scheduler.FlushPending(keepDeferredWork: false);
+
         return machine;
     }
 

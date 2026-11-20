@@ -544,6 +544,7 @@ public sealed class Machine : IMachine
             {
                 FlushStorage();
                 PowerOnResetDevices([]);
+                Scheduler.FlushPending(keepDeferredWork: false);
                 ApplyPowerOnPattern(pattern);
                 SetState(MachineState.Off);
             });
