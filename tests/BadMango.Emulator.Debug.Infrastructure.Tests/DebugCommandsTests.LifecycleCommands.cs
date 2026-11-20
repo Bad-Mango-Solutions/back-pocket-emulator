@@ -360,6 +360,143 @@ public partial class DebugCommandsTests
     }
 
     /// <summary>
+    /// Verifies that BootCommand help text mentions profile autoStart.
+    /// </summary>
+    [Test]
+    public void BootCommand_DetailedDescription_MentionsAutoStart()
+    {
+        var command = new BootCommand();
+        Assert.That(command.DetailedDescription, Does.Contain("autoStart"));
+    }
+
+    /// <summary>
+    /// Verifies that profile auto-start powers on when enabled.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Test]
+    public async Task AutoStartProfileAsync_AutoStartTrue_BootsMachine()
+    {
+        var mockMachine = new Mock<IMachine>();
+        var state = MachineState.Off;
+        mockMachine.Setup(m => m.State).Returns(() => state);
+        mockMachine.Setup(m => m.BootAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => state = MachineState.Running)
+            .Returns(Task.CompletedTask);
+
+        var profile = new MachineProfile
+        {
+            Name = "test-profile",
+            Cpu = new CpuProfileSection { Type = "65C02" },
+            Memory = new MemoryProfileSection(),
+            Boot = new BootProfile
+            {
+                AutoStart = true,
+            },
+        };
+
+        bool started = await BootCommand.AutoStartProfileAsync(mockMachine.Object, profile, null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(started, Is.True);
+            Assert.That(mockMachine.Object.State, Is.EqualTo(MachineState.Running));
+            mockMachine.Verify(m => m.BootAsync(It.IsAny<CancellationToken>()), Times.Once);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that profile auto-start does not power on when disabled.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Test]
+    public async Task AutoStartProfileAsync_AutoStartFalse_DoesNotBootMachine()
+    {
+        var mockMachine = new Mock<IMachine>();
+        mockMachine.SetupGet(m => m.State).Returns(MachineState.Off);
+        mockMachine.Setup(m => m.BootAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var profile = new MachineProfile
+        {
+            Name = "test-profile",
+            Cpu = new CpuProfileSection { Type = "65C02" },
+            Memory = new MemoryProfileSection(),
+            Boot = new BootProfile
+            {
+                AutoStart = false,
+            },
+        };
+
+        bool started = await BootCommand.AutoStartProfileAsync(mockMachine.Object, profile, null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(started, Is.False);
+            Assert.That(mockMachine.Object.State, Is.EqualTo(MachineState.Off));
+            mockMachine.Verify(m => m.BootAsync(It.IsAny<CancellationToken>()), Times.Never);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that profile auto-start does not power on when boot section omits autoStart.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Test]
+    public async Task AutoStartProfileAsync_MissingAutoStartKey_DoesNotBootMachine()
+    {
+        var mockMachine = new Mock<IMachine>();
+        mockMachine.SetupGet(m => m.State).Returns(MachineState.Off);
+        mockMachine.Setup(m => m.BootAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var profile = new MachineProfile
+        {
+            Name = "test-profile",
+            Cpu = new CpuProfileSection { Type = "65C02" },
+            Memory = new MemoryProfileSection(),
+            Boot = new BootProfile
+            {
+                StartupSlot = 6,
+            },
+        };
+
+        bool started = await BootCommand.AutoStartProfileAsync(mockMachine.Object, profile, null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(started, Is.False);
+            Assert.That(mockMachine.Object.State, Is.EqualTo(MachineState.Off));
+            mockMachine.Verify(m => m.BootAsync(It.IsAny<CancellationToken>()), Times.Never);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that profile auto-start does not power on when no boot section exists.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Test]
+    public async Task AutoStartProfileAsync_NoBootSection_DoesNotBootMachine()
+    {
+        var mockMachine = new Mock<IMachine>();
+        mockMachine.SetupGet(m => m.State).Returns(MachineState.Off);
+        mockMachine.Setup(m => m.BootAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var profile = new MachineProfile
+        {
+            Name = "test-profile",
+            Cpu = new CpuProfileSection { Type = "65C02" },
+            Memory = new MemoryProfileSection(),
+        };
+
+        bool started = await BootCommand.AutoStartProfileAsync(mockMachine.Object, profile, null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(started, Is.False);
+            Assert.That(mockMachine.Object.State, Is.EqualTo(MachineState.Off));
+            mockMachine.Verify(m => m.BootAsync(It.IsAny<CancellationToken>()), Times.Never);
+        });
+    }
+
+    /// <summary>
     /// Verifies that PauseCommand has correct aliases.
     /// </summary>
     [Test]

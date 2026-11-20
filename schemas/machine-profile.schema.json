@@ -459,7 +459,7 @@
                 "autoStart": {
                     "type": "boolean",
                     "description": "Automatically start machine after loading",
-                    "default": true
+                    "default": false
                 },
                 "startupSlot": {
                     "type": "integer",

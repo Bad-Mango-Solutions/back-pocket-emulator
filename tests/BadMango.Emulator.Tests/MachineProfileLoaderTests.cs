@@ -570,6 +570,23 @@ public class MachineProfileLoaderTests
     }
 
     /// <summary>
+    /// Verifies that the main enhanced Apple IIe profile is pinned to no auto-start.
+    /// </summary>
+    [Test]
+    public void LoadProfile_Pocket2eA2Enhanced_AutoStartRemainsFalse()
+    {
+        string repositoryRoot = this.LocateRepositoryRoot();
+        string repositoryProfiles = Path.Combine(repositoryRoot, "profiles");
+        var loader = new MachineProfileLoader(repositoryProfiles);
+
+        var profile = loader.LoadProfile("pocket2e-a2-enh");
+
+        Assert.That(profile, Is.Not.Null);
+        Assert.That(profile!.Boot, Is.Not.Null);
+        Assert.That(profile.Boot!.AutoStart, Is.False);
+    }
+
+    /// <summary>
     /// Verifies that the loader implements IMachineProfileLoader interface.
     /// </summary>
     [Test]
@@ -652,5 +669,28 @@ public class MachineProfileLoaderTests
         var filePath = Path.Combine(profilesDirectory, $"{name}.json");
         File.WriteAllText(filePath, json);
         return filePath;
+    }
+
+    /// <summary>
+    /// Locates the repository root by walking up from the test output directory.
+    /// </summary>
+    /// <returns>The absolute repository root path.</returns>
+    private string LocateRepositoryRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Join(dir.FullName, "BackPocketEmulator.slnx")) &&
+                Directory.Exists(Path.Join(dir.FullName, "profiles")))
+            {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Could not locate repository root from {AppContext.BaseDirectory} " +
+            "(looking for ancestor containing BackPocketEmulator.slnx and profiles/).");
     }
 }

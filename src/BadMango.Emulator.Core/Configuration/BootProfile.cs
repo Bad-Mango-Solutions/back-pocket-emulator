@@ -28,10 +28,10 @@ public sealed class BootProfile
     /// </summary>
     /// <remarks>
     /// When <see langword="true"/>, the machine begins execution immediately after
-    /// configuration is complete. Defaults to <see langword="true"/>.
+    /// configuration is complete. Defaults to <see langword="false"/>.
     /// </remarks>
     [JsonPropertyName("autoStart")]
-    public bool AutoStart { get; set; } = true;
+    public bool AutoStart { get; set; }
 
     /// <summary>
     /// Gets or sets the slot to boot from.

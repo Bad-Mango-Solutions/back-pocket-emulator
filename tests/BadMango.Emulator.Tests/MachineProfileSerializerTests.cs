@@ -372,6 +372,54 @@ public class MachineProfileSerializerTests
     }
 
     /// <summary>
+    /// Tests boot configuration defaults autoStart to false when key is omitted.
+    /// </summary>
+    [Test]
+    public void Deserialize_ProfileWithBootButWithoutAutoStart_DefaultsAutoStartToFalse()
+    {
+        const string json = """
+            {
+              "name": "boot-without-autostart",
+              "cpu": { "type": "65C02" },
+              "memory": {
+                "regions": [
+                  {
+                    "name": "main-ram",
+                    "type": "ram",
+                    "start": "0x0000",
+                    "size": "0x10000",
+                    "permissions": "rwx"
+                  }
+                ]
+              },
+              "boot": {
+                "startupSlot": 6
+              }
+            }
+            """;
+
+        var deserialized = serializer.Deserialize(json);
+
+        Assert.That(deserialized.Boot, Is.Not.Null);
+        Assert.That(deserialized.Boot!.AutoStart, Is.False);
+        Assert.That(deserialized.Boot.StartupSlot, Is.EqualTo(6));
+    }
+
+    /// <summary>
+    /// Tests that profiles without a boot section keep boot configuration unset.
+    /// </summary>
+    [Test]
+    public void Deserialize_ProfileWithoutBootSection_LeavesBootNull()
+    {
+        var profile = CreateMinimalProfile();
+        var json = serializer.Serialize(profile);
+
+        var deserialized = serializer.Deserialize(json);
+
+        Assert.That(deserialized.Boot, Is.Null);
+    }
+
+    /// <summary>
     /// Tests serialization of composite region.
     /// </summary>
     [Test]

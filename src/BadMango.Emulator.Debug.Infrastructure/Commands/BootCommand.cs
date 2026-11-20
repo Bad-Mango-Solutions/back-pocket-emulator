@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using BadMango.Emulator.Core.Configuration;
+using Serilog;
 
 /// <summary>
 /// Boots the machine by performing a reset and starting execution.
@@ -73,6 +74,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         "This is equivalent to pressing the power/reset button on a real computer. " +
         "The CPU loads its reset vector and begins executing from the reset handler. " +
         "Execution runs in the background, keeping the debugger responsive. " +
+        "Profiles with boot.autoStart set to true run this same power-on path automatically after load. " +
         "A brief delay is applied before booting to allow time to hold modifier keys " +
         "(Open Apple, Closed Apple) that affect the boot process. " +
         "If the profile has autoVideoWindowOpen enabled, the video window opens automatically.";
@@ -97,10 +99,65 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
     public string? SideEffects =>
         "Resets all CPU state (registers, flags, PC) and begins execution. " +
         "Memory and device state may be modified by executed code. " +
-        "May open the video window if autoVideoWindowOpen is enabled in the profile.";
+        "May open the video window if autoVideoWindowOpen is enabled in the profile. " +
+        "Profiles with boot.autoStart enabled invoke this same power-on behavior at load time.";
 
     /// <inheritdoc/>
     public IReadOnlyList<string> SeeAlso { get; } = ["reset", "pause", "resume", "halt", "video"];
+
+    /// <summary>
+    /// Gets a value indicating whether a profile should start automatically after load.
+    /// </summary>
+    /// <param name="profile">The profile to inspect.</param>
+    /// <returns><see langword="true"/> when <c>boot.autoStart</c> is explicitly enabled.</returns>
+    public static bool ShouldAutoStart(MachineProfile? profile) => profile?.Boot?.AutoStart == true;
+
+    /// <summary>
+    /// Performs the shared machine power-on flow used by both profile auto-start and the boot command.
+    /// </summary>
+    /// <param name="machine">The target machine.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that completes after the machine power-on flow starts execution.</returns>
+    public static async Task PowerOnMachineAsync(
+        BadMango.Emulator.Bus.Interfaces.IMachine machine,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+
+        await machine.BootAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Starts the machine automatically after profile load when <c>boot.autoStart</c> is enabled.
+    /// </summary>
+    /// <param name="machine">The machine instance.</param>
+    /// <param name="profile">The loaded profile.</param>
+    /// <param name="windowManager">The optional debug window manager.</param>
+    /// <param name="logger">The optional logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>
+    /// <see langword="true"/> when the profile requested auto-start and boot was invoked;
+    /// otherwise <see langword="false"/>.
+    /// </returns>
+    public static async Task<bool> AutoStartProfileAsync(
+        BadMango.Emulator.Bus.Interfaces.IMachine machine,
+        MachineProfile? profile,
+        IDebugWindowManager? windowManager,
+        ILogger? logger = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+
+        if (!ShouldAutoStart(profile))
+        {
+            return false;
+        }
+
+        OpenVideoWindowIfConfigured(machine, profile, windowManager);
+        await PowerOnMachineAsync(machine, cancellationToken).ConfigureAwait(false);
+        logger?.Information("Profile {ProfileName} auto-started after load.", profile?.Name ?? "unknown");
+        return true;
+    }
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
@@ -147,15 +204,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
             }
         }
 
-        // Check if auto video window open is enabled
-        bool autoOpenVideo = profile?.Boot?.AutoVideoWindowOpen ?? false;
-
-        // Open video window if configured and window manager is available
-        if (autoOpenVideo && windowManager is not null)
-        {
-            // Fire and forget - don't block the boot process
-            _ = windowManager.ShowWindowAsync("Video", debugContext.Machine);
-        }
+        bool autoOpenVideo = OpenVideoWindowIfConfigured(debugContext.Machine, profile, windowManager);
 
         // Start boot with delay to allow modifier keys to be pressed
         _ = BootWithDelayAsync(debugContext, DefaultBootDelayMs);
@@ -167,7 +216,9 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         return CommandResult.Ok(message);
     }
 
-    private static async Task BootWithDelayAsync(IDebugContext debugContext, int delayMs)
+    private static async Task BootWithDelayAsync(
+        IDebugContext debugContext,
+        int delayMs)
     {
         try
         {
@@ -175,11 +226,28 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
             await Task.Delay(delayMs).ConfigureAwait(false);
 
             // Now boot the machine
-            await debugContext.Machine!.BootAsync().ConfigureAwait(false);
+            await PowerOnMachineAsync(debugContext.Machine!).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             debugContext.Error.WriteLine($"Boot error: {ex.Message}");
         }
+    }
+
+    private static bool ShouldAutoOpenVideoWindow(MachineProfile? profile, IDebugWindowManager? windowManager) =>
+        profile?.Boot?.AutoVideoWindowOpen == true && windowManager is not null;
+
+    private static bool OpenVideoWindowIfConfigured(
+        BadMango.Emulator.Bus.Interfaces.IMachine machine,
+        MachineProfile? profile,
+        IDebugWindowManager? windowManager)
+    {
+        if (!ShouldAutoOpenVideoWindow(profile, windowManager))
+        {
+            return false;
+        }
+
+        _ = windowManager!.ShowWindowAsync("Video", machine);
+        return true;
     }
 }

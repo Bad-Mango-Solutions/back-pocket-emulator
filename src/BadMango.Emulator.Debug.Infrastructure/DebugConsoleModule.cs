@@ -300,6 +300,8 @@ public class DebugConsoleModule : Module
         builder.Register(ctx =>
             {
                 var context = ctx.Resolve<IDebugContext>();
+                var profile = ctx.Resolve<MachineProfile>();
+                var windowManager = ctx.ResolveOptional<IDebugWindowManager>();
                 var session = new MachineDebugSession(
                     context,
                     ctx.ResolveOptional<ILogger>(),
@@ -307,6 +309,15 @@ public class DebugConsoleModule : Module
                 if (context is DebugContext concrete)
                 {
                     concrete.BindSession(session);
+                }
+
+                if (context.Machine is not null)
+                {
+                    _ = BootCommand.AutoStartProfileAsync(
+                        context.Machine,
+                        profile,
+                        windowManager,
+                        ctx.ResolveOptional<ILogger>());
                 }
 
                 return session;
