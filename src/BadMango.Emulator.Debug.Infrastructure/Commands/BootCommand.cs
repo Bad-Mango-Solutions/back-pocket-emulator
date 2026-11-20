@@ -176,6 +176,11 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
             logger?.Information("Profile {ProfileName} auto-start was cancelled.", profile.Name);
             return false;
         }
+
+        // Intentional generic catch, approved by Josh Pactor (PR #619): auto-start runs fire-and-forget at
+        // startup, and power-on can throw any exception type from any attached device. Narrowing this would
+        // let unexpected failures go unobserved; every exception is logged, nothing is swallowed silently.
+        // codeql[cs/catch-of-all-exceptions]
         catch (Exception ex)
         {
             logger?.Error(ex, "Profile {ProfileName} auto-start failed.", profile.Name);
