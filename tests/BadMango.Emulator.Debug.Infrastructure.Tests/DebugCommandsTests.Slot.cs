@@ -189,11 +189,11 @@ public partial class DebugCommandsTests
     [Test]
     public void SlotCommand_InsertRemove_DoesNotModifyProfileFile()
     {
-        string directory = Path.Combine(Path.GetTempPath(), "bpe-slot-profile-" + Guid.NewGuid().ToString("N"));
+        string directory = Path.Join(Path.GetTempPath(), "bpe-slot-profile-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
         {
-            string profilePath = Path.Combine(directory, "session.json");
+            string profilePath = Path.Join(directory, "session.json");
             File.WriteAllText(profilePath, "{\"name\":\"session\",\"devices\":{\"slots\":{\"cards\":[]}}}");
             byte[] before = File.ReadAllBytes(profilePath);
             string[] beforeFiles = Directory.GetFiles(directory, "*", SearchOption.AllDirectories);
