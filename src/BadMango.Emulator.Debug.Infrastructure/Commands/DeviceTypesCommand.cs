@@ -84,8 +84,7 @@ public sealed class DeviceTypesCommand : CommandHandlerBase, ICommandHelp
 
         var motherboard = DeviceFactoryRegistry.MotherboardDeviceFactories.Keys
             .OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
-        var slotCards = DeviceFactoryRegistry.SlotCardFactories.Keys
-            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
+        var slotCards = GetSortedSlotCardTypeIds();
         var skipped = DeviceFactoryRegistry.SkippedDeviceTypes
             .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).ToList();
 
@@ -135,5 +134,17 @@ public sealed class DeviceTypesCommand : CommandHandlerBase, ICommandHelp
         }
 
         return CommandResult.Ok();
+    }
+
+    /// <summary>
+    /// Gets the discovered slot-card type identifiers sorted case-insensitively.
+    /// </summary>
+    /// <returns>The sorted slot-card type IDs from <see cref="DeviceFactoryRegistry"/>.</returns>
+    internal static IReadOnlyList<string> GetSortedSlotCardTypeIds()
+    {
+        DeviceFactoryRegistry.EnsureInitialized();
+        return DeviceFactoryRegistry.SlotCardFactories.Keys
+            .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 }

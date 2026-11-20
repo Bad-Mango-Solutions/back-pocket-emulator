@@ -808,15 +808,12 @@ public sealed partial class MachineBuilder
         }
 
         // Look up the card factory
-        if (!slotCardFactories.TryGetValue(cardEntry.Type, out var factory))
+        if (!SlotCardFactory.TryCreate(this, slotCardFactories, cardEntry.Type, cardEntry.Config, out var card))
         {
             // No factory registered - silently skip
             // This allows profiles to declare cards that may not be supported by all hosts
             return;
         }
-
-        // Create the card instance, passing the optional per-card config blob through to the factory.
-        var card = factory(this, cardEntry.Config);
 
         // Apply per-card ROM bindings declared in config (e.g. `"rom": "<rom-image-name>"`)
         // before the card is installed so that ISlotManager.GetSlotRomRegion sees the

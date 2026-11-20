@@ -14,12 +14,13 @@ using BadMango.Emulator.Storage.Media;
 /// <summary>
 /// Helpers shared by the runtime <c>disk</c> subcommands
 /// (<see cref="DiskListCommand"/>, <see cref="DiskInsertCommand"/>,
-/// <see cref="DiskEjectCommand"/>, <see cref="DiskFlushCommand"/>).
+/// <see cref="DiskEjectCommand"/>, <see cref="DiskFlushCommand"/>)
+/// and by <see cref="BadMango.Emulator.Debug.Infrastructure.Commands.SlotCommand"/> for slot-manager lookup.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Centralises <c>&lt;slot&gt;:&lt;drive&gt;</c> parsing and controller / slot-manager
-/// resolution so the four runtime subcommands present consistent error messages and
+/// resolution so disk and slot commands present consistent error messages and
 /// behaviour. Slot numbers are 1..7 (matching <see cref="ISlotManager"/>); drive numbers
 /// are 1-based on the user-facing surface and are translated to the controller's
 /// 0-based <see cref="IDiskController"/> drive index.
