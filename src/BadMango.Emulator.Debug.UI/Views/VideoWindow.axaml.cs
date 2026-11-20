@@ -81,6 +81,7 @@ public partial class VideoWindow : Window
     private bool characterRomUpdatePending;
     private int vblankPending;
     private volatile bool snapshotValid;
+    private volatile bool machineIsOff;
     private volatile bool isClosed;
 
     private int scale = 2;
@@ -262,7 +263,14 @@ public partial class VideoWindow : Window
             videoDevice.VBlankOccurred += OnVBlankOccurred;
         }
 
+        this.machine.StateChanged += OnMachineStateChanged;
+        machineIsOff = this.machine.State == MachineState.Off;
         attachmentDiagnostic = CreateAttachmentDiagnostic(previousVideoDevice, videoDevice);
+
+        if (machineIsOff)
+        {
+            BlankDisplay();
+        }
     }
 
     /// <summary>
@@ -281,6 +289,11 @@ public partial class VideoWindow : Window
             videoDevice.VBlankOccurred -= OnVBlankOccurred;
         }
 
+        if (machine is not null)
+        {
+            machine.StateChanged -= OnMachineStateChanged;
+        }
+
         machine = null;
         memoryBus = null;
         videoDevice = null;
@@ -290,6 +303,7 @@ public partial class VideoWindow : Window
         mainRam = ReadOnlyMemory<byte>.Empty;
         characterRom = Memory<byte>.Empty;
         snapshotValid = false;
+        machineIsOff = false;
         Interlocked.Exchange(ref vblankPending, 0);
         characterRomUpdatePending = false;
         attachmentDiagnostic = "ATT detached";
@@ -321,6 +335,12 @@ public partial class VideoWindow : Window
     {
         if (isClosed)
         {
+            return;
+        }
+
+        if (machineIsOff)
+        {
+            BlankDisplay();
             return;
         }
 
@@ -549,7 +569,7 @@ public partial class VideoWindow : Window
     /// </remarks>
     private void OnVBlankOccurred()
     {
-        if (isClosed)
+        if (isClosed || machineIsOff)
         {
             return;
         }
@@ -642,6 +662,12 @@ public partial class VideoWindow : Window
         Interlocked.Exchange(ref vblankPending, 0);
         if (isClosed)
         {
+            return;
+        }
+
+        if (machineIsOff)
+        {
+            RenderBlankFrame();
             return;
         }
 
@@ -795,6 +821,55 @@ public partial class VideoWindow : Window
         }
 
         // Commit pixel buffer to bitmap
+        pixelBuffer.Commit();
+        VideoImage.InvalidateVisual();
+    }
+
+    private void OnMachineStateChanged(MachineState newState)
+    {
+        if (isClosed)
+        {
+            return;
+        }
+
+        machineIsOff = newState == MachineState.Off;
+        if (machineIsOff)
+        {
+            BlankDisplay();
+        }
+    }
+
+    private void BlankDisplay()
+    {
+        if (isClosed)
+        {
+            return;
+        }
+
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            RenderBlankFrame();
+            return;
+        }
+
+        _ = Dispatcher.UIThread.InvokeAsync(RenderBlankFrame);
+    }
+
+    private void RenderBlankFrame()
+    {
+        if (isClosed)
+        {
+            return;
+        }
+
+        lock (snapshotLock)
+        {
+            displaySnapshot.Clear();
+            snapshotValid = false;
+        }
+
+        var pixels = pixelBuffer.GetPixels();
+        renderer.Clear(pixels);
         pixelBuffer.Commit();
         VideoImage.InvalidateVisual();
     }
