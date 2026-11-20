@@ -166,6 +166,87 @@ public sealed class ResetSignalMachineTests
     }
 
     /// <summary>
+    /// Verifies that switching from TEXT to full-screen HIRES through the CPU-driven soft
+    /// switches keeps the VBlank cadence running and never reports the machine as Off,
+    /// which would make the video window drop or blank frames.
+    /// </summary>
+    [Test]
+    public void TextToHiResSwitch_KeepsVBlankFiringAndMachineOn()
+    {
+        var machine = CreateMachine();
+        var video = machine.GetComponent<VideoDevice>()!;
+        var states = new List<MachineState>();
+        machine.StateChanged += states.Add;
+        int vblanks = 0;
+        video.VBlankOccurred += () => vblanks++;
+        WriteLoop(machine);
+        StepFor(machine, 100_000);
+        Assume.That(vblanks, Is.GreaterThan(0), "VBlank must fire in text mode before the switch");
+        Assume.That(video.CurrentMode, Is.EqualTo(VideoMode.Text40));
+
+        // LDA $C050 (TXTCLR); LDA $C052 (MIXCLR); LDA $C057 (HIRES); JMP $6009
+        Poke(machine, LoopAddress, [0xAD, 0x50, 0xC0, 0xAD, 0x52, 0xC0, 0xAD, 0x57, 0xC0, 0x4C, 0x09, 0x60]);
+        machine.Cpu.SetPC(LoopAddress);
+        vblanks = 0;
+        StepFor(machine, 500_000);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(video.CurrentMode, Is.EqualTo(VideoMode.HiRes), "The CPU-driven switches must select full-screen hi-res");
+            Assert.That(vblanks, Is.InRange(28, 30), "VBlank must keep firing every frame after the switch to hi-res");
+            Assert.That(states, Has.None.EqualTo(MachineState.Off), "A mode switch must not report the machine as Off");
+            Assert.That(machine.State, Is.Not.EqualTo(MachineState.Off));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a VBlank subscriber that throws in hi-res mode does not stop later
+    /// VBlanks: the end of blanking is scheduled before subscribers run.
+    /// </summary>
+    [Test]
+    public void ThrowingVBlankSubscriberInHiRes_DoesNotStopVBlankCadence()
+    {
+        var machine = CreateMachine();
+        var video = machine.GetComponent<VideoDevice>()!;
+        Poke(machine, LoopAddress, [0xAD, 0x50, 0xC0, 0xAD, 0x52, 0xC0, 0xAD, 0x57, 0xC0, 0x4C, 0x09, 0x60]);
+        machine.Cpu.SetPC(LoopAddress);
+        StepFor(machine, 100);
+        Assume.That(video.CurrentMode, Is.EqualTo(VideoMode.HiRes));
+
+        bool thrown = false;
+        int vblanks = 0;
+        video.VBlankOccurred += () =>
+        {
+            vblanks++;
+            if (!thrown)
+            {
+                thrown = true;
+                throw new InvalidOperationException("Simulated hi-res snapshot failure");
+            }
+        };
+
+        int caught = 0;
+        ulong end = machine.Now.Value + 500_000;
+        while (machine.Now.Value < end)
+        {
+            try
+            {
+                machine.Cpu.Step();
+            }
+            catch (InvalidOperationException)
+            {
+                caught++;
+            }
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(caught, Is.EqualTo(1), "The subscriber exception must propagate exactly once");
+            Assert.That(vblanks, Is.InRange(28, 30), "VBlank must keep firing after a subscriber threw");
+        });
+    }
+
+    /// <summary>
     /// Verifies that a soft reset that lands inside vertical blanking does not leave
     /// <c>RDVBL</c> stuck: blanking still ends and starts again.
     /// </summary>

@@ -90,6 +90,7 @@ public partial class VideoWindow : Window
     private int frameCount;
     private int vblankCount;
     private int uiFrameCount;
+    private long lastCoreVBlankCount;
     private int flashFrameCounter;
     private bool flashState;
     private double lastFps;
@@ -753,7 +754,27 @@ public partial class VideoWindow : Window
         var vblankFrames = Interlocked.Exchange(ref vblankCount, 0);
         var vblankRate = (int)Math.Round(vblankFrames / elapsedSeconds, MidpointRounding.AwayFromZero);
         var uiFrameRate = (int)Math.Round(uiFrameCount / elapsedSeconds, MidpointRounding.AwayFromZero);
-        FpsDisplay.Text = $"{lastFps:F1} FPS  vb:{vblankRate} ui:{uiFrameRate} {attachmentDiagnostic}";
+        string core = string.Empty;
+        if (videoDevice is VideoDevice concreteVideo)
+        {
+            long coreCount = concreteVideo.VBlankStartCount;
+            core = $" core:{coreCount - lastCoreVBlankCount} subs:{concreteVideo.VBlankSubscriberCount} off:{machineIsOff}";
+            if (machine?.State == MachineState.Running && vblankRate == 0)
+            {
+                logger.Warning(
+                    "VBLANKDIAG window vb=0 while Running: coreVBlanks={CoreVBlanks} subscribers={Subscribers} machineIsOff={MachineIsOff} mode={Mode} schedule={Schedule} {Attachment}",
+                    coreCount - lastCoreVBlankCount,
+                    concreteVideo.VBlankSubscriberCount,
+                    machineIsOff,
+                    concreteVideo.CurrentMode,
+                    concreteVideo.VBlankScheduleState,
+                    attachmentDiagnostic);
+            }
+
+            lastCoreVBlankCount = coreCount;
+        }
+
+        FpsDisplay.Text = $"{lastFps:F1} FPS  vb:{vblankRate} ui:{uiFrameRate}{core} {attachmentDiagnostic}";
         frameCount = 0;
         uiFrameCount = 0;
     }

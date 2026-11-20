@@ -76,6 +76,7 @@ public sealed class VideoDevice : IVideoDevice, ISoftSwitchProvider, IResetRecei
     private EventHandle vblankEventHandle;
     private EventHandle vblankEndEventHandle;
     private bool vblankStartScheduled;
+    private long vblankStartCount;
     private bool vblankEndScheduled;
     private Core.Cycle vblankStartDue;
     private Core.Cycle vblankEndDue;
@@ -94,6 +95,21 @@ public sealed class VideoDevice : IVideoDevice, ISoftSwitchProvider, IResetRecei
     /// Event raised when vertical blanking begins, signaling the video window to refresh.
     /// </summary>
     public event Action? VBlankOccurred;
+
+    /// <summary>
+    /// Gets the number of VBlank starts dispatched since construction (diagnostic).
+    /// </summary>
+    public long VBlankStartCount => Interlocked.Read(ref vblankStartCount);
+
+    /// <summary>
+    /// Gets the number of handlers subscribed to <see cref="VBlankOccurred"/> (diagnostic).
+    /// </summary>
+    public int VBlankSubscriberCount => VBlankOccurred?.GetInvocationList().Length ?? 0;
+
+    /// <summary>
+    /// Gets a value indicating whether a VBlank start or end event is believed to be queued (diagnostic).
+    /// </summary>
+    public string VBlankScheduleState => $"start:{vblankStartScheduled}@{vblankStartDue.Value} end:{vblankEndScheduled}@{vblankEndDue.Value} now:{scheduler?.Now.Value}";
 
     /// <inheritdoc />
     public string Name => "Video Device";
@@ -705,6 +721,7 @@ public sealed class VideoDevice : IVideoDevice, ISoftSwitchProvider, IResetRecei
     private void OnVBlankStart(IEventContext context)
     {
         vblankStartScheduled = false;
+        Interlocked.Increment(ref vblankStartCount);
 
         // Assert vertical blanking status
         verticalBlanking = true;
