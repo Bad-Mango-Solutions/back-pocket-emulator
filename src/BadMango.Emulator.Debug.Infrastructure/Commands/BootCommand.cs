@@ -153,8 +153,33 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
             return false;
         }
 
-        OpenVideoWindowIfConfigured(machine, profile, windowManager);
-        await PowerOnMachineAsync(machine, cancellationToken).ConfigureAwait(false);
+        // Auto-start only powers on a machine that is Off; it must never reset one that is already on.
+        if (machine.State != BadMango.Emulator.Bus.MachineState.Off)
+        {
+            logger?.Information(
+                "Profile {ProfileName} auto-start skipped because the machine is {State}, not Off.",
+                profile?.Name ?? "unknown",
+                machine.State);
+            return false;
+        }
+
+        // This runs fire-and-forget from startup, so failures are logged here instead of going unobserved.
+        try
+        {
+            OpenVideoWindowIfConfigured(machine, profile, windowManager);
+            await PowerOnMachineAsync(machine, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            logger?.Information("Profile {ProfileName} auto-start was cancelled.", profile?.Name ?? "unknown");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            logger?.Error(ex, "Profile {ProfileName} auto-start failed.", profile?.Name ?? "unknown");
+            return false;
+        }
+
         logger?.Information("Profile {ProfileName} auto-started after load.", profile?.Name ?? "unknown");
         return true;
     }

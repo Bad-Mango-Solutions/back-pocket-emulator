@@ -405,6 +405,68 @@ public partial class DebugCommandsTests
     }
 
     /// <summary>
+    /// Verifies that profile auto-start never resets a machine that is already on.
+    /// </summary>
+    /// <param name="state">The machine state when auto-start runs.</param>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [TestCase(MachineState.Running)]
+    [TestCase(MachineState.Paused)]
+    [TestCase(MachineState.Stopped)]
+    public async Task AutoStartProfileAsync_MachineNotOff_DoesNotBootMachine(MachineState state)
+    {
+        var mockMachine = new Mock<IMachine>();
+        mockMachine.SetupGet(m => m.State).Returns(state);
+        mockMachine.Setup(m => m.BootAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var profile = new MachineProfile
+        {
+            Name = "test-profile",
+            Cpu = new CpuProfileSection { Type = "65C02" },
+            Memory = new MemoryProfileSection(),
+            Boot = new BootProfile
+            {
+                AutoStart = true,
+            },
+        };
+
+        bool started = await BootCommand.AutoStartProfileAsync(mockMachine.Object, profile, null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(started, Is.False);
+            mockMachine.Verify(m => m.BootAsync(It.IsAny<CancellationToken>()), Times.Never);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a boot failure during profile auto-start is reported instead of thrown.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Test]
+    public async Task AutoStartProfileAsync_BootThrows_ReturnsFalseWithoutThrowing()
+    {
+        var mockMachine = new Mock<IMachine>();
+        mockMachine.SetupGet(m => m.State).Returns(MachineState.Off);
+        mockMachine.Setup(m => m.BootAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("boot failed"));
+
+        var profile = new MachineProfile
+        {
+            Name = "test-profile",
+            Cpu = new CpuProfileSection { Type = "65C02" },
+            Memory = new MemoryProfileSection(),
+            Boot = new BootProfile
+            {
+                AutoStart = true,
+            },
+        };
+
+        bool started = await BootCommand.AutoStartProfileAsync(mockMachine.Object, profile, null);
+
+        Assert.That(started, Is.False);
+    }
+
+    /// <summary>
     /// Verifies that profile auto-start does not power on when disabled.
     /// </summary>
     /// <returns>A task representing the asynchronous test operation.</returns>
