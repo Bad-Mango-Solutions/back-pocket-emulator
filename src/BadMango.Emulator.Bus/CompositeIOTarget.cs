@@ -342,8 +342,16 @@ public sealed class CompositeIOTarget : CompositeTargetBase, IScheduledDevice, I
     /// <param name="value">The value being written.</param>
     /// <param name="access">The bus access context.</param>
     /// <remarks>
-    /// Writes to ROM are ignored, but the access still triggers expansion ROM selection
-    /// (except when INTCXROM is enabled, which disables all slot ROM access).
+    /// <para>
+    /// The access triggers expansion ROM selection for the slot, then the write is forwarded
+    /// to the card's published slot ROM region, if any. A plain ROM region ignores the write;
+    /// a card region that opts in (for example, one exposing I/O in its $Cn00 page) handles it.
+    /// </para>
+    /// <para>
+    /// When INTCXROM is enabled, no slot selection occurs and the write is not forwarded.
+    /// When INTC3ROM is enabled, a $C3xx write arms INTC8ROM and selects slot 3's expansion
+    /// ROM but is not forwarded to a card.
+    /// </para>
     /// </remarks>
     private void WriteSlotRom(Word offset, byte value, in BusAccess access)
     {
