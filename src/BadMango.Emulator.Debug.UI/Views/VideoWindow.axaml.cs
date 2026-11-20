@@ -257,14 +257,17 @@ public partial class VideoWindow : Window
             characterDevice.CharacterRomChanged += OnCharacterRomChanged;
         }
 
+        // Track power state before wiring VBlank so a VBlank raised during attach
+        // can never render memory while the machine is Off.
+        this.machine.StateChanged += OnMachineStateChanged;
+        machineIsOff = this.machine.State == MachineState.Off;
+
         // Subscribe to VBlank event for frame-accurate rendering
         if (videoDevice != null)
         {
             videoDevice.VBlankOccurred += OnVBlankOccurred;
         }
 
-        this.machine.StateChanged += OnMachineStateChanged;
-        machineIsOff = this.machine.State == MachineState.Off;
         attachmentDiagnostic = CreateAttachmentDiagnostic(previousVideoDevice, videoDevice);
 
         if (machineIsOff)
