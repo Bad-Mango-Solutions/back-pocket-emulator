@@ -155,19 +155,25 @@ public interface IScheduler
     /// <summary>
     /// Clears pending machine events while preserving the current cycle.
     /// </summary>
+    /// <param name="keepDeferredWork">
+    /// <see langword="true"/> to preserve events of kind
+    /// <see cref="ScheduledEventKind.DeferredWork"/>; otherwise, remove them too.
+    /// </param>
     /// <remarks>
     /// <para>
     /// This is used when a RESET line assertion flushes outstanding device work
     /// without rewinding global time, so absolute cycle stamps held by devices stay valid.
     /// </para>
     /// <para>
-    /// Events of kind <see cref="ScheduledEventKind.DeferredWork"/> are kept: they carry
-    /// host-initiated work (for example a pending disk insert or eject) rather than machine
-    /// state, and a RESET does not undo a media change. Devices whose periodic events are
-    /// flushed reschedule them from their RESET handlers (<see cref="IResetReceiver"/>).
+    /// Events of kind <see cref="ScheduledEventKind.DeferredWork"/> are kept by default:
+    /// they carry host-initiated work (for example a pending disk insert or eject) rather
+    /// than machine state, and a RESET does not undo a media change. Callers can pass
+    /// <see langword="false"/> for <paramref name="keepDeferredWork"/> when they need a
+    /// full queue flush (for example on power-off). Devices whose periodic events are flushed
+    /// reschedule them from their RESET handlers (<see cref="IResetReceiver"/>).
     /// </para>
     /// </remarks>
-    void FlushPending();
+    void FlushPending(bool keepDeferredWork = true);
 
     /// <summary>
     /// Resets the scheduler to cycle 0 and cancels all pending events.

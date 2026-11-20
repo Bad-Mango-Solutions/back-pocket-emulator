@@ -230,7 +230,7 @@ public sealed class Scheduler : IScheduler, ISchedulerObserver
     }
 
     /// <inheritdoc />
-    public void FlushPending()
+    public void FlushPending(bool keepDeferredWork = true)
     {
         AssertOwnerThread();
 
@@ -244,7 +244,7 @@ public sealed class Scheduler : IScheduler, ISchedulerObserver
             }
 
             // Host-initiated deferred work (e.g., a disk insert/eject) survives RESET.
-            if (pending.Kind == ScheduledEventKind.DeferredWork)
+            if (keepDeferredWork && pending.Kind == ScheduledEventKind.DeferredWork)
             {
                 (preserved ??= []).Add(pending);
             }
