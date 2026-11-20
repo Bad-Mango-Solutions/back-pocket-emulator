@@ -296,6 +296,26 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     Task PowerOffAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Inserts a slot card into the running machine session.
+    /// </summary>
+    /// <param name="slot">Target slot number (1-7).</param>
+    /// <param name="card">Card instance to install.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="card"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the machine is not <see cref="MachineState.Off"/>, or no slot manager is available.
+    /// </exception>
+    void InsertSlotCard(int slot, ISlotCard card);
+
+    /// <summary>
+    /// Removes a slot card from the running machine session.
+    /// </summary>
+    /// <param name="slot">Target slot number (1-7).</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the machine is not <see cref="MachineState.Off"/>, or no slot manager is available.
+    /// </exception>
+    void RemoveSlotCard(int slot);
+
+    /// <summary>
     /// Halts the machine completely, equivalent to the STP instruction effect.
     /// </summary>
     /// <remarks>

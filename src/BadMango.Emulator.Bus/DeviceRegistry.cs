@@ -144,6 +144,22 @@ public sealed class DeviceRegistry : IDeviceRegistry
     }
 
     /// <inheritdoc />
+    public bool Unregister(int id)
+    {
+        if (!devicesById.Remove(id, out var removed))
+        {
+            return false;
+        }
+
+        if (removed.PageId.IsValid)
+        {
+            devicesByPageId.Remove(removed.PageId.RawValue);
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
     public bool ContainsPageId(DevicePageId pageId)
     {
         return devicesByPageId.ContainsKey(pageId.RawValue);

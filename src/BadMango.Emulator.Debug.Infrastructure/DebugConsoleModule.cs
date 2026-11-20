@@ -191,6 +191,10 @@ public class DebugConsoleModule : Module
             .As<ICommandHandler>()
             .SingleInstance();
 
+        builder.RegisterType<SlotCommand>()
+            .As<ICommandHandler>()
+            .SingleInstance();
+
         builder.RegisterType<ProfileCommand>()
             .As<ICommandHandler>()
             .SingleInstance();

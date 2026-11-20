@@ -61,6 +61,7 @@ public sealed class Machine : IMachine
     /// W65C02S requires RESB to be held low for at least two clock cycles.
     /// </summary>
     private const int ResetHoldCycles = 2;
+    private const string SlotChangesRequireOffMessage = "Slot changes require the machine to be off.";
 
     /// <summary>
     /// The machine whose work the current thread is executing (run loop slice, step, scheduled
@@ -554,6 +555,49 @@ public sealed class Machine : IMachine
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public void InsertSlotCard(int slot, ISlotCard card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        ThrowIfDisposed();
+        ThrowIfNotOffForSlotChanges();
+
+        if (GetComponent<ISlotManager>() is not ISlotManager slotManager)
+        {
+            throw new InvalidOperationException("No slot manager available on this machine.");
+        }
+
+        slotManager.Install(slot, card);
+        scheduledDevices.Add(card);
+        card.Initialize(this);
+        RegisterSlotCardInDeviceRegistry(slot, card);
+    }
+
+    /// <inheritdoc />
+    public void RemoveSlotCard(int slot)
+    {
+        ThrowIfDisposed();
+        ThrowIfNotOffForSlotChanges();
+
+        if (GetComponent<ISlotManager>() is not ISlotManager slotManager)
+        {
+            throw new InvalidOperationException("No slot manager available on this machine.");
+        }
+
+        var card = slotManager.GetCard(slot);
+        if (card is null)
+        {
+            return;
+        }
+
+        FlushStorageForCard(card);
+
+        slotManager.Remove(slot);
+        scheduledDevices.Remove(card);
+        DisposeSlotCard(card);
+        UnregisterSlotCardFromDeviceRegistry(slot, card);
     }
 
     /// <inheritdoc />
@@ -1505,6 +1549,89 @@ public sealed class Machine : IMachine
             throw new InvalidOperationException(
                 "Machine is off. Use 'power --on' (or 'boot') first.");
         }
+    }
+
+    private void ThrowIfNotOffForSlotChanges()
+    {
+        if (state != MachineState.Off)
+        {
+            throw new InvalidOperationException(SlotChangesRequireOffMessage);
+        }
+    }
+
+    private void RegisterSlotCardInDeviceRegistry(int slot, ISlotCard card)
+    {
+        int id = Devices.GenerateId();
+        Devices.Register(id, card.DeviceType, card.Name, CreateSlotCardWiringPath(slot, card.DeviceType));
+    }
+
+    private void UnregisterSlotCardFromDeviceRegistry(int slot, ISlotCard card)
+    {
+        string wiringPath = CreateSlotCardWiringPath(slot, card.DeviceType);
+        foreach (var device in Devices.GetAll())
+        {
+            if (string.Equals(device.WiringPath, wiringPath, StringComparison.Ordinal))
+            {
+                Devices.Unregister(device.Id);
+                break;
+            }
+        }
+    }
+
+    private void FlushStorageForCard(ISlotCard card)
+    {
+        if (card is not IFlushableStorage flushable)
+        {
+            return;
+        }
+
+        try
+        {
+            for (int driveIndex = 0; driveIndex < flushable.DriveCount; driveIndex++)
+            {
+                flushable.Flush(driveIndex);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.Warning(
+                ex,
+                "Failed to flush slot card {DeviceType} in slot {SlotNumber} before removal.",
+                card.DeviceType,
+                card.SlotNumber);
+            throw;
+        }
+    }
+
+    private void DisposeSlotCard(ISlotCard card)
+    {
+        if (card is not IDisposable disposable)
+        {
+            return;
+        }
+
+        try
+        {
+            disposable.Dispose();
+        }
+        catch (Exception ex) when (ex is not (
+            OutOfMemoryException
+            or AccessViolationException
+            or InvalidProgramException
+            or BadImageFormatException))
+        {
+            logger.Warning(
+                ex,
+                "Failed to dispose slot card {DeviceType} in slot {SlotNumber} during removal.",
+                card.DeviceType,
+                card.SlotNumber);
+            throw;
+        }
+    }
+
+    private string CreateSlotCardWiringPath(int slot, string cardType)
+    {
+        return $"Slot/{slot}/{cardType}";
     }
 
     private void StopRunLoop()

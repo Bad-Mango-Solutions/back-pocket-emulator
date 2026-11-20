@@ -68,6 +68,13 @@ public interface IDeviceRegistry
     bool Contains(int id);
 
     /// <summary>
+    /// Unregisters a device by ID.
+    /// </summary>
+    /// <param name="id">The structural instance identifier to remove.</param>
+    /// <returns><see langword="true"/> if the device existed and was removed; otherwise, <see langword="false"/>.</returns>
+    bool Unregister(int id);
+
+    /// <summary>
     /// Generates a new unique device ID.
     /// </summary>
     /// <returns>A new ID that has not been used for any registered device.</returns>

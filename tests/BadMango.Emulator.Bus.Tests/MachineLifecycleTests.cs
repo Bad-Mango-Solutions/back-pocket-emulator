@@ -416,6 +416,80 @@ public class MachineLifecycleTests
         Assert.That(LoggedSeed(sink), Is.EqualTo(ram.AppliedSeed));
     }
 
+    /// <summary>
+    /// Inserting and removing a slot card while off installs handlers, initializes once,
+    /// registers/unregisters device metadata, flushes storage, and disposes the card.
+    /// </summary>
+    [Test]
+    public void InsertRemoveSlotCard_WhileOff_InstallsAndRemovesCard()
+    {
+        var dispatcher = new IOPageDispatcher();
+        var slotManager = new SlotManager(dispatcher);
+        var card = new RuntimeSlotCard();
+        var machine = new MachineBuilder()
+            .WithCpuFactory(_ => CreateCpu().Object)
+            .Build();
+        ((Machine)machine).AddComponent<ISlotManager>(slotManager);
+
+        machine.InsertSlotCard(5, card);
+
+        var access = new BusAccess(
+            Address: 0xC0D0,
+            Value: 0,
+            WidthBits: 8,
+            Mode: BusAccessMode.Decomposed,
+            EmulationFlag: true,
+            Intent: AccessIntent.DebugRead,
+            SourceId: 0,
+            Cycle: 0,
+            Flags: AccessFlags.NoSideEffects);
+
+        var registered = machine.Devices.GetAll()
+            .SingleOrDefault(device => device.WiringPath == "Slot/5/runtime-slot-card");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(slotManager.GetCard(5), Is.SameAs(card));
+            Assert.That(card.InitializeCount, Is.EqualTo(1));
+            Assert.That(dispatcher.Read(0xD0, in access), Is.EqualTo((byte)0x5A));
+            Assert.That(registered.WiringPath, Is.EqualTo("Slot/5/runtime-slot-card"));
+            Assert.That(registered.Name, Is.EqualTo(card.Name));
+        });
+
+        machine.RemoveSlotCard(5);
+        Assert.Multiple(() =>
+        {
+            Assert.That(slotManager.GetCard(5), Is.Null);
+            Assert.That(dispatcher.Read(0xD0, in access), Is.EqualTo((byte)0xFF));
+            Assert.That(machine.Devices.GetAll().Any(device => device.WiringPath == "Slot/5/runtime-slot-card"), Is.False);
+            Assert.That(card.FlushCount, Is.EqualTo(1));
+            Assert.That(card.DisposeCount, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
+    /// Slot mutations are rejected unless the machine is powered off.
+    /// </summary>
+    [Test]
+    public void InsertRemoveSlotCard_WhenNotOff_ThrowsInvalidOperationException()
+    {
+        var slotManager = new SlotManager(new IOPageDispatcher());
+        var machine = new MachineBuilder()
+            .WithCpuFactory(_ => CreateCpu().Object)
+            .Build();
+        ((Machine)machine).AddComponent<ISlotManager>(slotManager);
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+
+        var insert = Assert.Throws<InvalidOperationException>(() => machine.InsertSlotCard(4, new RuntimeSlotCard()));
+        var remove = Assert.Throws<InvalidOperationException>(() => machine.RemoveSlotCard(4));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(insert!.Message, Is.EqualTo("Slot changes require the machine to be off."));
+            Assert.That(remove!.Message, Is.EqualTo("Slot changes require the machine to be off."));
+        });
+    }
+
     private static int LoggedSeed(CollectingSink sink)
     {
         LogEvent? logged = null;
@@ -586,6 +660,78 @@ public class MachineLifecycleTests
         {
             ArgumentNullException.ThrowIfNull(logEvent);
             Events.Add(logEvent);
+        }
+    }
+
+    private sealed class RuntimeSlotCard : ISlotCard, IDisposable, IFlushableStorage
+    {
+        public RuntimeSlotCard()
+        {
+            var handlers = new SlotIOHandlers();
+            for (byte offset = 0; offset < 16; offset++)
+            {
+                handlers.Set(
+                    offset,
+                    (byte _, in BusAccess _) => 0x5A,
+                    (byte _, byte _, in BusAccess _) => { });
+            }
+
+            IOHandlers = handlers;
+        }
+
+        public int SlotNumber { get; set; }
+
+        public SlotIOHandlers IOHandlers { get; }
+
+        public IBusTarget? ROMRegion => null;
+
+        public IBusTarget? ExpansionROMRegion => null;
+
+        public string Name => "Runtime Slot Card";
+
+        public string DeviceType => "runtime-slot-card";
+
+        public PeripheralKind Kind => PeripheralKind.SlotCard;
+
+        public int DriveCount => 1;
+
+        public int InitializeCount { get; private set; }
+
+        public int FlushCount { get; private set; }
+
+        public int DisposeCount { get; private set; }
+
+        public void Initialize(IEventContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            InitializeCount++;
+        }
+
+        public void Reset()
+        {
+        }
+
+        public void OnExpansionROMSelected()
+        {
+        }
+
+        public void OnExpansionROMDeselected()
+        {
+        }
+
+        public void Flush(int driveIndex)
+        {
+            if (driveIndex != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(driveIndex));
+            }
+
+            FlushCount++;
+        }
+
+        public void Dispose()
+        {
+            DisposeCount++;
         }
     }
 }
