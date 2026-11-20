@@ -12,6 +12,7 @@ jobs:
   singlestep-full:
     name: Run full 65C02 SingleStepTests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
     - name: Checkout main
@@ -45,12 +46,15 @@ jobs:
         key: singlestep-wdc65c02-v1-${{ steps.vectors.outputs.commit }}
 
     - name: Run full SingleStepTests 65C02 vectors
-      run: dotnet test tests/BadMango.Emulator.Tests/BadMango.Emulator.Tests.csproj --configuration Release --no-restore --verbosity minimal --logger trx --results-directory ./test-results/singlestep-full --settings tests/BadMango.Emulator.Tests/singlestep-full.runsettings
+      run: dotnet test tests/BadMango.Emulator.Tests/BadMango.Emulator.Tests.csproj --configuration Release --no-restore --verbosity minimal --logger trx --results-directory ./test-results/singlestep-full --settings tests/BadMango.Emulator.Tests/singlestep-full.runsettings --blame-hang --blame-hang-timeout 10m --blame-hang-dump-type mini
 
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v7
       with:
         name: singlestep-full-results
-        path: test-results/singlestep-full/
+        path: |
+          test-results/singlestep-full/
+          **/*Sequence*.xml
+          **/*.dmp
         retention-days: 14
