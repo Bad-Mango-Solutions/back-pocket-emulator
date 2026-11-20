@@ -201,6 +201,7 @@ public partial class DebugCommandsTests
             .WithCpuFactory(ctx => new BadMango.Emulator.Emulation.Cpu.Cpu65C02(ctx))
             .MapRegion(0x0000, 64 * 1024, new BadMango.Emulator.Bus.RamTarget(new BadMango.Emulator.Bus.PhysicalMemory(64 * 1024, "json-ram").Slice(0, 64 * 1024)), BadMango.Emulator.Bus.RegionTag.Ram, BadMango.Emulator.Bus.PagePerms.All)
             .Build();
+        machine.PowerOnAsync().GetAwaiter().GetResult();
         WriteByte(machine.Bus, 0x1000, 0xEA);
         WriteByte(machine.Bus, 0x1001, 0xDB);
         WriteWord(machine.Bus, 0xFFFC, 0x1000);

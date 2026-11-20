@@ -31,11 +31,13 @@ public class MachineFactoryTests
     {
         var profile = CreateTestProfile();
 
-        var (cpu, _, _, _) = MachineFactory.CreateSystem(profile);
+        var (machine, _, _) = MachineFactory.CreateDebugSystem(profile);
+        Assert.That(machine.State, Is.EqualTo(MachineState.Off), "A new machine starts off");
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
-        var registers = cpu.GetRegisters();
+        var registers = machine.Cpu.GetRegisters();
 
-        // Verify emulation mode flags are set (the key fix)
+        // Power-on initializes emulation mode. Construction alone leaves the CPU unreset.
         Assert.Multiple(() =>
         {
             Assert.That(registers.E, Is.True, "E (emulation mode) flag should be set for 65C02");
@@ -51,11 +53,12 @@ public class MachineFactoryTests
     {
         var profile = CreateTestProfile();
 
-        var (cpu, _, _, _) = MachineFactory.CreateSystem(profile);
+        var (machine, _, _) = MachineFactory.CreateDebugSystem(profile);
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
-        var registers = cpu.GetRegisters();
+        var registers = machine.Cpu.GetRegisters();
 
-        // The I (interrupt disable) flag should be set after reset
+        // The I (interrupt disable) flag should be set after power-on reset
         Assert.That(registers.P.IsInterruptDisabled(), Is.True, "I flag should be set after reset");
     }
 
@@ -167,6 +170,7 @@ public class MachineFactoryTests
         var trapInvoked = false;
 
         var (machine, _, _) = MachineFactory.CreateDebugSystem(profile);
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
         var cpu = (Cpu65C02)machine.Cpu;
 

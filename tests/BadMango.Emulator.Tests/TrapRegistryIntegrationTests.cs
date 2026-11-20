@@ -133,6 +133,11 @@ public class TrapRegistryIntegrationTests
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // ─── Arrange: Write complete test ML program ────────────────────────────
@@ -254,6 +259,11 @@ public class TrapRegistryIntegrationTests
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // ─── Arrange: Write complete test ML program ────────────────────────────
@@ -341,6 +351,11 @@ public class TrapRegistryIntegrationTests
         // Attach trap registry to CPU
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -444,6 +459,11 @@ public class TrapRegistryIntegrationTests
         // Attach trap registry to CPU
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -638,6 +658,11 @@ public class TrapRegistryIntegrationTests
         // Attach trap registry to CPU
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 

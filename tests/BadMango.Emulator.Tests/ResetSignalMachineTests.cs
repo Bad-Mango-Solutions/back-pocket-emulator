@@ -109,6 +109,11 @@ public sealed class ResetSignalMachineTests
         // handler takes its cold-start path and redraws the banner.
         machine.Cpu.Poke8(0x03F4, (byte)(machine.Cpu.Peek8(0x03F3) ^ 0xA5 ^ 0xFF));
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         Assert.Multiple(() =>
@@ -143,6 +148,11 @@ public sealed class ResetSignalMachineTests
 
         // Reset mid-frame, well away from a VBlank edge.
         StepUntil(machine, () => machine.Now.Value >= lastBeforeReset + 8_000);
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         WriteLoop(machine);
         vblankStarts.Clear();
@@ -166,6 +176,11 @@ public sealed class ResetSignalMachineTests
         var video = machine.GetComponent<VideoDevice>()!;
         WriteLoop(machine);
         StepUntil(machine, () => video.IsVerticalBlanking);
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
         WriteLoop(machine);
@@ -206,6 +221,11 @@ public sealed class ResetSignalMachineTests
         Assume.That(video.IsPage2 && video.IsHiRes && video.Is80Column && !video.IsTextMode && video.IsMixedMode, Is.True);
         Assume.That(ext80.Is80StoreEnabled && character.IsAltCharSet, Is.True);
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         Assert.Multiple(() =>
@@ -240,6 +260,11 @@ public sealed class ResetSignalMachineTests
         machine.Cpu.Write8(0xFFFC, 0x34);
         machine.Cpu.Write8(0xFFFD, 0x12);
         Assume.That(ReadResetVector(machine), Is.EqualTo(0x1234), "Language Card RAM should be visible at $FFFC");
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -278,6 +303,11 @@ public sealed class ResetSignalMachineTests
         machine.Cpu.Write8(0xD000, 0x22);
         machine.Cpu.Write8(0xE000, 0x33);
         machine.Cpu.Read8(0xC082); // Full ROM mode
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -347,6 +377,11 @@ public sealed class ResetSignalMachineTests
         machine.Scheduler.DispatchDue();
         Assume.That(machine.Signals.IsAsserted(SignalLine.Reset), Is.True);
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         uint heldPc = machine.Cpu.GetPC();
         for (int i = 0; i < 10; i++)
@@ -412,6 +447,11 @@ public sealed class ResetSignalMachineTests
         StepFor(machine, 1_000);
         Assume.That(keyboard.HasKeyDown, Is.True);
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         WriteLoop(machine);
         bool keyDownAfterReset = keyboard.HasKeyDown;
@@ -448,6 +488,11 @@ public sealed class ResetSignalMachineTests
 
         keyboard.KeyDown((byte)'Z');
         keyboard.SetModifiers(KeyboardModifiers.OpenApple | KeyboardModifiers.Shift);
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         WriteLoop(machine);
 
@@ -499,6 +544,11 @@ public sealed class ResetSignalMachineTests
 
         controller.Mount(0, media!);
         Assume.That(controller.GetDriveSnapshot(0).HasMedia, Is.False, "The insert should be deferred while the motor runs");
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
         StepFor(machine, 100);
@@ -670,9 +720,19 @@ public sealed class ResetSignalMachineTests
             .WithCard(4, receiverCard)
             .WithCard(5, plainCard)
             .Build();
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         receiverCard.Clear();
         plainCard.Clear();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
         var afterSoft = (receiverCard.Snapshot(), plainCard.Snapshot());
@@ -700,8 +760,9 @@ public sealed class ResetSignalMachineTests
         var resolver = new ProfilePathResolver(libraryRoot: RepositoryRoot, profileFilePath: profilePath);
         var machine = MachineFactory.CreateMachine(profile, resolver);
 
-        // Power on: the first reset after construction is the power-on reset.
-        machine.Reset();
+        // Power on: a freshly built machine is Off, and the first power-on applies the
+        // RAM pattern and the power-on reset.
+        machine.PowerOnAsync().GetAwaiter().GetResult();
         return machine;
     }
 

@@ -238,6 +238,7 @@ public class DebugContextDebuggerAttachmentTests
     private static (IMachine Machine, TracingDebugListener Tracing) AttachNewMachine(DebugContext target)
     {
         var (m, disassembler, info) = MachineFactory.CreateDebugSystem(CreateSimple65C02Profile());
+        m.PowerOnAsync().GetAwaiter().GetResult();
         var listener = new TracingDebugListener();
 
         // Mirror ProfileCommand: a bare tracing listener is attached before AttachMachine.

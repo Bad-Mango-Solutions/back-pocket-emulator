@@ -593,8 +593,9 @@ public sealed class KeyboardMachineTests
         var resolver = new ProfilePathResolver(libraryRoot: RepositoryRoot, profileFilePath: profilePath);
         var machine = MachineFactory.CreateMachine(profile, resolver);
 
-        // Power on: the first reset after construction is the power-on reset.
-        machine.Reset();
+        // Power on: a freshly built machine is Off, and the first power-on applies the
+        // RAM pattern and the power-on reset.
+        machine.PowerOnAsync().GetAwaiter().GetResult();
         return machine;
     }
 

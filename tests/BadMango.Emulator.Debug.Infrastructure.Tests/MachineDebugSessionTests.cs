@@ -47,6 +47,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         video.SetupGet(v => v.Annunciators).Returns([true, false, true, false]);
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
 
         var context = new Mock<IDebugContext>(MockBehavior.Strict);
@@ -81,6 +82,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         video.SetupGet(v => v.IsPage2).Returns(false);
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
         machine.Setup(m => m.GetComponent<IMainMemoryProvider>()).Returns(provider);
         machine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns(aux.Object);
@@ -114,6 +116,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
             .Returns(new BadMango.Emulator.Devices.TypeTextReceipt(5, ['?'], Rejected: false));
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.Setup(m => m.GetComponent<IKeyboardInput>()).Returns(keyboardInput.Object);
 
         var context = new Mock<IDebugContext>(MockBehavior.Strict);
@@ -154,6 +157,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         slotManager.Setup(s => s.GetCard(6)).Returns(card.Object);
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.Setup(m => m.GetComponent<ISlotManager>()).Returns(slotManager.Object);
 
         var context = new Mock<IDebugContext>(MockBehavior.Strict);
@@ -190,6 +194,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         cpu.SetupGet(c => c.Halted).Returns(false);
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.SetupGet(m => m.Cpu).Returns(cpu.Object);
         machine.SetupGet(m => m.Bus).Returns(Mock.Of<IMemoryBus>());
         machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
@@ -229,6 +234,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         video.SetupGet(v => v.IsPage2).Returns(true);
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
         machine.Setup(m => m.GetComponent<IMainMemoryProvider>()).Returns(provider);
         machine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns((IExtended80ColumnDevice?)null);
@@ -273,6 +279,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         cpu.SetupGet(c => c.Halted).Returns(false);
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.SetupGet(m => m.Cpu).Returns(cpu.Object);
         machine.SetupGet(m => m.Bus).Returns(Mock.Of<IMemoryBus>());
         machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
@@ -321,6 +328,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         runningCpu.SetupGet(c => c.Halted).Returns(false);
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.SetupGet(m => m.Bus).Returns(Mock.Of<IMemoryBus>());
         machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(video.Object);
         machine.Setup(m => m.GetComponent<IMainMemoryProvider>()).Returns(provider);
@@ -372,6 +380,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
         bus.MapPage(0xC000 >> 12, new(1, RegionTag.Io, PagePerms.ReadWrite, TargetCaps.None, ioPage, 0));
 
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.SetupGet(x => x.Bus).Returns(bus);
         var context = new Mock<IDebugContext>(MockBehavior.Strict);
         context.SetupGet(x => x.Machine).Returns(machine.Object);
@@ -461,6 +470,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
             cpu.Setup(x => x.GetPC()).Returns(0x1000u);
 
             var machine = new Mock<IMachine>(MockBehavior.Strict);
+            machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
             machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
             machine.Setup(x => x.Pause());
             machine.Setup(x => x.Step()).Returns(() =>
@@ -733,6 +743,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
                 });
 
             var machine = new Mock<IMachine>(MockBehavior.Strict);
+            machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
             machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
             machine.SetupGet(x => x.Bus).Returns(bus.Object);
             machine.Setup(x => x.Step()).Returns(() =>
@@ -803,6 +814,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
                 });
 
             var machine = new Mock<IMachine>(MockBehavior.Strict);
+            machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
             machine.SetupGet(x => x.Bus).Returns(bus.Object);
             var context = new Mock<IDebugContext>(MockBehavior.Strict);
             context.SetupGet(x => x.Machine).Returns(machine.Object);
@@ -898,6 +910,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
 
         var cpu = new Mock<ICpu>(MockBehavior.Loose);
         var machine = new Mock<IMachine>(MockBehavior.Strict);
+        machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
         machine.SetupGet(x => x.Bus).Returns(bus);
         machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
         return (machine.Object, bus);
@@ -1016,6 +1029,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
                 .Returns(BusResult<byte>.Success(0xEA));
 
             var machine = new Mock<IMachine>(MockBehavior.Strict);
+            machine.SetupGet(x => x.State).Returns(MachineState.Stopped);
             machine.SetupGet(x => x.Cpu).Returns(cpu.Object);
             machine.SetupGet(x => x.Bus).Returns(bus.Object);
             machine.Setup(x => x.Pause());
@@ -1136,6 +1150,7 @@ public sealed class MachineDebugSessionTests : IDebugSessionContractTests
             context = new(dispatcher, TextWriter.Null, TextWriter.Null);
 
             (machine, var disassembler, var info) = MachineFactory.CreateDebugSystem(CreateTestProfile());
+            machine.PowerOnAsync().GetAwaiter().GetResult();
             context.AttachMachine(machine, disassembler, info);
             Session = new MachineDebugSession(context);
         }
