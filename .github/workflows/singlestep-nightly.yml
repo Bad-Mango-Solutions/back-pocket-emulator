@@ -55,6 +55,4 @@ jobs:
         name: singlestep-full-results
         path: |
           test-results/singlestep-full/
-          **/*Sequence*.xml
-          **/*.dmp
         retention-days: 14
