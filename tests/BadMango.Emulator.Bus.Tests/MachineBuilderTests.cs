@@ -973,6 +973,180 @@ public class MachineBuilderTests
     }
 
     /// <summary>
+    /// Verifies that named slot sets resolve base cards plus the default set at load time.
+    /// </summary>
+    [Test]
+    public void FromProfile_SlotSets_UsesDefaultSetCardsAndAddsRuntimeState()
+    {
+        var mockCpu = CreateMockCpu();
+        var profile = new Core.Configuration.MachineProfile
+        {
+            Name = "test-profile",
+            DisplayName = "Test Profile",
+            Description = "Test",
+            AddressSpace = 16,
+            Cpu = new() { Type = "65C02", ClockSpeed = 1000000 },
+            Memory = new()
+            {
+                Regions =
+                [
+                    new()
+                    {
+                        Name = "test-composite",
+                        Type = "composite",
+                        Start = "0xC000",
+                        Size = "0x1000",
+                        Permissions = "rw",
+                    },
+                ],
+            },
+            Devices = new()
+            {
+                Slots = new()
+                {
+                    Enabled = true,
+                    Cards =
+                    [
+                        new()
+                        {
+                            Slot = 6,
+                            Type = "base-card",
+                        },
+                    ],
+                    DefaultSet = "game",
+                    Sets = new Dictionary<string, Core.Configuration.SlotCardSetProfile>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["game"] = new()
+                        {
+                            Description = "Game profile",
+                            Cards =
+                            [
+                                new()
+                                {
+                                    Slot = 4,
+                                    Type = "game-card",
+                                },
+                            ],
+                        },
+                        ["workstation"] = new()
+                        {
+                            Description = "Work profile",
+                            Cards =
+                            [
+                                new()
+                                {
+                                    Slot = 2,
+                                    Type = "work-card",
+                                },
+                                new()
+                                {
+                                    Slot = 4,
+                                    Type = "work-card",
+                                },
+                            ],
+                        },
+                    },
+                },
+            },
+        };
+
+        var createdTypes = new List<string>();
+        var builder = new MachineBuilder().WithCpuFactory(_ => mockCpu.Object);
+        builder.RegisterSlotCardFactory("base-card", (_, _) =>
+        {
+            createdTypes.Add("base-card");
+            return new FakeSlotCard("base-card");
+        });
+        builder.RegisterSlotCardFactory("game-card", (_, _) =>
+        {
+            createdTypes.Add("game-card");
+            return new FakeSlotCard("game-card");
+        });
+        builder.RegisterSlotCardFactory("work-card", (_, _) =>
+        {
+            createdTypes.Add("work-card");
+            return new FakeSlotCard("work-card");
+        });
+
+        var machine = builder.FromProfile(profile).Build();
+        var runtimeState = machine.GetComponent<SlotSetRuntimeState>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(createdTypes, Is.EquivalentTo(new[] { "base-card", "game-card" }));
+            Assert.That(runtimeState, Is.Not.Null);
+            Assert.That(runtimeState!.ActiveSetName, Is.EqualTo("game"));
+            Assert.That(runtimeState.Sets, Contains.Key("game"));
+            Assert.That(runtimeState.Sets, Contains.Key("workstation"));
+            Assert.That(runtimeState.Sets["game"].Cards.Select(static card => card.Slot), Is.EquivalentTo(new[] { 4, 6 }));
+            Assert.That(runtimeState.Sets["workstation"].Cards.Select(static card => card.Slot), Is.EquivalentTo(new[] { 2, 4, 6 }));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that named slot sets fail fast when <c>defaultSet</c> is missing or invalid.
+    /// </summary>
+    [Test]
+    public void FromProfile_SlotSets_MissingOrUnknownDefaultSet_Throws()
+    {
+        var mockCpu = CreateMockCpu();
+        var missingDefault = CreateSlotSetProfile(defaultSet: null);
+        var unknownDefault = CreateSlotSetProfile(defaultSet: "unknown");
+        var missingBuilder = new MachineBuilder().WithCpuFactory(_ => mockCpu.Object);
+        missingBuilder.RegisterSlotCardFactory("base-card", (_, _) => new FakeSlotCard("base-card"));
+        missingBuilder.RegisterSlotCardFactory("game-card", (_, _) => new FakeSlotCard("game-card"));
+        var unknownBuilder = new MachineBuilder().WithCpuFactory(_ => mockCpu.Object);
+        unknownBuilder.RegisterSlotCardFactory("base-card", (_, _) => new FakeSlotCard("base-card"));
+        unknownBuilder.RegisterSlotCardFactory("game-card", (_, _) => new FakeSlotCard("game-card"));
+
+        var missingEx = Assert.Throws<InvalidOperationException>(() => missingBuilder.FromProfile(missingDefault));
+        var unknownEx = Assert.Throws<InvalidOperationException>(() => unknownBuilder.FromProfile(unknownDefault));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(missingEx!.Message, Does.Contain("defaultSet"));
+            Assert.That(unknownEx!.Message, Does.Contain("does not match any configured set"));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that named slot sets reject duplicate slots and out-of-range slot numbers.
+    /// </summary>
+    [Test]
+    public void FromProfile_SlotSets_DuplicateOrOutOfRangeSlots_Throw()
+    {
+        var mockCpu = CreateMockCpu();
+        var duplicate = CreateSlotSetProfile(
+            defaultSet: "game",
+            cards:
+            [
+                new() { Slot = 4, Type = "game-card" },
+                new() { Slot = 4, Type = "base-card" },
+            ]);
+        var outOfRange = CreateSlotSetProfile(
+            defaultSet: "game",
+            cards:
+            [
+                new() { Slot = 8, Type = "game-card" },
+            ]);
+        var duplicateBuilder = new MachineBuilder().WithCpuFactory(_ => mockCpu.Object);
+        duplicateBuilder.RegisterSlotCardFactory("base-card", (_, _) => new FakeSlotCard("base-card"));
+        duplicateBuilder.RegisterSlotCardFactory("game-card", (_, _) => new FakeSlotCard("game-card"));
+        var rangeBuilder = new MachineBuilder().WithCpuFactory(_ => mockCpu.Object);
+        rangeBuilder.RegisterSlotCardFactory("base-card", (_, _) => new FakeSlotCard("base-card"));
+        rangeBuilder.RegisterSlotCardFactory("game-card", (_, _) => new FakeSlotCard("game-card"));
+
+        var duplicateEx = Assert.Throws<InvalidOperationException>(() => duplicateBuilder.FromProfile(duplicate));
+        var rangeEx = Assert.Throws<InvalidOperationException>(() => rangeBuilder.FromProfile(outOfRange));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(duplicateEx!.Message, Does.Contain("Duplicate slot"));
+            Assert.That(rangeEx!.Message, Does.Contain("Invalid slot number"));
+        });
+    }
+
+    /// <summary>
     /// Verifies that <see cref="MachineBuilder.FromProfile"/> consumes a per-card
     /// <c>config.rom</c> string by looking up the named entry in <c>memory.rom-images</c>,
     /// loading the bytes, and pushing them into the freshly-built slot card via a
@@ -1228,6 +1402,57 @@ public class MachineBuilderTests
         mockCpu.Setup(c => c.IsStopRequested).Returns(false);
         mockCpu.Setup(c => c.Step()).Returns(new CpuStepResult(CpuRunState.Running, 1));
         return mockCpu;
+    }
+
+    private static Core.Configuration.MachineProfile CreateSlotSetProfile(
+        string? defaultSet,
+        IReadOnlyList<Core.Configuration.SlotSetCardProfile>? cards = null)
+    {
+        return new Core.Configuration.MachineProfile
+        {
+            Name = "test-profile",
+            DisplayName = "Test Profile",
+            Description = "Test",
+            AddressSpace = 16,
+            Cpu = new() { Type = "65C02", ClockSpeed = 1000000 },
+            Memory = new()
+            {
+                Regions =
+                [
+                    new()
+                    {
+                        Name = "test-composite",
+                        Type = "composite",
+                        Start = "0xC000",
+                        Size = "0x1000",
+                        Permissions = "rw",
+                    },
+                ],
+            },
+            Devices = new()
+            {
+                Slots = new()
+                {
+                    Enabled = true,
+                    Cards =
+                    [
+                        new()
+                        {
+                            Slot = 6,
+                            Type = "base-card",
+                        },
+                    ],
+                    DefaultSet = defaultSet,
+                    Sets = new Dictionary<string, Core.Configuration.SlotCardSetProfile>
+                    {
+                        ["game"] = new()
+                        {
+                            Cards = cards is null ? [new() { Slot = 4, Type = "game-card" }] : cards.ToList(),
+                        },
+                    },
+                },
+            },
+        };
     }
 
     private sealed class TestComponent
