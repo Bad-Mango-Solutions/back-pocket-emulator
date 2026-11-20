@@ -18,6 +18,12 @@ using System.Text.Json.Serialization;
 public sealed class BootProfile
 {
     /// <summary>
+    /// Gets or sets the power-on memory configuration.
+    /// </summary>
+    [JsonPropertyName("powerOnMemory")]
+    public PowerOnMemoryProfile? PowerOnMemory { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether to automatically start the machine after loading.
     /// </summary>
     /// <remarks>

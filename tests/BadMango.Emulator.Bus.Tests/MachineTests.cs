@@ -48,9 +48,8 @@ public class MachineTests
     }
 
     /// <summary>
-    /// Verifies that the first reset after construction is a power-on reset: the CPU is held
-    /// for the hold window and then initialized to its power-on state when the line releases,
-    /// instead of running the warm reset sequence.
+    /// Verifies that power-on holds RESET for the hold window and then initializes the CPU
+    /// to its power-on state when the line releases, instead of running the warm reset sequence.
     /// </summary>
     [Test]
     public void Reset_FirstReset_HoldsThenPerformsPowerOnCpuReset()
@@ -58,12 +57,11 @@ public class MachineTests
         var mockCpu = CreateMockCpu();
         var machine = CreateTestMachine(mockCpu);
 
-        machine.Reset();
-
         Assert.Multiple(() =>
         {
             mockCpu.Verify(c => c.Step(), Times.Exactly(2));
             mockCpu.Verify(c => c.Reset(), Times.Once);
+            Assert.That(machine.State, Is.EqualTo(MachineState.Stopped));
             Assert.That(machine.Signals.IsAsserted(SignalLine.Reset), Is.False, "RESET must be released after the pulse");
         });
     }
@@ -260,12 +258,13 @@ public class MachineTests
     public void Stop_FromRunning_TransitionsToStopped()
     {
         var mockCpu = CreateMockCpu();
+        var machine = CreateTestMachine(mockCpu);
 
-        // Make Step return Stopped after first call to exit Run loop
+        // Make Step return Stopped after first call to exit Run loop.
+        // Installed after power-on, which itself steps the CPU.
         mockCpu.SetupSequence(c => c.Step())
             .Returns(new CpuStepResult(CpuRunState.Stopped, 1));
 
-        var machine = CreateTestMachine(mockCpu);
         machine.Run(); // Will exit immediately because of Stopped result
 
         MachineState? reportedState = null;
@@ -436,6 +435,7 @@ public class MachineTests
         var detector = new ConcurrencyDetector();
         Machine machine = null!;
         var mockCpu = CreateMockCpu();
+        machine = CreateTestMachine(mockCpu);
         mockCpu.Setup(c => c.Step()).Returns(() =>
         {
             using (detector.Enter())
@@ -446,8 +446,6 @@ public class MachineTests
 
             return new CpuStepResult(CpuRunState.Running, 1);
         });
-
-        machine = CreateTestMachine(mockCpu);
         int testThread = Environment.CurrentManagedThreadId;
         int asserted = 0;
         int released = 0;
@@ -516,13 +514,12 @@ public class MachineTests
         mockCpu.Setup(c => c.IsStopRequested).Returns(() => Volatile.Read(ref stopRequested) != 0);
         mockCpu.Setup(c => c.RequestStop()).Callback(() => Volatile.Write(ref stopRequested, 1));
         mockCpu.Setup(c => c.ClearStopRequest()).Callback(() => Volatile.Write(ref stopRequested, 0));
+        machine = CreateTestMachine(mockCpu);
         mockCpu.Setup(c => c.Step()).Returns(() =>
         {
             machine.Scheduler.Advance(10);
             return new CpuStepResult(CpuRunState.Running, 10);
         });
-
-        machine = CreateTestMachine(mockCpu);
 
         // Throttle so the loop awaits between slices and may resume on a different thread.
         machine.ClockSpeedHz = 1_000_000;
@@ -772,6 +769,7 @@ public class MachineTests
         mockCpu.Setup(c => c.IsStopRequested).Returns(() => Volatile.Read(ref stopRequested) != 0);
         mockCpu.Setup(c => c.RequestStop()).Callback(() => Volatile.Write(ref stopRequested, 1));
         mockCpu.Setup(c => c.ClearStopRequest()).Callback(() => Volatile.Write(ref stopRequested, 0));
+        machine = CreateTestMachine(mockCpu);
         mockCpu.Setup(c => c.Step()).Returns(() =>
         {
             using (detector.Enter())
@@ -782,8 +780,6 @@ public class MachineTests
 
             return new CpuStepResult(CpuRunState.Running, 1);
         });
-
-        machine = CreateTestMachine(mockCpu);
         var tasks = new List<Task> { machine.RunAsync() };
         int pausedButAdvanced = 0;
 
@@ -898,14 +894,15 @@ public class MachineTests
     public void Run_WhenCpuHalts_TransitionsToStopped()
     {
         var mockCpu = CreateMockCpu();
+        var machine = CreateTestMachine(mockCpu);
 
-        // Make Step return Running for a few cycles, then Halted
+        // Make Step return Running for a few cycles, then Halted.
+        // Installed after power-on, which itself steps the CPU.
         mockCpu.SetupSequence(c => c.Step())
             .Returns(new CpuStepResult(CpuRunState.Running, 1))
             .Returns(new CpuStepResult(CpuRunState.Running, 1))
             .Returns(new CpuStepResult(CpuRunState.Halted, 1));
-
-        var machine = CreateTestMachine(mockCpu);
+        mockCpu.Invocations.Clear();
 
         var states = new List<MachineState>();
         machine.StateChanged += s => states.Add(s);
@@ -937,6 +934,7 @@ public class MachineTests
 
         var machine = new Machine(mockCpu.Object, bus, scheduler, signals, devices);
         scheduler.SetEventContext(machine);
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
         bool eventFired = false;
 
@@ -1056,13 +1054,15 @@ public class MachineTests
     public async Task BootAsync_PerformsResetThenRun()
     {
         var mockCpu = CreateMockCpu();
+        var machine = CreateTestMachine(mockCpu);
+        mockCpu.Invocations.Clear();
+
+        // Power-on already stepped the CPU. The sequence covers the boot reset and the run.
         mockCpu.SetupSequence(c => c.Step())
             .Returns(new CpuStepResult(CpuRunState.Running, 1))
             .Returns(new CpuStepResult(CpuRunState.Running, 1))
             .Returns(new CpuStepResult(CpuRunState.Running, 1))
             .Returns(new CpuStepResult(CpuRunState.Stopped, 1));
-
-        var machine = CreateTestMachine(mockCpu);
 
         // Act
         await machine.BootAsync();
@@ -1126,9 +1126,8 @@ public class MachineTests
     public async Task RunAsync_WhenStepThrows_TransitionsToStoppedAndRethrows()
     {
         var mockCpu = CreateMockCpu();
-        mockCpu.Setup(c => c.Step()).Throws(new InvalidOperationException("scheduler fault"));
-
         var machine = CreateTestMachine(mockCpu);
+        mockCpu.Setup(c => c.Step()).Throws(new InvalidOperationException("scheduler fault"));
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => machine.RunAsync());
 
@@ -1273,6 +1272,7 @@ public class MachineTests
 
         var machine = new Machine(mockCpu.Object, bus, scheduler, signals, devices);
         scheduler.SetEventContext(machine);
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
         return machine;
     }

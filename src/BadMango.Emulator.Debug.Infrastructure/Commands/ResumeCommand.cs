@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
+using BadMango.Emulator.Bus;
+
 /// <summary>
 /// Resumes machine execution from a paused state.
 /// </summary>
@@ -74,6 +76,11 @@ public sealed class ResumeCommand : CommandHandlerBase, ICommandHelp
         if (debugContext.Machine is null)
         {
             return CommandResult.Error("No machine attached to debug context.");
+        }
+
+        if (debugContext.Machine.State == MachineState.Off)
+        {
+            return CommandResult.Error("Machine is off. Use 'power --on' (or 'boot') first.");
         }
 
         if (debugContext.Machine.State != Bus.MachineState.Paused)

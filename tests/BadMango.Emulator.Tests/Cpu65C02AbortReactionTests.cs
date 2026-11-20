@@ -155,6 +155,11 @@ public class Cpu65C02AbortReactionTests
             Assert.That(machine.Bus.FaultStatus, Is.EqualTo(FaultKind.Unmapped));
         });
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         Assert.That(cpu.AbortReaction, Is.EqualTo(AbortReaction.HostBreak));

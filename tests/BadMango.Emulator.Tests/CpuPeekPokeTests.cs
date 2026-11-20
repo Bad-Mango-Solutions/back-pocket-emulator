@@ -45,6 +45,11 @@ public class CpuPeekPokeTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Verify initial value (stub ROM is filled with NOP = $EA)
@@ -75,6 +80,11 @@ public class CpuPeekPokeTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Verify initial value (stub ROM is filled with NOP = $EA)
@@ -101,6 +111,11 @@ public class CpuPeekPokeTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write a test value to RAM
@@ -124,6 +139,11 @@ public class CpuPeekPokeTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -153,6 +173,11 @@ public class CpuPeekPokeTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 

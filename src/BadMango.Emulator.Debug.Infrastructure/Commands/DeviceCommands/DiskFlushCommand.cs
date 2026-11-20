@@ -96,7 +96,7 @@ public sealed class DiskFlushCommand : CommandHandlerBase, ICommandHelp
         {
             controller.Flush(driveIndex);
         }
-        catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException or IOException)
+            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException or IOException or UnauthorizedAccessException)
         {
             return CommandResult.Error($"Flush failed for slot {slot} drive {drive}: {ex.Message}");
         }

@@ -131,6 +131,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program: JSR $FDED; STP
@@ -203,6 +208,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program: LDA #$42; JSR $FDED; STP
@@ -292,6 +302,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program: JSR $FC58; JSR $FDED; JSR $FD0C; STP
@@ -392,6 +407,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program: JMP $FDED (trap redirects to $0400 where STP waits)
@@ -484,6 +504,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program: JMP $FDED; NOP; NOP; STP (STP at $0305)
@@ -560,6 +585,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program: JMP $FDED; STP (at $0303)
@@ -645,6 +675,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program
@@ -797,6 +832,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program
@@ -901,6 +941,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program: JSR $FDED; STP
@@ -974,6 +1019,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Write test program: LDA #$00; JSR $FDED; STP
@@ -1058,6 +1108,11 @@ public class TrapRegistryComprehensiveIntegrationTests
 
         var cpu = (Cpu65C02)machine.Cpu;
         cpu.TrapRegistry = trapRegistry;
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Initialize target memory to $00

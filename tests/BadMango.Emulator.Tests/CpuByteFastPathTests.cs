@@ -382,6 +382,11 @@ public class CpuByteFastPathTests
     public void LanguageCard_NextByteAfterSwitch_ReadsTheNewBank()
     {
         var machine = new MachineBuilder().AsPocket2e().WithStubRom().Build();
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         var bus = (MainBus)machine.Bus;
         var cpu = machine.Cpu;

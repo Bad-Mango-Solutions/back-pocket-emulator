@@ -38,7 +38,7 @@ public class MachineBuilderIntegrationTests
             Assert.That(machine, Is.Not.Null, "Machine should be created");
             Assert.That(machine.Cpu, Is.Not.Null, "CPU should be created");
             Assert.That(machine.Bus, Is.Not.Null, "Bus should be created");
-            Assert.That(machine.State, Is.EqualTo(MachineState.Stopped), "Initial state should be Stopped");
+            Assert.That(machine.State, Is.EqualTo(MachineState.Off), "A new machine starts off");
         });
     }
 
@@ -58,6 +58,11 @@ public class MachineBuilderIntegrationTests
             .Build();
 
         // Act
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Assert - PC should be loaded from reset vector ($FFFC-$FFFD)
@@ -82,6 +87,11 @@ public class MachineBuilderIntegrationTests
             .MapRegion(0x0000, 64 * 1024, ramTarget, RegionTag.Ram, PagePerms.All)
             .WithRom(rom, 0xC000, "ROM")
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -126,6 +136,11 @@ public class MachineBuilderIntegrationTests
             .MapRegion(0x0000, 64 * 1024, ramTarget, RegionTag.Ram, PagePerms.All)
             .WithRom(rom, 0xC000, "ROM")
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -194,6 +209,10 @@ public class MachineBuilderIntegrationTests
             .MapRegion(0x0000, 64 * 1024, ramTarget, RegionTag.Ram, PagePerms.All)
             .WithRom(rom, 0xC000, "ROM")
             .Build();
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         // Factorial code designed to run at $1000
         // Computes 5! = 120 (0x78), stores result at $0010, then halts with STP
@@ -230,7 +249,8 @@ public class MachineBuilderIntegrationTests
             machine.Cpu.Write8((ushort)(0x1000 + i), factorialBin[i]);
         }
 
-        // Reset to load PC from reset vector ($1000)
+        // Reset to load PC from reset vector ($1000). Power-on already ran, so this
+        // warm reset keeps the program that was just written into RAM.
         machine.Reset();
 
         // Verify PC is at $1000
@@ -283,6 +303,11 @@ public class MachineBuilderIntegrationTests
             .MapRegion(0x0000, 64 * 1024, ramTarget, RegionTag.Ram, PagePerms.All)
             .WithRom(rom, 0xC000, "ROM")
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -362,6 +387,11 @@ public class MachineBuilderIntegrationTests
             .MapRegion(0x0000, 64 * 1024, ramTarget, RegionTag.Ram, PagePerms.All)
             .WithRom(rom, 0xC000, "ROM")
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
         var initialCycle = machine.Now;

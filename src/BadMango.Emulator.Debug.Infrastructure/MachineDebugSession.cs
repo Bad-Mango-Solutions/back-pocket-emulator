@@ -277,6 +277,11 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <exception cref="InvalidOperationException">A background run is active, or the attached machine was replaced.</exception>
     public ulong Step(int count = 1, CancellationToken cancellationToken = default, ulong? maxCycles = null)
     {
+        if (debugContext.Machine?.State == MachineState.Off)
+        {
+            throw new InvalidOperationException("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
         if (count <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(count), "Step count must be greater than zero.");
@@ -329,6 +334,11 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <exception cref="InvalidOperationException">A background run is active.</exception>
     public RunResult RunUntil(RunCondition condition, RunBudget budget, CancellationToken cancellationToken = default)
     {
+        if (debugContext.Machine?.State == MachineState.Off)
+        {
+            throw new InvalidOperationException("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
         ArgumentNullException.ThrowIfNull(condition);
         ArgumentNullException.ThrowIfNull(budget);
         ValidateCondition(condition);
@@ -425,6 +435,11 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <exception cref="ArgumentException">The run condition is missing a required field.</exception>
     public Guid StartRun(RunCondition condition, RunBudget budget, CancellationToken cancellationToken = default)
     {
+        if (debugContext.Machine?.State == MachineState.Off)
+        {
+            throw new InvalidOperationException("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
         ArgumentNullException.ThrowIfNull(condition);
         ArgumentNullException.ThrowIfNull(budget);
         ValidateCondition(condition);
@@ -517,7 +532,15 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     }
 
     /// <inheritdoc />
-    public void Pause() => Machine.Pause();
+    public void Pause()
+    {
+        if (Machine.State == MachineState.Off)
+        {
+            throw new InvalidOperationException("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
+        Machine.Pause();
+    }
 
     /// <inheritdoc />
     /// <remarks>
@@ -526,6 +549,11 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
     /// <exception cref="InvalidOperationException">A background run is active.</exception>
     public void Reset(ResetKind resetKind)
     {
+        if (Machine.State == MachineState.Off)
+        {
+            throw new InvalidOperationException("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
         EnterExecutionUnlessBackgroundRunActive();
         try
         {

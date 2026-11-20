@@ -65,6 +65,11 @@ public class Cpu65C02GenericBuilderIntegrationTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // The test program at $0300:
@@ -130,6 +135,11 @@ public class Cpu65C02GenericBuilderIntegrationTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // The test program at $0300:
@@ -193,6 +203,11 @@ public class Cpu65C02GenericBuilderIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -264,6 +279,11 @@ public class Cpu65C02GenericBuilderIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -359,6 +379,11 @@ public class Cpu65C02GenericBuilderIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 

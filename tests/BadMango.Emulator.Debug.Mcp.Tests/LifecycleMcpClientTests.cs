@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Debug.Mcp.Tests;
 
 using System.IO.Pipelines;
+using System.Reflection;
 using System.Text.Json;
 
 using BadMango.Emulator.Debug.Mcp;
@@ -316,6 +317,7 @@ public sealed class LifecycleMcpClientTests
 
         public async Task<JsonElement> CallAsync(string name, Dictionary<string, object?>? arguments = null)
         {
+            EnsurePowered(this.host, name);
             CallToolResult result = await this.Client.CallToolAsync(name, arguments);
             Assert.That(result.IsError, Is.Not.True, Describe(result));
             Assert.That(result.StructuredContent, Is.Not.Null, Describe(result));
@@ -332,6 +334,35 @@ public sealed class LifecycleMcpClientTests
             await this.host.StopAsync();
             this.host.Dispose();
             Restore(this.previousLogger);
+        }
+
+        private static void EnsurePowered(IHost host, string toolName)
+        {
+            if (toolName is not ("reset" or "step" or "run_until" or "pause"))
+            {
+                return;
+            }
+
+            Assembly? infra = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(assembly => assembly.GetName().Name == "BadMango.Emulator.Debug.Infrastructure");
+            Type? contextType = infra?.GetType("BadMango.Emulator.Debug.Infrastructure.Commands.IDebugContext");
+            if (contextType is null)
+            {
+                return;
+            }
+
+            object? context = host.Services.GetService(contextType);
+            object? machine = context is null ? null : contextType.GetProperty("Machine")?.GetValue(context);
+            if (machine is null || machine.GetType().GetProperty("State")?.GetValue(machine)?.ToString() != "Off")
+            {
+                return;
+            }
+
+            MethodInfo? powerOn = machine.GetType().GetMethod("PowerOnAsync", [typeof(CancellationToken)]);
+            if (powerOn?.Invoke(machine, [CancellationToken.None]) is Task powerOnTask)
+            {
+                powerOnTask.GetAwaiter().GetResult();
+            }
         }
 
         private static void Restore(ILogger previous)

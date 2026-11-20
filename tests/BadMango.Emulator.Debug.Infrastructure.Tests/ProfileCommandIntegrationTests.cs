@@ -305,7 +305,7 @@ public class ProfileCommandIntegrationTests
     }
 
     /// <summary>
-    /// Verifies that CreateDebugSystem properly resets the machine.
+    /// Verifies that CreateDebugSystem leaves the machine off until boot.
     /// </summary>
     [Test]
     public void CreateDebugSystem_MachineIsReset()
@@ -314,8 +314,7 @@ public class ProfileCommandIntegrationTests
 
         var (machine, _, _) = MachineFactory.CreateDebugSystem(profile);
 
-        // CPU should be at reset vector location
-        Assert.That(machine.State, Is.EqualTo(MachineState.Stopped), "Machine should be in stopped state");
+        Assert.That(machine.State, Is.EqualTo(MachineState.Off), "A new machine starts off until boot");
     }
 
     /// <summary>

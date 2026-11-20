@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
+using BadMango.Emulator.Bus;
+
 /// <summary>
 /// Pauses machine execution without fully stopping.
 /// </summary>
@@ -75,6 +77,11 @@ public sealed class PauseCommand : CommandHandlerBase, ICommandHelp
         if (debugContext.Machine is null)
         {
             return CommandResult.Error("No machine attached to debug context.");
+        }
+
+        if (debugContext.Machine.State == MachineState.Off)
+        {
+            return CommandResult.Error("Machine is off. Use 'power --on' (or 'boot') first.");
         }
 
         var stateBefore = debugContext.Machine.State;

@@ -92,6 +92,19 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     MachineState State { get; }
 
     /// <summary>
+    /// Gets or sets the deterministic memory pattern used for power-on.
+    /// </summary>
+    PowerOnMemoryPattern PowerOnMemoryPattern { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional seed override for power-on memory noise.
+    /// </summary>
+    /// <remarks>
+    /// When <see langword="null"/>, a seed derived from the host clock is used for each power-on.
+    /// </remarks>
+    int? PowerOnMemorySeed { get; set; }
+
+    /// <summary>
     /// Resets the machine by asserting the RESET signal.
     /// </summary>
     /// <param name="hardReset">
@@ -266,6 +279,21 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     /// </para>
     /// </remarks>
     Task BootAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Powers on the machine and leaves it stopped until execution is started.
+    /// </summary>
+    /// <param name="cancellationToken">Token to cancel the power-on operation.</param>
+    /// <returns>A task that completes when the machine is powered on.</returns>
+    Task PowerOnAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Powers off the machine, flushes disks, resets devices, applies the power-on RAM pattern,
+    /// and leaves the machine in <see cref="MachineState.Off"/>.
+    /// </summary>
+    /// <param name="cancellationToken">Token to cancel the power-off operation.</param>
+    /// <returns>A task that completes when the machine is off.</returns>
+    Task PowerOffAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Halts the machine completely, equivalent to the STP instruction effect.

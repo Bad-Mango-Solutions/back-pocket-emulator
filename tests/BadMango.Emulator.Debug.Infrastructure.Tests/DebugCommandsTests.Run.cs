@@ -149,6 +149,7 @@ public partial class DebugCommandsTests
             .WithCpuFactory(ctx => new Cpu65C02(ctx))
             .MapRegion(0x0000, 64 * 1024, new RamTarget(ram.Slice(0, 64 * 1024)), RegionTag.Ram, PagePerms.All)
             .Build();
+        machine.PowerOnAsync().GetAwaiter().GetResult();
 
         debugContext.AttachMachine(machine);
 

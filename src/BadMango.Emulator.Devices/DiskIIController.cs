@@ -57,7 +57,7 @@ using Serilog.Events;
 /// </para>
 /// </remarks>
 [DeviceType("disk-ii-compatible")]
-public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceiver
+public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceiver, IFlushableStorage
 {
     /// <summary>
     /// Number of CPU cycles required for one nibble byte to pass under the read head
@@ -482,7 +482,10 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     public void Flush(int driveIndex)
     {
         ValidateDriveIndex(driveIndex);
-        drives[driveIndex].Flush(logger);
+
+        // Power-off and `disk flush` must see I/O and authorization failures directly.
+        // Best-effort paths (motor-off, reset) call Drive525.Flush and log instead.
+        drives[driveIndex].FlushOrThrow();
     }
 
     /// <inheritdoc />

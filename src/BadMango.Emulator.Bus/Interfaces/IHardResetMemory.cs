@@ -20,4 +20,13 @@ public interface IHardResetMemory
     /// Clears the full backing store associated with this component.
     /// </summary>
     void ClearForHardReset();
+
+    /// <summary>
+    /// Applies the selected power-on memory pattern to the backing store.
+    /// </summary>
+    /// <param name="pattern">The power-on memory pattern to apply.</param>
+    void ApplyPowerOnPattern(PowerOnMemoryPattern pattern)
+    {
+        ClearForHardReset();
+    }
 }

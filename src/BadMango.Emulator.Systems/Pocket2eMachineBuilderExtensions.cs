@@ -665,6 +665,9 @@ public static class Pocket2eMachineBuilderExtensions
 
         /// <inheritdoc />
         public void ClearForHardReset() => Memory.Clear();
+
+        /// <inheritdoc />
+        public void ApplyPowerOnPattern(PowerOnMemoryPattern pattern) => pattern.Apply(Memory.AsSpan());
     }
 
     /// <summary>
@@ -677,6 +680,9 @@ public static class Pocket2eMachineBuilderExtensions
     {
         /// <inheritdoc />
         public void ClearForHardReset() => Memory.Clear();
+
+        /// <inheritdoc />
+        public void ApplyPowerOnPattern(PowerOnMemoryPattern pattern) => pattern.Apply(Memory.AsSpan());
     }
 
     /// <summary>
@@ -689,6 +695,9 @@ public static class Pocket2eMachineBuilderExtensions
     {
         /// <inheritdoc />
         public void ClearForHardReset() => Memory.Clear();
+
+        /// <inheritdoc />
+        public void ApplyPowerOnPattern(PowerOnMemoryPattern pattern) => pattern.Apply(Memory.AsSpan());
     }
 
     /// <summary>
@@ -701,6 +710,9 @@ public static class Pocket2eMachineBuilderExtensions
     {
         /// <inheritdoc />
         public void ClearForHardReset() => Memory.Clear();
+
+        /// <inheritdoc />
+        public void ApplyPowerOnPattern(PowerOnMemoryPattern pattern) => pattern.Apply(Memory.AsSpan());
     }
 
     /// <summary>
@@ -713,6 +725,9 @@ public static class Pocket2eMachineBuilderExtensions
     {
         /// <inheritdoc />
         public void ClearForHardReset() => Memory.Clear();
+
+        /// <inheritdoc />
+        public void ApplyPowerOnPattern(PowerOnMemoryPattern pattern) => pattern.Apply(Memory.AsSpan());
     }
 
     /// <summary>

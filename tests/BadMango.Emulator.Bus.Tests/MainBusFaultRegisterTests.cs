@@ -400,6 +400,11 @@ public class MainBusFaultRegisterTests
         var machine = new Machine(cpu.Object, bus, scheduler, new SignalBus(), new DeviceRegistry());
         scheduler.SetEventContext(machine);
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         Assert.Multiple(() =>

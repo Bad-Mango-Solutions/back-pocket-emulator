@@ -193,6 +193,9 @@ public class MachineLifecycleTests
         int generationAtFirstDispose = -1;
         int inStepAtFirstDispose = -1;
 
+        // Power-on steps the CPU for the reset hold. That must return; the blocking
+        // step is only the run loop the test disposes.
+        int blockSteps = 0;
         var cpu = new Mock<ICpu>();
         cpu.Setup(mock => mock.Halted).Returns(false);
         cpu.Setup(mock => mock.IsStopRequested).Returns(() => Volatile.Read(ref stopRequested) != 0);
@@ -200,6 +203,11 @@ public class MachineLifecycleTests
         cpu.Setup(mock => mock.ClearStopRequest()).Callback(() => Volatile.Write(ref stopRequested, 0));
         cpu.Setup(mock => mock.Step()).Returns(() =>
         {
+            if (Volatile.Read(ref blockSteps) == 0)
+            {
+                return new CpuStepResult(CpuRunState.Running, 1);
+            }
+
             Interlocked.Increment(ref inStep);
             entered.Set();
             while (Volatile.Read(ref stopRequested) == 0)
@@ -223,6 +231,8 @@ public class MachineLifecycleTests
             }))
             .Build();
         IMachine machine = built!;
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+        Volatile.Write(ref blockSteps, 1);
 
         var runThread = new Thread(() => machine.Run())
         {
@@ -269,6 +279,157 @@ public class MachineLifecycleTests
                 async () => await machine.ResumeAsync().ConfigureAwait(false),
                 Throws.TypeOf<ObjectDisposedException>());
         });
+    }
+
+    /// <summary>
+    /// Powering off a running machine from a thread that is not the machine thread returns
+    /// while the run loop is still inside the CPU.
+    /// </summary>
+    [Test]
+    public void PowerOff_WhileRunningFromAnotherThread_Completes()
+    {
+        int stopRequested = 0;
+        int observeRun = 0;
+        using var entered = new ManualResetEventSlim(false);
+        var cpu = new Mock<ICpu>();
+        cpu.Setup(mock => mock.Halted).Returns(false);
+        cpu.Setup(mock => mock.IsStopRequested).Returns(() => Volatile.Read(ref stopRequested) != 0);
+        cpu.Setup(mock => mock.RequestStop()).Callback(() => Volatile.Write(ref stopRequested, 1));
+        cpu.Setup(mock => mock.ClearStopRequest()).Callback(() => Volatile.Write(ref stopRequested, 0));
+        cpu.Setup(mock => mock.Step()).Returns(() =>
+        {
+            if (Volatile.Read(ref observeRun) != 0)
+            {
+                entered.Set();
+            }
+
+            return new CpuStepResult(CpuRunState.Running, 1);
+        });
+
+        IMachine machine = new MachineBuilder()
+            .WithCpuFactory(_ => cpu.Object)
+            .Build();
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+        Volatile.Write(ref observeRun, 1);
+
+        var runThread = new Thread(() => machine.Run())
+        {
+            IsBackground = true,
+            Name = "power-off-run",
+        };
+        runThread.Start();
+        Assume.That(
+            entered.Wait(TimeSpan.FromSeconds(2)),
+            Is.True,
+            "The run loop never stepped the CPU.");
+        Assume.That(machine.State, Is.EqualTo(MachineState.Running));
+
+        var powerOff = Task.Run(() => machine.PowerOffAsync().GetAwaiter().GetResult());
+        bool completed = powerOff.Wait(TimeSpan.FromSeconds(2));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(completed, Is.True, "PowerOffAsync did not return while the machine was running.");
+            Assert.That(powerOff.IsCompletedSuccessfully, Is.True);
+            Assert.That(machine.State, Is.EqualTo(MachineState.Off));
+            Assert.That(runThread.Join(TimeSpan.FromSeconds(2)), Is.True, "The run loop did not exit after power-off.");
+        });
+    }
+
+    /// <summary>
+    /// Power-off flushes every drive on component and slot-card controllers, leaves the
+    /// media mounted, and lets an <see cref="IOException"/> out without wrapping it.
+    /// </summary>
+    [Test]
+    public void PowerOff_FlushesStorage_AndSurfacesIOExceptionUnwrapped()
+    {
+        var component = new RecordingStorage(driveCount: 2);
+        var cardFlushed = new List<int>();
+        var card = new Mock<ISlotCard>();
+        card.SetupProperty(mock => mock.SlotNumber);
+        card.Setup(mock => mock.IOHandlers).Returns((SlotIOHandlers?)null);
+        var flushable = card.As<IFlushableStorage>();
+        flushable.SetupGet(mock => mock.DriveCount).Returns(1);
+        flushable.Setup(mock => mock.Flush(It.IsAny<int>())).Callback<int>(cardFlushed.Add);
+        var slotManager = new SlotManager(new IOPageDispatcher());
+        slotManager.Install(6, card.Object);
+
+        var machine = new MachineBuilder()
+            .WithCpuFactory(_ => CreateCpu().Object)
+            .AddComponent(component)
+            .Build();
+        ((Machine)machine).AddComponent<ISlotManager>(slotManager);
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+
+        machine.PowerOffAsync().GetAwaiter().GetResult();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(machine.State, Is.EqualTo(MachineState.Off));
+            Assert.That(component.Flushed, Is.EqualTo(new[] { 0, 1 }));
+            Assert.That(cardFlushed, Is.EqualTo(new[] { 0 }));
+            Assert.That(component.Mounted, Is.True);
+        });
+
+        component.Error = new IOException("disk full");
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+        var io = Assert.Throws<IOException>(() => machine.PowerOffAsync().GetAwaiter().GetResult());
+        Assert.Multiple(() =>
+        {
+            Assert.That(io!.Message, Is.EqualTo("disk full"));
+            Assert.That(machine.State, Is.EqualTo(MachineState.Stopped));
+            Assert.That(component.Mounted, Is.True);
+        });
+
+        component.Error = new UnauthorizedAccessException("denied");
+        var denied = Assert.Throws<UnauthorizedAccessException>(() => machine.PowerOffAsync().GetAwaiter().GetResult());
+        Assert.That(denied!.Message, Is.EqualTo("denied"));
+    }
+
+    /// <summary>
+    /// An omitted power-on seed is taken from the host clock and logged, on both power-on
+    /// and power-off. A fixed seed is applied as given.
+    /// </summary>
+    [Test]
+    public void PowerCycle_AppliesHostClockSeedWhenSeedIsOmitted()
+    {
+        var sink = new CollectingSink();
+        ILogger logger = new LoggerConfiguration().WriteTo.Sink(sink).CreateLogger();
+        var ram = new RecordingRam();
+        IMachine machine = new MachineBuilder()
+            .WithLogger(logger)
+            .WithCpuFactory(_ => CreateCpu().Object)
+            .AddComponent(ram)
+            .Build();
+
+        machine.PowerOnMemorySeed = 99;
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+        Assert.That(ram.AppliedSeed, Is.EqualTo(99));
+        Assert.That(sink.Events, Is.Empty);
+
+        machine.PowerOnMemorySeed = null;
+        machine.PowerOffAsync().GetAwaiter().GetResult();
+        Assert.That(LoggedSeed(sink), Is.EqualTo(ram.AppliedSeed));
+
+        sink.Events.Clear();
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+        Assert.That(LoggedSeed(sink), Is.EqualTo(ram.AppliedSeed));
+    }
+
+    private static int LoggedSeed(CollectingSink sink)
+    {
+        LogEvent? logged = null;
+        foreach (LogEvent logEvent in sink.Events)
+        {
+            if (logEvent.Level == LogEventLevel.Information
+                && logEvent.Properties.ContainsKey("Seed"))
+            {
+                logged = logEvent;
+            }
+        }
+
+        Assert.That(logged, Is.Not.Null, "A derived power-on seed was not logged.");
+        return (int)((ScalarValue)logged!.Properties["Seed"]).Value!;
     }
 
     private static int ActiveLoopGeneration(IMachine machine)
@@ -351,6 +512,46 @@ public class MachineLifecycleTests
 
     private sealed class Marker
     {
+    }
+
+    private sealed class RecordingStorage : IFlushableStorage
+    {
+        public RecordingStorage(int driveCount)
+        {
+            DriveCount = driveCount;
+        }
+
+        public int DriveCount { get; }
+
+        public bool Mounted { get; private set; } = true;
+
+        public Exception? Error { get; set; }
+
+        public List<int> Flushed { get; } = [];
+
+        public void Flush(int driveIndex)
+        {
+            if (Error is not null)
+            {
+                throw Error;
+            }
+
+            Flushed.Add(driveIndex);
+        }
+    }
+
+    private sealed class RecordingRam : IHardResetMemory
+    {
+        public int AppliedSeed { get; private set; }
+
+        public void ClearForHardReset()
+        {
+        }
+
+        public void ApplyPowerOnPattern(PowerOnMemoryPattern pattern)
+        {
+            AppliedSeed = pattern.Seed;
+        }
     }
 
     private sealed class ObservingDisposable : IDisposable

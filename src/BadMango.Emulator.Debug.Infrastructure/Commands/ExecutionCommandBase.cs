@@ -7,6 +7,7 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 using System.Diagnostics;
 using System.Globalization;
 
+using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 
 /// <summary>
@@ -72,6 +73,22 @@ public abstract class ExecutionCommandBase : CommandHandlerBase, ICommandHelp
 
     /// <inheritdoc/>
     public abstract IReadOnlyList<string> SeeAlso { get; }
+
+    /// <summary>
+    /// Gets an error result when the attached machine is powered off.
+    /// </summary>
+    /// <param name="debugContext">The debug context.</param>
+    /// <returns>An error result, or <see langword="null"/> when execution may proceed.</returns>
+    protected static CommandResult? GuardOff(IDebugContext debugContext)
+    {
+        ArgumentNullException.ThrowIfNull(debugContext);
+        if (debugContext.Machine?.State == MachineState.Off)
+        {
+            return CommandResult.Error("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Configures tracing based on options.

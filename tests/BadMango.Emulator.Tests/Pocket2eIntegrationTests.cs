@@ -72,7 +72,7 @@ public class Pocket2eIntegrationTests
             Assert.That(machine, Is.Not.Null, "Machine should be created");
             Assert.That(machine.Cpu, Is.Not.Null, "CPU should be created");
             Assert.That(machine.Bus, Is.Not.Null, "Bus should be created");
-            Assert.That(machine.State, Is.EqualTo(MachineState.Stopped), "Initial state should be Stopped");
+            Assert.That(machine.State, Is.EqualTo(MachineState.Off), "A new machine starts off");
         });
     }
 
@@ -311,6 +311,11 @@ public class Pocket2eIntegrationTests
             .WithCard(6, mockCard.Object)
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // ─── Write ML program at $0300 ──────────────────────────────────────────
@@ -392,6 +397,11 @@ public class Pocket2eIntegrationTests
             .WithCard(4, thunderclock)
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // ─── Write ML program at $0300 ──────────────────────────────────────────
@@ -443,7 +453,17 @@ public class Pocket2eIntegrationTests
             .Build();
 
         // Act
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset(); // Reset twice to trigger card resets
 
         // Assert - Reset is called at least once on each card
@@ -621,6 +641,11 @@ public class Pocket2eIntegrationTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // The stub ROM sets reset vector to $FF00 which has JMP $FF00
@@ -665,6 +690,11 @@ public class Pocket2eIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -734,6 +764,11 @@ public class Pocket2eIntegrationTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Read original value from ROM
@@ -760,6 +795,11 @@ public class Pocket2eIntegrationTests
         machine.StateChanged += state => stateChanges.Add(state);
 
         // Act
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         machine.Run(); // Will halt immediately on STP
 
@@ -786,6 +826,11 @@ public class Pocket2eIntegrationTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         var auxMemory = machine.GetComponent<AuxiliaryMemoryController>()!;
@@ -803,6 +848,11 @@ public class Pocket2eIntegrationTests
         bool staleEventFired = false;
         machine.Scheduler.ScheduleAfter(5, ScheduledEventKind.DeviceTimer, 0, _ => staleEventFired = true, "stale");
         var cycleBeforeReset = machine.Now.Value;
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
         var cycleAfterReset = machine.Now.Value;
@@ -857,6 +907,11 @@ public class Pocket2eIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -940,6 +995,11 @@ public class Pocket2eIntegrationTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         var initialCycle = machine.Now;
 
@@ -1005,6 +1065,11 @@ public class Pocket2eIntegrationTests
             .WithStubRom()
             .WithCard(4, thunderclock)
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -1096,6 +1161,11 @@ public class Pocket2eIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -1260,6 +1330,11 @@ public class Pocket2eIntegrationTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Sanity: in the default $C082-equivalent power-on state, $E000 reads ROM ($EA).
@@ -1296,6 +1371,11 @@ public class Pocket2eIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -1334,6 +1414,11 @@ public class Pocket2eIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -1380,6 +1465,11 @@ public class Pocket2eIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 
@@ -1435,6 +1525,11 @@ public class Pocket2eIntegrationTests
             .WithStubRom()
             .Build();
 
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
 
         // Pollute LC RAM via Bank 2 split-mode writes.
@@ -1470,6 +1565,11 @@ public class Pocket2eIntegrationTests
             .AsPocket2e()
             .WithStubRom()
             .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
 
         machine.Reset();
 

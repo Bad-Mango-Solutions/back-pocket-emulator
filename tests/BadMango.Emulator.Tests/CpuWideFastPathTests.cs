@@ -437,6 +437,11 @@ public class CpuWideFastPathTests
     public void LanguageCardSplitAndPage0_Read16_StayOnTry_RomIsIndexed()
     {
         var machine = new MachineBuilder().AsPocket2e().WithStubRom().Build();
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
         machine.Reset();
         var bus = (MainBus)machine.Bus;
         var cpu = machine.Cpu;
