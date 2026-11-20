@@ -80,8 +80,8 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
     /// <inheritdoc/>
     public IReadOnlyList<CommandOption> Options { get; } =
     [
-        new("--on", null, "flag", "Power on the machine and begin execution.", "off"),
-        new("--off", null, "flag", "Power off the machine, flush disks, and reset devices.", "off"),
+        new("--on", null, "flag", "Power on the machine and begin execution. This is the default.", "on"),
+        new("--off", null, "flag", "Power off the machine, flush disks, and reset devices.", null),
     ];
 
     /// <inheritdoc/>

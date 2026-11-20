@@ -84,8 +84,6 @@ public static class MachineFactory
         var disassembler = new Disassembler(opcodeTable, machine.Bus);
         var info = MachineInfo.FromProfile(profile);
 
-        ConfigurePowerOnMemory(machine, profile);
-
         return (machine, disassembler, info);
     }
 

@@ -119,6 +119,14 @@ public sealed class Machine : IMachine
     private int activeLoopGeneration;
 
     /// <summary>
+    /// Non-zero while a quiescent caller owns the CPU outside <see cref="lifecycleSync"/>.
+    /// Written under <see cref="lifecycleSync"/>. A run loop must not start, and another thread
+    /// must not step the CPU, until the owner releases it. The lock itself is not held across
+    /// that work, so the owner may wait for another thread.
+    /// </summary>
+    private int quiescentWork;
+
+    /// <summary>
     /// Last generation handed out (under <see cref="lifecycleSync"/>).
     /// </summary>
     private int lastLoopGeneration;
@@ -269,18 +277,41 @@ public sealed class Machine : IMachine
             return;
         }
 
-        lock (lifecycleSync)
+        while (true)
         {
-            if (activeLoopGeneration != 0)
+            Task waitTask;
+            lock (lifecycleSync)
             {
-                pendingRequests.Enqueue(action);
-                concreteSignals?.RequestService();
-                return;
+                if (activeLoopGeneration != 0)
+                {
+                    pendingRequests.Enqueue(action);
+                    concreteSignals?.RequestService();
+                    return;
+                }
+
+                if (quiescentWork == 0)
+                {
+                    // Claim ownership under the lock, then run outside it. Holding the lock
+                    // across the action deadlocks when the action waits for another thread
+                    // that itself needs lifecycleSync (a CPU step that blocks, a flush that
+                    // posts back, a reset that joins the run loop).
+                    quiescentWork = 1;
+                    break;
+                }
+
+                waitTask = lifecycleChanged.Task;
             }
 
-            // Quiescent: run inline while holding the lifecycle lock so no run loop can
-            // start (and take ownership of the CPU) until the action has finished.
+            waitTask.Wait();
+        }
+
+        try
+        {
             RunAsMachine(action);
+        }
+        finally
+        {
+            ReleaseQuiescentWork();
         }
     }
 
@@ -369,10 +400,21 @@ public sealed class Machine : IMachine
             Task waitTask;
             lock (lifecycleSync)
             {
-                // If running, pause first and wait for the run loop to let go of the CPU. A Resume
-                // that slips in while this thread waits is paused again: the step wins.
-                if (activeLoopGeneration != 0 && executingMachine != this)
+                if (state == MachineState.Off)
                 {
+                    throw new InvalidOperationException("Machine is off. Use 'power --on' (or 'boot') first.");
+                }
+
+                // Another thread owns the CPU for quiescent work (power on/off, posted reset).
+                // Wait outside this lock; stepping here would race that work.
+                if (quiescentWork != 0 && executingMachine != this)
+                {
+                    waitTask = lifecycleChanged.Task;
+                }
+                else if (activeLoopGeneration != 0 && executingMachine != this)
+                {
+                    // If running, pause first and wait for the run loop to let go of the CPU. A Resume
+                    // that slips in while this thread waits is paused again: the step wins.
                     if (state == MachineState.Running)
                     {
                         state = MachineState.Paused;
@@ -482,38 +524,36 @@ public sealed class Machine : IMachine
     }
 
     /// <inheritdoc />
-    public async Task PowerOffAsync(CancellationToken cancellationToken = default)
+    public Task PowerOffAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         cancellationToken.ThrowIfCancellationRequested();
-        StopRunLoop();
-
-        await Task.Yield();
-        lock (lifecycleSync)
+        if (executingMachine == this)
         {
-            if (executingMachine == this)
-            {
-                throw new InvalidOperationException("Machine cannot be powered off from the machine thread.");
-            }
+            throw new InvalidOperationException("Machine cannot be powered off from the machine thread.");
+        }
 
+        // Stop the loop and wait for it before any power-off work. The wait runs outside
+        // lifecycleSync (see StopRunLoop). Ownership is then claimed so a new loop cannot
+        // start, and the flush/reset/pattern body runs without holding the lock.
+        AcquireQuiescentOwnership(cancellationToken);
+        try
+        {
+            PowerOnMemoryPattern pattern = CreatePowerOnPattern(logDerivedSeed: true);
             RunAsMachine(() =>
             {
-                foreach (var controller in GetDiskControllers())
-                {
-                    var driveCountProperty = controller.GetType().GetProperty("DriveCount");
-                    int driveCount = driveCountProperty?.GetValue(controller) is int count ? count : 0;
-                    var flushMethod = controller.GetType().GetMethod("Flush", [typeof(int)]);
-                    for (int drive = 0; drive < driveCount; drive++)
-                    {
-                        flushMethod?.Invoke(controller, [drive]);
-                    }
-                }
-
+                FlushStorage();
                 PowerOnResetDevices([]);
-                ApplyPowerOnPattern();
+                ApplyPowerOnPattern(pattern);
                 SetState(MachineState.Off);
             });
         }
+        finally
+        {
+            ReleaseQuiescentWork();
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -686,24 +726,10 @@ public sealed class Machine : IMachine
         }
     }
 
-    private bool IsDiskController(object component)
-    {
-        return component.GetType().GetInterfaces().Any(type => type.Name == "IDiskController");
-    }
-
     private async Task PowerOnCoreAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        int seed = powerOnMemorySeed ?? unchecked((int)Environment.TickCount64);
-        if (powerOnMemorySeed is null)
-        {
-            logger.Information(
-                "Power-on memory seed {Seed} for pattern {Pattern}.",
-                seed,
-                powerOnMemoryPattern.Kind);
-        }
-
-        var pattern = new PowerOnMemoryPattern(powerOnMemoryPattern.Kind, seed);
+        PowerOnMemoryPattern pattern = CreatePowerOnPattern(logDerivedSeed: true);
         await Task.Yield();
 
         Post(() =>
@@ -719,14 +745,36 @@ public sealed class Machine : IMachine
         SetState(MachineState.Stopped);
     }
 
-    private void ApplyPowerOnPattern(PowerOnMemoryPattern? pattern = null)
+    /// <summary>
+    /// Builds the pattern applied at power-on and power-off.
+    /// </summary>
+    /// <param name="logDerivedSeed">
+    /// When <see langword="true"/> and <see cref="PowerOnMemorySeed"/> is <see langword="null"/>,
+    /// logs the host-clock seed so the run can be reproduced.
+    /// </param>
+    /// <returns>The pattern, including the seed that will actually be applied.</returns>
+    private PowerOnMemoryPattern CreatePowerOnPattern(bool logDerivedSeed)
     {
-        PowerOnMemoryPattern selected = pattern ?? powerOnMemoryPattern;
         if (powerOnMemorySeed is { } fixedSeed)
         {
-            selected = new PowerOnMemoryPattern(selected.Kind, fixedSeed);
+            return new PowerOnMemoryPattern(powerOnMemoryPattern.Kind, fixedSeed);
         }
 
+        int seed = unchecked((int)Environment.TickCount64);
+        if (logDerivedSeed)
+        {
+            logger.Information(
+                "Power-on memory seed {Seed} for pattern {Pattern}.",
+                seed,
+                powerOnMemoryPattern.Kind);
+        }
+
+        return new PowerOnMemoryPattern(powerOnMemoryPattern.Kind, seed);
+    }
+
+    private void ApplyPowerOnPattern(PowerOnMemoryPattern? pattern = null)
+    {
+        PowerOnMemoryPattern selected = pattern ?? CreatePowerOnPattern(logDerivedSeed: true);
         bool anyRegistered = false;
         foreach (var memory in components.OfType<IHardResetMemory>())
         {
@@ -734,27 +782,38 @@ public sealed class Machine : IMachine
             anyRegistered = true;
         }
 
+        // Minimal machines have no registered RAM component. The bus clear is the only
+        // backing store those machines expose, for every pattern kind.
         if (!anyRegistered)
         {
-            if (selected.Kind == PowerOnMemoryPatternKind.Zero)
+            Bus.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Flushes every mounted drive. Failures propagate as thrown by the controller
+    /// (<see cref="IOException"/>, <see cref="UnauthorizedAccessException"/>), not wrapped.
+    /// Media stays mounted.
+    /// </summary>
+    private void FlushStorage()
+    {
+        foreach (var storage in EnumerateFlushableStorage())
+        {
+            for (int drive = 0; drive < storage.DriveCount; drive++)
             {
-                Bus.Clear();
-            }
-            else
-            {
-                Bus.Clear();
+                storage.Flush(drive);
             }
         }
     }
 
-    private IEnumerable<object> GetDiskControllers()
+    private IEnumerable<IFlushableStorage> EnumerateFlushableStorage()
     {
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
-        foreach (var controller in components.Where(IsDiskController))
+        foreach (var storage in components.OfType<IFlushableStorage>())
         {
-            if (seen.Add(controller))
+            if (seen.Add(storage))
             {
-                yield return controller;
+                yield return storage;
             }
         }
 
@@ -762,9 +821,9 @@ public sealed class Machine : IMachine
         {
             foreach (var card in slotManager.Slots.Values)
             {
-                if (IsDiskController(card) && seen.Add(card))
+                if (card is IFlushableStorage storage && seen.Add(card))
                 {
-                    yield return card;
+                    yield return storage;
                 }
             }
         }
@@ -1314,7 +1373,7 @@ public sealed class Machine : IMachine
                     return false;
                 }
 
-                if (activeLoopGeneration == 0)
+                if (activeLoopGeneration == 0 && quiescentWork == 0)
                 {
                     generation = ++lastLoopGeneration;
                     activeLoopGeneration = generation;
@@ -1328,7 +1387,7 @@ public sealed class Machine : IMachine
                     break;
                 }
 
-                // A previous loop is winding down; wait for it to release the CPU.
+                // A previous loop is winding down, or a quiescent owner holds the CPU.
                 waitTask = lifecycleChanged.Task;
             }
 
@@ -1504,6 +1563,57 @@ public sealed class Machine : IMachine
 
         StateChanged?.Invoke(newState);
         return true;
+    }
+
+    /// <summary>
+    /// Stops any run loop, then claims quiescent ownership so the caller can mutate the CPU
+    /// without holding <see cref="lifecycleSync"/>.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the wait for a loop that must be stopped again.</param>
+    private void AcquireQuiescentOwnership(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            StopRunLoop();
+
+            Task? waitTask = null;
+            lock (lifecycleSync)
+            {
+                if (activeLoopGeneration != 0)
+                {
+                    // A loop started in the gap after StopRunLoop returned. Stop it again.
+                    continue;
+                }
+
+                if (quiescentWork == 0)
+                {
+                    quiescentWork = 1;
+                    return;
+                }
+
+                waitTask = lifecycleChanged.Task;
+            }
+
+            waitTask.Wait(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Drops a claim taken by <see cref="AcquireQuiescentOwnership"/> or <see cref="Post"/>
+    /// and wakes threads waiting to run or step.
+    /// </summary>
+    private void ReleaseQuiescentWork()
+    {
+        TaskCompletionSource signal;
+        lock (lifecycleSync)
+        {
+            quiescentWork = 0;
+            signal = lifecycleChanged;
+            lifecycleChanged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        signal.TrySetResult();
     }
 
     private void RunAsMachine(Action action)
