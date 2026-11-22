@@ -408,6 +408,57 @@ public class Dos33FileSystemTests
     }
 
     /// <summary>
+    /// A logical file longer than the disk is corrupt and is not allocated.
+    /// </summary>
+    [Test]
+    public void Read_WhenTheLogicalLengthExceedsTheDisk_ReturnsCorruptStructure()
+    {
+        var builder = new Dos33ImageBuilder();
+        builder.AddFile("GOOD", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x11 } });
+        builder.AddFile("LONG", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x22 } });
+        var fixture = builder.Build();
+        var image = MutableImage(fixture);
+        var diskSectors = fixture.TrackCount * Dos33Layout.DefaultSectorsPerTrack;
+        var origin = 2 * Dos33Layout.TrackSectorList.PairsPerSector;
+        var slot = diskSectors - origin;
+        Assume.That(slot, Is.GreaterThanOrEqualTo(0));
+        Assume.That(slot, Is.LessThan(Dos33Layout.TrackSectorList.PairsPerSector));
+        var entry = fixture.Entries.Single(item => item.Name == "LONG");
+        var data = entry.DataSectors[0];
+        Assume.That(data.Allocated, Is.True);
+        Assume.That(TryFindZeroSector(image, fixture.TrackCount, out var middleTrack, out var middleSector), Is.True);
+        image[((middleTrack * Dos33Layout.DefaultSectorsPerTrack) + middleSector) * Dos33Layout.SectorSize] = 1;
+        Assume.That(TryFindZeroSector(image, fixture.TrackCount, out var lastTrack, out var lastSector), Is.True);
+        Assume.That(middleTrack != lastTrack || middleSector != lastSector, Is.True);
+
+        var ts = Sector(image, entry.TsTrack, entry.TsSector);
+        Assume.That(ts[Dos33Layout.TrackSectorList.SectorBaseOffset], Is.EqualTo(0));
+        ts[Dos33Layout.TrackSectorList.NextTrackOffset] = (byte)middleTrack;
+        ts[Dos33Layout.TrackSectorList.NextSectorOffset] = (byte)middleSector;
+        var middle = Sector(image, middleTrack, middleSector);
+        middle.Clear();
+        middle[Dos33Layout.TrackSectorList.SectorBaseOffset] = (byte)Dos33Layout.TrackSectorList.PairsPerSector;
+        middle[Dos33Layout.TrackSectorList.NextTrackOffset] = (byte)lastTrack;
+        middle[Dos33Layout.TrackSectorList.NextSectorOffset] = (byte)lastSector;
+        var last = Sector(image, lastTrack, lastSector);
+        last[Dos33Layout.TrackSectorList.SectorBaseOffset] = (byte)origin;
+        var pair = Dos33Layout.TrackSectorList.PairOffset + (slot * 2);
+        last[pair] = (byte)data.Track;
+        last[pair + 1] = (byte)data.Sector;
+
+        var fs = Open(fixture);
+        var read = fs.TryReadFile("LONG", FileReadView.Raw);
+
+        Assert.That(fs.ListDirectory(null).Entries.Select(item => item.Name).ToArray(), Is.EqualTo(new[] { "GOOD", "LONG" }));
+        Assert.That(fs.GetFileInfo("LONG")!.EofBytes, Is.EqualTo(0));
+        Assert.That(read.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(read.Reason, Is.EqualTo("The track/sector list is longer than the disk."));
+        Assert.That(read.Data.Length, Is.EqualTo(0));
+        Assert.That(fs.TryReadFile("GOOD", FileReadView.Raw).Succeeded, Is.True);
+        Assert.That(fs.TryReadFile("GOOD", FileReadView.Raw).Data.Span[0], Is.EqualTo(0x11));
+    }
+
+    /// <summary>
     /// A track byte of zero ends the catalog. A later live entry, including one on the next sector, is not listed.
     /// </summary>
     [Test]

@@ -28,7 +28,8 @@ using Serilog;
 /// A <c>$00 $00</c> pair before the last occupied pair is 256 zero bytes, not the end of
 /// the file. A repeated catalog sector, or a catalog link past the disk, fails
 /// <see cref="ListDirectory"/>. A repeated track/sector list, a list or data pair past
-/// the disk, or a sector base that disagrees with the list position fails
+/// the disk, a sector base that disagrees with the list position, or a logical length
+/// longer than the disk fails
 /// <see cref="TryReadFile"/> with <see cref="FileAccessStatus.CorruptStructure"/>.
 /// That catalog entry is still listed, with an end-of-file of zero.
 /// </para>
@@ -130,7 +131,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     /// <param name="view">Raw sectors, or the logical view with the A/I/B header removed.</param>
     /// <returns>
     /// The file bytes, or a failure when the path is missing, the root, illegal, shorter
-    /// than its header, or the track/sector list repeats, leaves the disk, or has a bad sector base.
+    /// than its header, or the track/sector list repeats, leaves the disk, is longer than the disk, or has a bad sector base.
     /// </returns>
     /// <exception cref="ArgumentNullException">If <paramref name="path"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">If <paramref name="view"/> is not a defined view.</exception>
@@ -471,10 +472,14 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             ordinal++;
         }
 
-        if (lastIndex >= 0 && ((long)lastIndex + 1) * Dos33Layout.SectorSize > int.MaxValue)
+        var diskSectors = (long)this.sectors.TrackCount * this.sectors.SectorsPerTrack;
+        if (lastIndex >= 0 && lastIndex + 1L > diskSectors)
         {
-            this.logger.Warning("DOS track/sector list length does not fit in a byte array.");
-            return FailedList("The track/sector list does not fit in memory.");
+            this.logger.Warning(
+                "DOS track/sector list describes {SectorCount} sectors on a {DiskSectors}-sector disk.",
+                lastIndex + 1L,
+                diskSectors);
+            return FailedList("The track/sector list is longer than the disk.");
         }
 
         return new TrackSectorWalk(null, pairs, lastIndex);
