@@ -5,12 +5,16 @@
 
     <!-- Package Metadata -->
     <Product>BackPocket Emulator - Emulator Storage Abstraction</Product>
-    <Description>Storage backends, block/track-level media interfaces, disk image factory, and GCR 6-and-2 nibblizer for 5.25" and block-device disk emulation (PRD §6.1).</Description>
-    <PackageTags>emulator;disk;storage;gcr;dos33;prodos;apple2;diskii;smartport</PackageTags>
+    <Description>Storage backends, block/track-level media interfaces, disk image factory, read-only Apple II file-system contracts, and GCR 6-and-2 nibblizer for 5.25" and block-device disk emulation (PRD §6.1, §19).</Description>
+    <PackageTags>emulator;disk;storage;gcr;dos33;prodos;pascal;apple2;diskii;smartport</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="BadMango.Emulator.Storage.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" />
   </ItemGroup>
 
   <ItemGroup>

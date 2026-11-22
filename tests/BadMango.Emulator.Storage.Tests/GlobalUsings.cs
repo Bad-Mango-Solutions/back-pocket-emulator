@@ -6,6 +6,7 @@
 
 global using BadMango.Emulator.Storage;
 global using BadMango.Emulator.Storage.Backends;
+global using BadMango.Emulator.Storage.FileSystems;
 global using BadMango.Emulator.Storage.Formats;
 global using BadMango.Emulator.Storage.Gcr;
 global using BadMango.Emulator.Storage.Media;
