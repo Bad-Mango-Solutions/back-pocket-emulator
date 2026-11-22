@@ -18,6 +18,7 @@ using Serilog;
 /// <c>catch</c>. Reader exceptions propagate, including <see cref="ArgumentException"/>, because
 /// <see cref="ArgumentOutOfRangeException"/> derives from it and must not become a rejection.
 /// The constructor's <see cref="ArgumentException"/> is only the guard for a skipped check.
+/// A recognized volume is opened with the directory this probe already read.
 /// </para>
 /// <para>
 /// A source with no block reader, a block size other than <see cref="PascalLayout.BlockSize"/>,
@@ -70,7 +71,7 @@ public sealed class PascalFileSystemProbe : IAppleFileSystemProbe
             return this.Reject("The directory does not begin with an Apple Pascal volume header.");
         }
 
-        var fileSystem = new PascalFileSystem(this.logger, blocks);
+        var fileSystem = new PascalFileSystem(this.logger, blocks, directory);
         return FileSystemProbeAttempt.Match(
             AppleFileSystemKind.Pascal,
             "Apple Pascal volume header.",

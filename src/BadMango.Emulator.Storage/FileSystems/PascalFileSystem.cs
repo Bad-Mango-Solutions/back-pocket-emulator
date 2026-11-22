@@ -24,8 +24,11 @@ using Serilog;
 /// <see cref="FileEntry"/>. File length is <see cref="PascalLayout.FileLength(int, int, int)"/>.
 /// The file type is <see cref="PascalLayout.KindMask"/> of the kind word, so
 /// <see cref="PascalLayout.FilerWildcardBit"/> is not part of the type.
-/// <see cref="PascalFileKind.Secure"/> is a contiguous file, not a directory. A malformed
-/// counted record makes list and read return <see cref="FileAccessStatus.CorruptStructure"/>.
+/// <see cref="PascalFileKind.Secure"/> is a contiguous file, not a directory. A counted record
+/// is <see cref="FileAccessStatus.CorruptStructure"/> when its name is not 1–15 bytes in
+/// <c>0x20</c>–<c>0x7E</c>, when its end block is not past its start, when the last block does
+/// not use 1 through <see cref="PascalLayout.BlockSize"/> bytes, when its start is before the
+/// volume header's next block or the previous file's end, or when the span falls outside the volume.
 /// </para>
 /// <para>
 /// Paths use <see cref="AppleFileSystemPathStyle.Flat"/>. Logical reads return the same bytes as
@@ -53,6 +56,21 @@ public sealed class PascalFileSystem : IAppleFileSystem
     /// <exception cref="IOException">If the backing store cannot be read.</exception>
     /// <exception cref="ObjectDisposedException">If the block reader has been disposed.</exception>
     public PascalFileSystem(ILogger logger, IBlockReader blocks)
+        : this(logger, blocks, ReadDirectoryForOpen(logger, blocks))
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PascalFileSystem"/> class from a directory that was already read.
+    /// </summary>
+    /// <param name="logger">Logger for open and failed lookups. Not used for each block.</param>
+    /// <param name="blocks">Pascal block image. Not owned and not disposed. File bytes are read from it later.</param>
+    /// <param name="directory">
+    /// The <see cref="PascalLayout.DirectoryBytes"/> directory from blocks 2–5. This constructor does not read it again.
+    /// </param>
+    /// <exception cref="ArgumentNullException">If <paramref name="logger"/> or <paramref name="blocks"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">If <paramref name="blocks"/> or <paramref name="directory"/> is not an Apple Pascal volume.</exception>
+    internal PascalFileSystem(ILogger logger, IBlockReader blocks, ReadOnlySpan<byte> directory)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(blocks);
@@ -61,18 +79,15 @@ public sealed class PascalFileSystem : IAppleFileSystem
             throw new ArgumentException("The block image is not an Apple Pascal volume.", nameof(blocks));
         }
 
+        if (directory.Length != PascalLayout.DirectoryBytes || !PascalLayout.IsVolumeHeader(directory, blocks.BlockCount))
+        {
+            throw new ArgumentException("The block image is not an Apple Pascal volume.", nameof(directory));
+        }
+
         this.logger = logger.ForContext<PascalFileSystem>();
         this.blocks = blocks;
         this.blockBuffer = new byte[PascalLayout.BlockSize];
-
-        var directory = new byte[PascalLayout.DirectoryBytes];
-        ReadDirectory(blocks, directory);
-        if (!PascalLayout.IsVolumeHeader(directory, blocks.BlockCount))
-        {
-            throw new ArgumentException("The block image is not an Apple Pascal volume.", nameof(blocks));
-        }
-
-        this.VolumeName = ReadName(directory.AsSpan(PascalLayout.VolumeHeader.NameOffset, PascalLayout.VolumeHeader.NameCapacity + 1));
+        this.VolumeName = ReadName(directory.Slice(PascalLayout.VolumeHeader.NameOffset, PascalLayout.VolumeHeader.NameCapacity + 1));
         this.files = ParseFiles(directory, blocks.BlockCount, out var error);
         this.catalogError = error;
         if (this.catalogError is null)
@@ -211,48 +226,85 @@ public sealed class PascalFileSystem : IAppleFileSystem
         }
     }
 
+    private static byte[] ReadDirectoryForOpen(ILogger logger, IBlockReader blocks)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(blocks);
+        if (blocks.BlockSize != PascalLayout.BlockSize || blocks.BlockCount < PascalLayout.FirstDataBlock)
+        {
+            throw new ArgumentException("The block image is not an Apple Pascal volume.", nameof(blocks));
+        }
+
+        var directory = new byte[PascalLayout.DirectoryBytes];
+        ReadDirectory(blocks, directory);
+        return directory;
+    }
+
     private static CatalogFile[] ParseFiles(ReadOnlySpan<byte> directory, int blockCount, out string? error)
     {
         var fileCount = ReadU16(directory, PascalLayout.VolumeHeader.FileCountOffset);
+        var firstDataBlock = ReadU16(directory, PascalLayout.VolumeHeader.NextBlockOffset);
+        var previousEnd = firstDataBlock;
         var parsed = new CatalogFile[fileCount];
         for (var i = 0; i < fileCount; i++)
         {
             var record = directory.Slice((i + 1) * PascalLayout.EntryLength, PascalLayout.EntryLength);
-            if (!TryParseFile(record, blockCount, i + 1, out parsed[i], out error))
+            if (!TryParseFile(record, blockCount, firstDataBlock, previousEnd, i + 1, out parsed[i], out error))
             {
                 return Array.Empty<CatalogFile>();
             }
+
+            previousEnd = parsed[i].EndBlock;
         }
 
         error = null;
         return parsed;
     }
 
-    private static bool TryParseFile(ReadOnlySpan<byte> record, int blockCount, int recordNumber, out CatalogFile file, out string? error)
+    private static bool TryParseFile(
+        ReadOnlySpan<byte> record,
+        int blockCount,
+        int firstDataBlock,
+        int previousEnd,
+        int recordNumber,
+        out CatalogFile file,
+        out string? error)
     {
         file = default;
         var start = ReadU16(record, PascalLayout.DirectoryEntry.FirstBlockOffset);
         var end = ReadU16(record, PascalLayout.DirectoryEntry.NextBlockOffset);
-        if (!TryReadName(record, out var name))
+        if (!TryReadName(record, out var name, out var nameError))
         {
-            error = $"Pascal directory file {recordNumber} does not have a 1 to 15 character name.";
+            error = $"Pascal directory file {recordNumber} {nameError}";
             return false;
         }
 
-        if (end < start)
+        if (end <= start)
         {
-            error = $"Pascal directory file {recordNumber} ends before it starts.";
+            error = $"Pascal directory file {recordNumber} does not end after it starts.";
             return false;
         }
 
         var bytesInLast = ReadU16(record, PascalLayout.DirectoryEntry.LastBlockBytesOffset);
-        if (end > start && bytesInLast > PascalLayout.BlockSize)
+        if (bytesInLast < 1 || bytesInLast > PascalLayout.BlockSize)
         {
-            error = $"Pascal directory file {recordNumber} uses more than {PascalLayout.BlockSize} bytes in its last block.";
+            error = $"Pascal directory file {recordNumber} must use 1 to {PascalLayout.BlockSize} bytes in its last block.";
             return false;
         }
 
-        if (end > start && (start >= blockCount || end > blockCount))
+        if (start < firstDataBlock)
+        {
+            error = $"Pascal directory file {recordNumber} points into the boot or directory blocks.";
+            return false;
+        }
+
+        if (start < previousEnd)
+        {
+            error = $"Pascal directory file {recordNumber} overlaps the previous entry.";
+            return false;
+        }
+
+        if (start >= blockCount || end > blockCount)
         {
             error = $"Pascal directory file {recordNumber} points outside the volume.";
             return false;
@@ -275,16 +327,29 @@ public sealed class PascalFileSystem : IAppleFileSystem
         return true;
     }
 
-    private static bool TryReadName(ReadOnlySpan<byte> record, out string name)
+    private static bool TryReadName(ReadOnlySpan<byte> record, out string name, out string error)
     {
         var length = record[PascalLayout.DirectoryEntry.NameOffset];
         if (length < 1 || length > PascalLayout.DirectoryEntry.NameCapacity)
         {
             name = string.Empty;
+            error = "does not have a 1 to 15 character name.";
             return false;
         }
 
-        name = ReadName(record.Slice(PascalLayout.DirectoryEntry.NameOffset, length + 1));
+        var field = record.Slice(PascalLayout.DirectoryEntry.NameOffset, length + 1);
+        for (var i = 1; i <= length; i++)
+        {
+            if (field[i] is < 0x20 or > 0x7E)
+            {
+                name = string.Empty;
+                error = "has a name character outside 0x20 through 0x7E.";
+                return false;
+            }
+        }
+
+        name = ReadName(field);
+        error = string.Empty;
         return true;
     }
 

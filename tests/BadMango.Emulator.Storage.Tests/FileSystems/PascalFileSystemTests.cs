@@ -121,19 +121,21 @@ public class PascalFileSystemTests
     }
 
     /// <summary>
-    /// The constructor guard throws <see cref="ArgumentException"/> and the probe does not catch it.
+    /// The probe opens from the directory it already read, so the blocks are not read again.
     /// </summary>
     [Test]
-    public void Probe_WhenConstructorGuardFails_DoesNotCatchArgumentException()
+    public void Probe_OpensFromTheDirectoryItAlreadyRead()
     {
         var reader = new ScriptedBlockReader(PascalLayout.FirstDataBlock, headerOnce: true);
         Assume.That(reader.BlockCount, Is.EqualTo(PascalLayout.FirstDataBlock));
 
-        var error = Assert.Throws<ArgumentException>(() => new PascalFileSystemProbe(Logger()).TryOpen(new FileSystemSource(reader, null)));
+        var attempt = new PascalFileSystemProbe(Logger()).TryOpen(new FileSystemSource(reader, null));
 
-        Assert.That(error, Is.TypeOf<ArgumentException>());
-        Assert.That(error!.Message, Does.Contain("not an Apple Pascal volume"));
-        Assert.That(reader.Reads, Is.GreaterThan(PascalLayout.DirectoryBlockCount));
+        Assert.That(attempt.Recognized, Is.True);
+        Assert.That(attempt.FileSystem, Is.Not.Null);
+        Assert.That(attempt.FileSystem!.VolumeName, Is.EqualTo("BLANK"));
+        Assert.That(attempt.FileSystem.ListDirectory(null).Entries, Is.Empty);
+        Assert.That(reader.Reads, Is.EqualTo(PascalLayout.DirectoryBlockCount));
     }
 
     /// <summary>
@@ -376,7 +378,7 @@ public class PascalFileSystemTests
     }
 
     /// <summary>
-    /// A last-block count of zero contributes no bytes. It does not mean a full block.
+    /// A last-block count of zero is a corrupt record. It is not an empty or full block.
     /// </summary>
     [Test]
     public void ZeroLastBlockBytes_DropsTheLastBlock()
@@ -390,15 +392,18 @@ public class PascalFileSystemTests
         EditDirectory(image, directory => WriteU16(directory, (2 * PascalLayout.EntryLength) + PascalLayout.DirectoryEntry.LastBlockBytesOffset, 0));
         var fs = Open(image, fixture.BlockCount);
 
+        var listing = fs.ListDirectory(null);
+        Assert.That(listing.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(listing.Reason, Does.Contain("last block"));
         var read = fs.TryReadFile("UNIT.CODE", FileReadView.Raw);
-        Assert.That(read.Succeeded, Is.True);
-        Assert.That(read.Data.ToArray(), Is.EqualTo(code.Data.Slice(0, PascalLayout.BlockSize).ToArray()));
-        Assert.That(fs.GetFileInfo("UNIT.CODE")!.EofBytes, Is.EqualTo(PascalLayout.BlockSize));
-        Assert.That(fs.GetFileInfo("UNIT.CODE")!.AllocatedUnits, Is.EqualTo(2));
+        Assert.That(read.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(read.Succeeded, Is.False);
+        Assert.That(read.Data.Length, Is.EqualTo(0));
+        Assert.That(fs.GetFileInfo("UNIT.CODE"), Is.Null);
     }
 
     /// <summary>
-    /// An empty span is a successful empty file and does not read a data block.
+    /// A span that does not extend past its start is corrupt and does not read a data block.
     /// </summary>
     [Test]
     public void EmptySpan_ReadsAsAnEmptyFile()
@@ -408,21 +413,92 @@ public class PascalFileSystemTests
         EditDirectory(image, directory =>
         {
             var start = ReadU16(directory, PascalLayout.EntryLength + PascalLayout.DirectoryEntry.FirstBlockOffset);
+            Assume.That(start, Is.GreaterThanOrEqualTo(PascalLayout.FirstDataBlock));
             WriteU16(directory, PascalLayout.EntryLength + PascalLayout.DirectoryEntry.NextBlockOffset, start);
         });
-        var fs = Open(image, fixture.BlockCount);
-        var info = fs.GetFileInfo("NOTE.TEXT");
-        Assert.That(info!.EofBytes, Is.EqualTo(0));
-        Assert.That(info.AllocatedUnits, Is.EqualTo(0));
-        var read = fs.TryReadFile("NOTE.TEXT", FileReadView.Logical);
-        Assert.That(read.Succeeded, Is.True);
-        Assert.That(read.Data.Length, Is.EqualTo(0));
-        Assert.That(fs.TryReadFile("UNIT.CODE", FileReadView.Raw).Succeeded, Is.True);
-
         var reader = new DataThrowingReader(new MemoryBlockReader(image, fixture.BlockCount, PascalLayout.BlockSize), new IOException("data"));
-        var guarded = new PascalFileSystem(Logger(), reader);
-        Assert.That(guarded.TryReadFile("NOTE.TEXT", FileReadView.Raw).Succeeded, Is.True);
+        var fs = new PascalFileSystem(Logger(), reader);
+
+        var listing = fs.ListDirectory(null);
+        Assert.That(listing.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(listing.Reason, Does.Contain("starts"));
+        var read = fs.TryReadFile("NOTE.TEXT", FileReadView.Logical);
+        Assert.That(read.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(read.Data.Length, Is.EqualTo(0));
+        Assert.That(fs.GetFileInfo("NOTE.TEXT"), Is.Null);
+        Assert.That(fs.TryReadFile("UNIT.CODE", FileReadView.Raw).Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
         Assert.That(reader.DataReads, Is.EqualTo(0));
+    }
+
+    /// <summary>
+    /// A file of three blocks returns every byte, including the partial last block.
+    /// </summary>
+    [Test]
+    public void ThreeBlockFile_ReadsEveryBlock()
+    {
+        var data = new byte[(PascalLayout.BlockSize * 2) + 40];
+        data[0] = 0x10;
+        data[PascalLayout.BlockSize] = 0x21;
+        data[PascalLayout.BlockSize * 2] = 0x32;
+        data[data.Length - 1] = 0x43;
+        var builder = new PascalImageBuilder(PascalLayout.FirstDataBlock + 3, "WIDE");
+        builder.AddFile("LONG", PascalFileKind.Data, data);
+        var fixture = builder.Build();
+        Assume.That(fixture.Entries[0].EndBlock - fixture.Entries[0].StartBlock, Is.EqualTo(3));
+        Assume.That(fixture.Entries[0].BytesInLastBlock, Is.EqualTo(40));
+        var fs = Open(fixture);
+
+        var raw = fs.TryReadFile("LONG", FileReadView.Raw);
+        var logical = fs.TryReadFile("LONG", FileReadView.Logical);
+        Assert.That(raw.Succeeded, Is.True);
+        Assert.That(raw.Data.ToArray(), Is.EqualTo(data));
+        Assert.That(logical.Data.ToArray(), Is.EqualTo(data));
+        AssertFile(fs.GetFileInfo("LONG")!, "LONG", PascalFileKind.Data, data.Length, 3);
+    }
+
+    /// <summary>
+    /// A space is a legal name byte. The bytes beside that range are not.
+    /// </summary>
+    [Test]
+    public void SpaceInFileName_IsReadable()
+    {
+        var fixture = PascalFixture.CreateCatalogSample();
+        Assume.That(fixture.Entries[0].Name, Is.EqualTo("NOTE.TEXT"));
+        var image = fixture.Image.ToArray();
+        EditDirectory(image, directory => directory[PascalLayout.EntryLength + PascalLayout.DirectoryEntry.NameOffset + 1] = 0x20);
+        var fs = Open(image, fixture.BlockCount);
+
+        var info = fs.GetFileInfo(" ote.text");
+        Assert.That(info, Is.Not.Null);
+        Assert.That(info!.Name, Is.EqualTo(" OTE.TEXT"));
+        Assert.That(fs.TryReadFile(" OTE.TEXT", FileReadView.Raw).Data.ToArray(), Is.EqualTo(fixture.Entries[0].Data.ToArray()));
+    }
+
+    /// <summary>
+    /// A name length past the 15-character field is a corrupt record.
+    /// </summary>
+    [Test]
+    public void NameLength16_IsCorruptStructure()
+    {
+        AssertCorrupt(
+            directory => directory[PascalLayout.EntryLength + PascalLayout.DirectoryEntry.NameOffset] = 16,
+            "15");
+    }
+
+    /// <summary>
+    /// A header that claims more than 77 files is not this Pascal volume.
+    /// </summary>
+    [Test]
+    public void FileCountAboveMaxFiles_IsRejected()
+    {
+        var fixture = PascalFixture.CreateBlank();
+        Assume.That(PascalLayout.IsVolumeHeader(fixture.ReadDirectory(), fixture.BlockCount), Is.True);
+        var image = fixture.Image.ToArray();
+        EditDirectory(image, directory => WriteU16(directory, PascalLayout.VolumeHeader.FileCountOffset, PascalLayout.MaxFiles + 1));
+        Assume.That(PascalLayout.MaxFiles + 1, Is.EqualTo(78));
+        Assume.That(PascalLayout.IsVolumeHeader(DirectoryOf(image), fixture.BlockCount), Is.False);
+
+        AssertRejected(new MemoryBlockReader(image, fixture.BlockCount, PascalLayout.BlockSize));
     }
 
     /// <summary>
@@ -475,6 +551,28 @@ public class PascalFileSystemTests
         AssertCorrupt(
             directory => WriteU16(directory, PascalLayout.VolumeHeader.FileCountOffset, 3),
             "name");
+        AssertCorrupt(
+            directory => directory[PascalLayout.EntryLength + PascalLayout.DirectoryEntry.NameOffset + 1] = 0x1F,
+            "0x20");
+        AssertCorrupt(
+            directory => directory[PascalLayout.EntryLength + PascalLayout.DirectoryEntry.NameOffset + 1] = 0x7F,
+            "0x7E");
+        AssertCorrupt(
+            directory =>
+            {
+                var end = ReadU16(directory, PascalLayout.EntryLength + PascalLayout.DirectoryEntry.NextBlockOffset);
+                Assume.That(end, Is.GreaterThan(PascalLayout.FirstDataBlock));
+                WriteU16(directory, PascalLayout.EntryLength + PascalLayout.DirectoryEntry.FirstBlockOffset, PascalLayout.FirstDataBlock - 1);
+            },
+            "directory");
+        AssertCorrupt(
+            directory =>
+            {
+                var previousEnd = ReadU16(directory, PascalLayout.EntryLength + PascalLayout.DirectoryEntry.NextBlockOffset);
+                Assume.That(previousEnd, Is.GreaterThan(PascalLayout.FirstDataBlock));
+                WriteU16(directory, (2 * PascalLayout.EntryLength) + PascalLayout.DirectoryEntry.FirstBlockOffset, previousEnd - 1);
+            },
+            "previous");
     }
 
     /// <summary>
