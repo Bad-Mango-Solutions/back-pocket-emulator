@@ -92,41 +92,41 @@ public sealed record FileEntry
 
     /// <summary>Gets the volume-relative path.</summary>
     /// <value>The path, without a leading slash or a volume prefix.</value>
-    public string Path { get; init; }
+    public string Path { get; }
 
     /// <summary>Gets the file or directory name.</summary>
     /// <value>The last segment of <see cref="Path"/>.</value>
-    public string Name { get; init; }
+    public string Name { get; }
 
     /// <summary>Gets the catalog file-type byte.</summary>
     /// <value>The type. The DOS lock bit is reported by <see cref="IsLocked"/> instead.</value>
-    public byte FileType { get; init; }
+    public byte FileType { get; }
 
     /// <summary>Gets the ProDOS auxiliary type.</summary>
     /// <value>The auxiliary type, or 0 for DOS and Pascal.</value>
-    public ushort AuxType { get; init; }
+    public ushort AuxType { get; }
 
     /// <summary>Gets the logical end-of-file in bytes.</summary>
     /// <value>The raw-view length, including sparse holes and a DOS header.</value>
-    public int EofBytes { get; init; }
+    public int EofBytes { get; }
 
     /// <summary>Gets the catalog allocation count.</summary>
     /// <value>DOS sectors (including the track/sector list), ProDOS blocks, or Pascal blocks.</value>
-    public int AllocatedUnits { get; init; }
+    public int AllocatedUnits { get; }
 
     /// <summary>Gets the size of one allocated unit in bytes.</summary>
     /// <value>256 for DOS 3.3 and 512 for ProDOS and Pascal.</value>
-    public int UnitSize { get; init; }
+    public int UnitSize { get; }
 
     /// <summary>Gets a value indicating whether the catalog marks the entry locked.</summary>
     /// <value><see langword="true"/> when the DOS lock bit is set or the ProDOS write bit is clear.</value>
-    public bool IsLocked { get; init; }
+    public bool IsLocked { get; }
 
     /// <summary>Gets a value indicating whether the entry is a directory.</summary>
     /// <value><see langword="true"/> for a ProDOS subdirectory entry.</value>
-    public bool IsDirectory { get; init; }
+    public bool IsDirectory { get; }
 
     /// <summary>Gets the on-disk storage kind.</summary>
     /// <value>The storage kind readers use to choose a decoder.</value>
-    public FileStorageKind StorageKind { get; init; }
+    public FileStorageKind StorageKind { get; }
 }

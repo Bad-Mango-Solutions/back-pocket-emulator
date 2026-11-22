@@ -51,9 +51,14 @@ public sealed class ProdosImageBuilder
     /// <param name="auxType">Auxiliary type.</param>
     /// <param name="data">EOF bytes.</param>
     /// <param name="locked">Whether the write bit is clear.</param>
+    /// <param name="eof">When set, the EOF field. It may extend past the one allocated block as trailing holes.</param>
     /// <returns>This builder.</returns>
-    public ProdosImageBuilder AddSeedling(string name, byte fileType, ushort auxType, ReadOnlyMemory<byte> data, bool locked) =>
-        this.AddRoot(this.CreateSeedling(name, fileType, auxType, data, locked, headerBlock: ProdosLayout.VolumeKeyBlock, directoryPath: string.Empty));
+    public ProdosImageBuilder AddSeedling(string name, byte fileType, ushort auxType, ReadOnlyMemory<byte> data, bool locked, int? eof = null)
+    {
+        var pending = this.CreateSeedling(name, fileType, auxType, data, locked, headerBlock: ProdosLayout.VolumeKeyBlock, directoryPath: string.Empty);
+        pending.ExplicitEof = eof;
+        return this.AddRoot(pending);
+    }
 
     /// <summary>
     /// Adds a sapling. A null slot is a sparse hole. Only the last occupied block may be shorter than 512 bytes.
@@ -64,6 +69,7 @@ public sealed class ProdosImageBuilder
     /// <param name="dataBlocks">Index slots. Null is a hole.</param>
     /// <param name="locked">Whether the write bit is clear.</param>
     /// <param name="minimumBlockForLast">When set, the last occupied data block is allocated at or above this index.</param>
+    /// <param name="eof">When set, the EOF field. It may extend past the last allocated block as trailing holes.</param>
     /// <returns>This builder.</returns>
     public ProdosImageBuilder AddSapling(
         string name,
@@ -71,14 +77,18 @@ public sealed class ProdosImageBuilder
         ushort auxType,
         IReadOnlyList<byte[]?> dataBlocks,
         bool locked,
-        int? minimumBlockForLast = null)
+        int? minimumBlockForLast = null,
+        int? eof = null)
     {
-        this.root.Add(new Pending(name, fileType, auxType, locked, PendingKind.Sapling, dataBlocks, minimumBlockForLast ?? 0, 0));
+        this.root.Add(new Pending(name, fileType, auxType, locked, PendingKind.Sapling, dataBlocks, minimumBlockForLast ?? 0, 0)
+        {
+            ExplicitEof = eof,
+        });
         return this;
     }
 
     /// <summary>
-    /// Adds a tree whose master index points at one subindex in slot 0.
+    /// Adds a tree whose master index points at one subindex.
     /// </summary>
     /// <param name="name">File name.</param>
     /// <param name="fileType">ProDOS file type.</param>
@@ -86,6 +96,7 @@ public sealed class ProdosImageBuilder
     /// <param name="subIndexData">Data slots of that subindex. Null is a hole.</param>
     /// <param name="subIndexMinimumBlock">Lowest block number for the subindex, so its high byte can be non-zero.</param>
     /// <param name="locked">Whether the write bit is clear.</param>
+    /// <param name="masterSlot">Master-index slot that holds the subindex. Slot 0 empty with slot 1 used is a sparse tree.</param>
     /// <returns>This builder.</returns>
     public ProdosImageBuilder AddTree(
         string name,
@@ -93,13 +104,24 @@ public sealed class ProdosImageBuilder
         ushort auxType,
         IReadOnlyList<byte[]?> subIndexData,
         int subIndexMinimumBlock,
-        bool locked)
+        bool locked,
+        int masterSlot = 0)
     {
-        this.root.Add(new Pending(name, fileType, auxType, locked, PendingKind.Tree, subIndexData, 0, subIndexMinimumBlock));
+        if (masterSlot is < 0 or >= ProdosLayout.IndexPointers)
+        {
+            throw new ArgumentOutOfRangeException(nameof(masterSlot), "A master index has 256 slots.");
+        }
+
+        this.root.Add(new Pending(name, fileType, auxType, locked, PendingKind.Tree, subIndexData, 0, subIndexMinimumBlock)
+        {
+            MasterSlot = masterSlot,
+        });
         return this;
     }
 
-    /// <summary>Adds a storage-type <c>$5</c> entry with no data blocks.</summary>
+    /// <summary>
+    /// Adds a storage-type <c>$5</c> entry whose key block has data and resource mini-entries.
+    /// </summary>
     /// <param name="name">File name.</param>
     /// <param name="fileType">ProDOS file type.</param>
     /// <returns>This builder.</returns>
@@ -181,7 +203,7 @@ public sealed class ProdosImageBuilder
             PendingKind.Seedling => this.PlaceSeedling(image, used, pending, name),
             PendingKind.Sapling => this.PlaceIndexed(image, used, pending, name, FileStorageKind.ProdosSapling, pending.MinimumBlockForLast),
             PendingKind.Tree => this.PlaceTree(image, used, pending, name),
-            PendingKind.Extended => PlaceExtended(pending, name),
+            PendingKind.Extended => this.PlaceExtended(image, used, pending, name),
             PendingKind.Directory => this.PlaceDirectory(image, used, pending, name),
             _ => throw new InvalidOperationException("Unknown ProDOS fixture entry."),
         };
@@ -191,7 +213,8 @@ public sealed class ProdosImageBuilder
     {
         var dataBlock = Allocate(used, 0);
         pending.Seedling.CopyTo(image.AsSpan(dataBlock * ProdosLayout.BlockSize, pending.Seedling.Length));
-        return ToEntry(pending, name, dataBlock, pending.Seedling);
+        var raw = PadToEof(pending.Seedling, ResolveEof(pending.Seedling.Length, pending.ExplicitEof));
+        return ToEntry(pending, name, dataBlock, raw);
     }
 
     private ProdosFixture.Entry PlaceIndexed(
@@ -205,7 +228,8 @@ public sealed class ProdosImageBuilder
         var pointers = this.AllocateData(image, used, pending.Blocks, minimumForLast);
         var indexBlock = Allocate(used, 0);
         WriteIndex(image, indexBlock, pointers);
-        var raw = LogicalBytes(pending.Blocks, pointers);
+        var natural = LogicalBytes(pending.Blocks, pointers);
+        var raw = PadToEof(natural, ResolveEof(natural.Length, pending.ExplicitEof));
         var usedBlocks = 1 + pointers.Count(pointer => pointer != 0);
         return new ProdosFixture.Entry(name, name, pending.FileType, pending.AuxType, raw.Length, usedBlocks, pending.Locked, false, kind, indexBlock, pointers, Array.Empty<int>(), raw, Array.Empty<ProdosFixture.Entry>());
     }
@@ -216,8 +240,13 @@ public sealed class ProdosImageBuilder
         var subIndex = Allocate(used, pending.SubIndexMinimumBlock);
         WriteIndex(image, subIndex, dataPointers);
         var master = Allocate(used, 0);
-        WriteIndex(image, master, new[] { subIndex });
-        var raw = LogicalBytes(pending.Blocks, dataPointers);
+        var masterPointers = new int[pending.MasterSlot + 1];
+        masterPointers[pending.MasterSlot] = subIndex;
+        WriteIndex(image, master, masterPointers);
+        var subRaw = LogicalBytes(pending.Blocks, dataPointers);
+        var naturalLength = (pending.MasterSlot * ProdosLayout.TreeSlotBytes) + subRaw.Length;
+        var raw = new byte[ResolveEof(naturalLength, pending.ExplicitEof)];
+        subRaw.CopyTo(raw.AsSpan(pending.MasterSlot * ProdosLayout.TreeSlotBytes));
         var usedBlocks = 2 + dataPointers.Count(pointer => pointer != 0);
         return new ProdosFixture.Entry(
             name,
@@ -230,26 +259,35 @@ public sealed class ProdosImageBuilder
             false,
             FileStorageKind.ProdosTree,
             master,
-            new[] { subIndex },
+            masterPointers,
             dataPointers,
             raw,
             Array.Empty<ProdosFixture.Entry>());
     }
 
-    private ProdosFixture.Entry PlaceExtended(Pending pending, string name)
+    private ProdosFixture.Entry PlaceExtended(byte[] image, bool[] used, Pending pending, string name)
     {
+        var dataFork = new byte[] { 0xD1, 0xD2 };
+        var resourceFork = new byte[] { 0xE1 };
+        var dataBlock = Allocate(used, 0);
+        var resourceBlock = Allocate(used, 0);
+        dataFork.CopyTo(image.AsSpan(dataBlock * ProdosLayout.BlockSize));
+        resourceFork.CopyTo(image.AsSpan(resourceBlock * ProdosLayout.BlockSize));
+        var key = Allocate(used, 0);
+        WriteForkMiniEntry(image, key, ProdosLayout.ExtendedDataForkOffset, dataBlock, dataFork.Length);
+        WriteForkMiniEntry(image, key, ProdosLayout.ExtendedResourceForkOffset, resourceBlock, resourceFork.Length);
         return new ProdosFixture.Entry(
             name,
             name,
             pending.FileType,
             0,
-            0,
-            0,
+            dataFork.Length,
+            3,
             false,
             false,
             FileStorageKind.ProdosExtended,
-            0,
-            Array.Empty<int>(),
+            key,
+            new[] { dataBlock, resourceBlock },
             Array.Empty<int>(),
             ReadOnlyMemory<byte>.Empty,
             Array.Empty<ProdosFixture.Entry>());
@@ -359,7 +397,9 @@ public sealed class ProdosImageBuilder
             if (entry.IsDirectory)
             {
                 var entryNumber = slot + 1;
-                image[(entry.KeyBlock * ProdosLayout.BlockSize) + ProdosLayout.KeyBlockHeaderOffset + ProdosLayout.SubdirectoryParentEntryNumberOffset] = (byte)entryNumber;
+                var headerBase = (entry.KeyBlock * ProdosLayout.BlockSize) + ProdosLayout.KeyBlockHeaderOffset;
+                image[headerBase + ProdosLayout.SubdirectoryParentEntryNumberOffset] = (byte)entryNumber;
+                WriteU16(image.AsSpan(headerBase + ProdosLayout.SubdirectoryParentPointerOffset), block);
             }
 
             cursor++;
@@ -392,7 +432,7 @@ public sealed class ProdosImageBuilder
                 continue;
             }
 
-            bitmap[block >> 3] |= (byte)(1 << (block & 7));
+            bitmap[block >> 3] |= (byte)(0x80 >> (block & 7));
         }
 
         bitmap.CopyTo(image.AsSpan(pointer * ProdosLayout.BlockSize));
@@ -407,7 +447,6 @@ public sealed class ProdosImageBuilder
         header[ProdosLayout.VolumeHeaderEntryLengthOffset] = ProdosLayout.EntryLength;
         header[ProdosLayout.VolumeHeaderEntriesPerBlockOffset] = ProdosLayout.EntriesPerBlock;
         WriteU16(header[ProdosLayout.VolumeHeaderFileCountOffset..], fileCount);
-        WriteU16(header[ProdosLayout.SubdirectoryParentPointerOffset..], ProdosLayout.VolumeKeyBlock);
         header[ProdosLayout.SubdirectoryParentEntryLengthOffset] = ProdosLayout.EntryLength;
     }
 
@@ -434,6 +473,42 @@ public sealed class ProdosImageBuilder
         FileStorageKind.ProdosExtended => ProdosLayout.StorageExtended,
         _ => throw new InvalidOperationException("The fixture entry has no ProDOS storage type."),
     };
+
+    private void WriteForkMiniEntry(byte[] image, int keyBlock, int forkOffset, int dataBlock, int eof)
+    {
+        var span = image.AsSpan((keyBlock * ProdosLayout.BlockSize) + forkOffset);
+        span[ProdosLayout.ExtendedMiniStorageOffset] = (byte)(ProdosLayout.StorageSeedling << 4);
+        WriteU16(span[ProdosLayout.ExtendedMiniKeyPointerOffset..], dataBlock);
+        WriteU16(span[ProdosLayout.ExtendedMiniBlocksUsedOffset..], 1);
+        WriteU24(span[ProdosLayout.ExtendedMiniEofOffset..], eof);
+    }
+
+    private int ResolveEof(int naturalLength, int? requested)
+    {
+        if (requested is null)
+        {
+            return naturalLength;
+        }
+
+        if (requested.Value < naturalLength || requested.Value > 0xFFFFFF)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requested), "EOF must cover the allocated bytes and fit in 24 bits.");
+        }
+
+        return requested.Value;
+    }
+
+    private byte[] PadToEof(byte[] natural, int eof)
+    {
+        if (natural.Length == eof)
+        {
+            return natural;
+        }
+
+        var padded = new byte[eof];
+        natural.CopyTo(padded, 0);
+        return padded;
+    }
 
     private void WriteIndex(byte[] image, int block, IReadOnlyList<int> pointers)
     {
@@ -592,5 +667,9 @@ public sealed class ProdosImageBuilder
         public string DirectoryPath { get; set; }
 
         public int HeaderBlock { get; set; }
+
+        public int? ExplicitEof { get; set; }
+
+        public int MasterSlot { get; set; }
     }
 }

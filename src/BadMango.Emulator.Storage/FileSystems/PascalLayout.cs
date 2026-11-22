@@ -16,9 +16,13 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// Up to <see cref="MaxFiles"/> file entries follow. Words are little-endian.
 /// </para>
 /// <para>
-/// A Pascal reader constructor rejects a volume whose first directory entry fails
-/// <see cref="IsVolumeHeader"/>. That keeps an arbitrary non-ProDOS block image from
-/// being reported as Pascal.
+/// A Pascal reader constructor throws <see cref="ArgumentException"/> when
+/// <see cref="IsVolumeHeader"/> is false. The probe catches that exception and returns
+/// <see cref="FileSystemProbeAttempt.Reject"/>. The recorded block count must equal the
+/// image size. A larger container is not a Pascal volume, unlike a ProDOS image whose
+/// <c>total_blocks</c> may be smaller than the file. The file kind is
+/// <see cref="KindMask"/> of the kind word. Bit 15 (<see cref="FilerWildcardBit"/>) is
+/// the Filer wildcard flag and is not part of the kind.
 /// </para>
 /// </remarks>
 public static class PascalLayout
@@ -95,6 +99,12 @@ public static class PascalLayout
     /// <summary>Secure-directory file kind.</summary>
     public const byte KindSecure = 8;
 
+    /// <summary>Mask for bits 0–3 of the file-kind word.</summary>
+    public const int KindMask = 0x000F;
+
+    /// <summary>Bit 15 of the file-kind word. The Filer uses it as a wildcard flag.</summary>
+    public const int FilerWildcardBit = 0x8000;
+
     /// <summary>
     /// Returns the logical length of a Pascal file.
     /// </summary>
@@ -113,6 +123,13 @@ public static class PascalLayout
     }
 
     /// <summary>
+    /// Returns the file kind from a directory kind word.
+    /// </summary>
+    /// <param name="kindWord">The 16-bit kind field. Bit 15 is <see cref="FilerWildcardBit"/>.</param>
+    /// <returns>Bits 0–3.</returns>
+    public static int FileKind(int kindWord) => kindWord & KindMask;
+
+    /// <summary>
     /// Returns whether the directory begins with an Apple Pascal volume header.
     /// </summary>
     /// <param name="directory">The start of the directory. A buffer shorter than one entry is not a header.</param>
@@ -120,7 +137,10 @@ public static class PascalLayout
     /// <returns>
     /// <see langword="true"/> when the first block is 0, the directory ends at block
     /// <see cref="FirstDataBlock"/>, the kind is 0, the name is 1–7 printable characters,
-    /// the recorded block count matches the image, and the file count is at most <see cref="MaxFiles"/>.
+    /// the recorded block count equals <paramref name="blockCount"/>, and the file count
+    /// is at most <see cref="MaxFiles"/>. Equality with the image is required: a Pascal
+    /// header that names a different size is not this volume. ProDOS allows
+    /// <c>total_blocks</c> to be smaller than the image; Pascal does not.
     /// </returns>
     public static bool IsVolumeHeader(ReadOnlySpan<byte> directory, int blockCount)
     {

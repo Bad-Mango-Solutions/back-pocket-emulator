@@ -65,7 +65,7 @@ public sealed class AppleFileSystemDetector : IAppleFileSystemDetector
             var attempt = probe.TryOpen(source);
             ValidateAttempt(probe, attempt);
             attempts.Add(attempt);
-            this.logger.Information(
+            this.logger.Debug(
                 "File system probe {FileSystemKind} recognized {Recognized}: {Reason}",
                 attempt.Kind,
                 attempt.Recognized,

@@ -151,6 +151,11 @@ public sealed class Dos33ImageBuilder
                 entry[Dos33Layout.EntrySectorOffset] = (byte)file.Ts.Sector;
                 entry[Dos33Layout.EntryTypeOffset] = (byte)(file.Spec.FileType | (file.Spec.Locked ? Dos33Layout.LockedMask : 0));
                 WriteName(entry.Slice(Dos33Layout.EntryNameOffset, Dos33Layout.EntryNameLength), file.Spec.Name);
+                if (file.Spec.Deleted)
+                {
+                    entry[Dos33Layout.EntryOriginalTrackOffset] = (byte)(file.Ts.Track | 0x80);
+                }
+
                 var allocated = 1 + file.Data.Count(item => item.Allocated);
                 entry[Dos33Layout.EntrySectorCountOffset] = (byte)allocated;
                 entry[Dos33Layout.EntrySectorCountOffset + 1] = (byte)(allocated >> 8);
@@ -187,7 +192,10 @@ public sealed class Dos33ImageBuilder
         vtoc[Dos33Layout.VtocTrackCountOffset] = (byte)this.trackCount;
         vtoc[Dos33Layout.VtocSectorsPerTrackOffset] = SectorsPerTrack;
         vtoc[Dos33Layout.VtocBytesPerSectorOffset + 1] = 1;
-        used[Dos33Layout.VtocTrack, Dos33Layout.VtocSector] = true;
+        for (var catalogSector = 0; catalogSector < SectorsPerTrack; catalogSector++)
+        {
+            used[Dos33Layout.VtocTrack, catalogSector] = true;
+        }
 
         var lastTrack = 0;
         for (var track = 0; track < this.trackCount; track++)
@@ -200,9 +208,7 @@ public sealed class Dos33ImageBuilder
                     continue;
                 }
 
-                var offset = Dos33Layout.VtocBitmapOffset + (track * Dos33Layout.BitmapBytesPerTrack) + (sector >> 3);
-                var bit = 7 - (sector & 7);
-                vtoc[offset] |= (byte)(1 << bit);
+                Dos33Layout.SetSectorFree(vtoc, track, sector, true);
             }
         }
 

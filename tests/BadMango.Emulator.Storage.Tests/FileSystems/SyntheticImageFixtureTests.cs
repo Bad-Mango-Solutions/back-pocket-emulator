@@ -32,12 +32,12 @@ public class SyntheticImageFixtureTests
         Assert.That(Dos33Layout.IsVtoc(vtoc, 18, 16), Is.True);
         Assert.That(vtoc[0x38], Is.EqualTo(0xFF));
         Assert.That(vtoc[0x39], Is.EqualTo(0xFF));
-        Assert.That(vtoc[0x7C], Is.EqualTo(0x7F));
-        Assert.That(vtoc[0x7D], Is.EqualTo(0xFE));
+        Assert.That(vtoc[0x7C], Is.EqualTo(0x00));
+        Assert.That(vtoc[0x7D], Is.EqualTo(0x00));
         Assert.That(Dos33Layout.IsSectorFree(vtoc, 0, 0), Is.True);
         Assert.That(Dos33Layout.IsSectorFree(vtoc, 17, 0), Is.False);
         Assert.That(Dos33Layout.IsSectorFree(vtoc, 17, 15), Is.False);
-        Assert.That(Dos33Layout.IsSectorFree(vtoc, 17, 1), Is.True);
+        Assert.That(Dos33Layout.IsSectorFree(vtoc, 17, 1), Is.False);
         Assert.That(Dos33Layout.IsVtoc(new byte[256], 18, 16), Is.False);
 
         var catalog = image.Slice(((17 * 16) + 15) * 256, 256);
@@ -71,7 +71,11 @@ public class SyntheticImageFixtureTests
         Assert.That(binary[1], Is.EqualTo(0x08));
         Assert.That(binary[2], Is.EqualTo(0x02));
         Assert.That(binary[4], Is.EqualTo((byte)'O'));
+        Assert.That(locked.LogicalBytes.Length, Is.EqualTo(2));
         Assert.That(locked.LogicalBytes.Span[0], Is.EqualTo((byte)'O'));
+        Assert.That(locked.LogicalBytes.Span[1], Is.EqualTo((byte)'K'));
+        Assert.That(Entry(fixture, "BASIC").LogicalBytes.ToArray(), Is.EqualTo(new byte[] { 0x11, 0x22 }));
+        Assert.That(Entry(fixture, "INTBAS").LogicalBytes.ToArray(), Is.EqualTo(new byte[] { 0x33 }));
 
         var applesoft = DataSector(image, Entry(fixture, "BASIC"), 0);
         Assert.That(applesoft[0], Is.EqualTo(0x02));
@@ -94,6 +98,7 @@ public class SyntheticImageFixtureTests
         var gone = Entry(fixture, "GONE");
         Assert.That(image[CatalogOffset(gone)], Is.EqualTo(0xFF));
         Assert.That(image[CatalogOffset(gone) + 2], Is.EqualTo(Dos33Layout.FileTypeText));
+        Assert.That(image[CatalogOffset(gone) + Dos33Layout.EntryOriginalTrackOffset], Is.EqualTo((byte)(gone.TsTrack | 0x80)));
     }
 
     /// <summary>
@@ -155,8 +160,10 @@ public class SyntheticImageFixtureTests
         Assert.That(fixture.Entries, Is.Empty);
 
         var bitmap = Block(fixture, 3);
-        Assert.That(bitmap[0] & 0x01, Is.EqualTo(0));
-        Assert.That(bitmap[0] & 0x10, Is.Not.EqualTo(0));
+        Assert.That(bitmap[0] & 0x80, Is.EqualTo(0));
+        Assert.That(bitmap[0] & 0x08, Is.EqualTo(0x08));
+        Assert.That(ProdosLayout.IsBlockFree(bitmap, 0), Is.False);
+        Assert.That(ProdosLayout.IsBlockFree(bitmap, 4), Is.True);
     }
 
     /// <summary>
@@ -220,10 +227,18 @@ public class SyntheticImageFixtureTests
         Assert.That(key[4 + ((IndexOf(fixture, "SUB") + 1) * 0x27)] >> 4, Is.EqualTo(0xD));
         Assert.That(sub.Children[0].Path, Is.EqualTo("SUB/NOTE"));
         Assert.That(subBlock[4 + 0x25], Is.EqualTo((byte)(IndexOf(fixture, "SUB") + 2)));
+        Assert.That(ReadU16(subBlock, 4 + ProdosLayout.SubdirectoryParentPointerOffset), Is.EqualTo(2));
 
+        var forked = Root(fixture, "FORKED");
         var forkedOffset = 4 + ((IndexOf(fixture, "FORKED") + 1) * 0x27);
         Assert.That(key[forkedOffset] >> 4, Is.EqualTo(0x5));
-        Assert.That(Root(fixture, "FORKED").RawBytes.Length, Is.EqualTo(0));
+        Assert.That(forked.RawBytes.Length, Is.EqualTo(0));
+        Assert.That(forked.KeyBlock, Is.GreaterThan(0));
+        var extended = Block(fixture, forked.KeyBlock);
+        Assert.That(extended[ProdosLayout.ExtendedDataForkOffset] >> 4, Is.EqualTo(ProdosLayout.StorageSeedling));
+        Assert.That(extended[ProdosLayout.ExtendedResourceForkOffset] >> 4, Is.EqualTo(ProdosLayout.StorageSeedling));
+        Assert.That(ReadU16(extended, ProdosLayout.ExtendedMiniKeyPointerOffset), Is.EqualTo(forked.IndexPointers[0]));
+        Assert.That(ReadU16(extended.Slice(ProdosLayout.ExtendedResourceForkOffset), ProdosLayout.ExtendedMiniKeyPointerOffset), Is.EqualTo(forked.IndexPointers[1]));
     }
 
     /// <summary>
@@ -253,8 +268,96 @@ public class SyntheticImageFixtureTests
         Assert.That(code.StartBlock, Is.EqualTo(note.EndBlock));
         Assert.That(PascalLayout.FileLength(code.StartBlock, code.EndBlock, code.BytesInLastBlock), Is.EqualTo(600));
         Assert.That(Block(fixture, code.StartBlock)[0], Is.EqualTo(0xAB));
+        Assert.That(PascalLayout.FileKind(PascalLayout.KindText | PascalLayout.FilerWildcardBit), Is.EqualTo(PascalLayout.KindText));
         Assert.That(PascalLayout.IsVolumeHeader(new byte[26], fixture.BlockCount), Is.False);
         Assert.That(ProdosLayout.IsVolumeDirectoryKeyBlock(directory.AsSpan(0, 512), fixture.BlockCount), Is.False);
+    }
+
+    /// <summary>
+    /// Sector 1 free and every other sector on the track used lands in byte 1 bit 1, not byte 0 bit 6.
+    /// </summary>
+    [Test]
+    public void DosBitmap_Sector1Free_IsByte1Bit1()
+    {
+        var vtoc = new byte[256];
+        for (var sector = 0; sector < 16; sector++)
+        {
+            Dos33Layout.SetSectorFree(vtoc, 0, sector, sector == 1);
+        }
+
+        Assert.That(vtoc[0x38], Is.EqualTo(0x00));
+        Assert.That(vtoc[0x39], Is.EqualTo(0x02));
+        Assert.That(Dos33Layout.IsSectorFree(vtoc, 0, 1), Is.True);
+        Assert.That(Dos33Layout.IsSectorFree(vtoc, 0, 0), Is.False);
+        Assert.That(Dos33Layout.IsSectorFree(vtoc, 0, 15), Is.False);
+    }
+
+    /// <summary>
+    /// A subdirectory past the key block records that later block as its parent.
+    /// </summary>
+    [Test]
+    public void ProdosSubdirectory_PastTheKeyBlock_PointsAtTheContainingBlock()
+    {
+        var builder = new ProdosImageBuilder(ProdosLayout.StandardFloppyBlocks, "BIGDIR");
+        for (var i = 0; i < 12; i++)
+        {
+            builder.AddSeedling("F" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), ProdosLayout.FileTypeText, 0, new byte[] { 1 }, false);
+        }
+
+        builder.AddSubdirectory("DIR", new[] { new ProdosFixture.SeedlingSpec("NOTE", ProdosLayout.FileTypeText, 0, new byte[] { 2 }, false) });
+        var fixture = builder.Build();
+        var subdirectory = fixture.Entries[12];
+        var header = Block(fixture, subdirectory.KeyBlock);
+
+        Assert.That(ReadU16(header, 4 + ProdosLayout.SubdirectoryParentPointerOffset), Is.EqualTo(3));
+        Assert.That(header[4 + ProdosLayout.SubdirectoryParentEntryNumberOffset], Is.EqualTo(1));
+    }
+
+    /// <summary>
+    /// Master slot 0 can be empty while later slots hold data past 128K of logical size.
+    /// </summary>
+    [Test]
+    public void ProdosTree_EmptyMasterSlot0_HasEofPastOneSlot()
+    {
+        var builder = new ProdosImageBuilder(ProdosLayout.StandardFloppyBlocks, "TREE");
+        builder.AddTree(
+            "SPARSE",
+            ProdosLayout.FileTypeBinary,
+            0,
+            new byte[]?[] { new byte[] { 0x11, 0x22 } },
+            subIndexMinimumBlock: 0,
+            locked: false,
+            masterSlot: 1);
+        var fixture = builder.Build();
+        var entry = fixture.Entries[0];
+        var master = Block(fixture, entry.KeyBlock);
+
+        Assert.That(entry.EofBytes, Is.GreaterThan(ProdosLayout.TreeSlotBytes));
+        Assert.That(entry.EofBytes, Is.EqualTo(ProdosLayout.TreeSlotBytes + 2));
+        Assert.That(ProdosLayout.ReadIndexPointer(master, 0), Is.EqualTo(0));
+        Assert.That(ProdosLayout.ReadIndexPointer(master, 1), Is.EqualTo(entry.IndexPointers[1]));
+        Assert.That(entry.RawBytes.Span[ProdosLayout.TreeSlotBytes], Is.EqualTo(0x11));
+        Assert.That(entry.RawBytes.Span[0], Is.EqualTo(0));
+    }
+
+    /// <summary>
+    /// An explicit EOF may run past the last allocated block without allocating the tail.
+    /// </summary>
+    [Test]
+    public void ProdosEof_MayExtendPastTheLastAllocatedBlock()
+    {
+        var builder = new ProdosImageBuilder(32, "EOF");
+        builder.AddSeedling("SEED", ProdosLayout.FileTypeText, 0, new byte[] { 1, 2 }, false, eof: 600);
+        builder.AddSapling("SAP", ProdosLayout.FileTypeBinary, 0, new byte[]?[] { new byte[ProdosLayout.BlockSize] }, false, eof: ProdosLayout.BlockSize + 100);
+        var fixture = builder.Build();
+
+        Assert.That(fixture.Entries[0].EofBytes, Is.EqualTo(600));
+        Assert.That(fixture.Entries[0].AllocatedUnits, Is.EqualTo(1));
+        Assert.That(fixture.Entries[0].RawBytes.Span[0], Is.EqualTo(1));
+        Assert.That(fixture.Entries[0].RawBytes.Span[599], Is.EqualTo(0));
+        Assert.That(fixture.Entries[1].EofBytes, Is.EqualTo(ProdosLayout.BlockSize + 100));
+        Assert.That(fixture.Entries[1].IndexPointers, Has.Count.EqualTo(1));
+        Assert.That(fixture.Entries[1].RawBytes.Span[ProdosLayout.BlockSize + 99], Is.EqualTo(0));
     }
 
     private static Dos33Fixture.Entry Entry(Dos33Fixture fixture, string name) =>

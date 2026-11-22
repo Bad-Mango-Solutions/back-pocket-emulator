@@ -20,7 +20,14 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <c>i</c> from the low half and byte <c>256 + i</c> from the high half. A zero pointer is
 /// a sparse hole. Readers still emit zeros and stop at the EOF field, not at the first hole.
 /// Storage types <see cref="StorageExtended"/> and <see cref="StoragePascalArea"/> are
-/// <see cref="FileAccessStatus.UnsupportedStorage"/>.
+/// <see cref="FileAccessStatus.UnsupportedStorage"/>. An extended file's key block holds a
+/// data-fork mini-entry at <see cref="ExtendedDataForkOffset"/> and a resource-fork
+/// mini-entry at <see cref="ExtendedResourceForkOffset"/>. Readers do not return those
+/// fork bytes as the file.
+/// </para>
+/// <para>
+/// The volume bitmap stores one bit per block, and a set bit means free. Block 0 is
+/// bit 7 of byte 0. <see cref="IsBlockFree"/> is that mapping.
 /// </para>
 /// <para>
 /// Offsets named on the volume header and the subdirectory header are entry-relative.
@@ -129,12 +136,17 @@ public static class ProdosLayout
     /// <summary>Value ProDOS 8 stores at <see cref="SubdirectoryReservedOffset"/>.</summary>
     public const byte SubdirectoryReservedMark = 0x75;
 
-    /// <summary>Subdirectory-header entry offset of the parent directory block.</summary>
+    /// <summary>
+    /// Subdirectory-header entry offset of the parent directory block.
+    /// This is the block that contains the subdirectory's entry. It is the volume key
+    /// block only when the entry is stored there.
+    /// </summary>
     public const int SubdirectoryParentPointerOffset = 0x23;
 
     /// <summary>
     /// Subdirectory-header entry offset of the 1-based entry number in the parent block.
-    /// The parent header is entry 1, so the first file is entry 2.
+    /// In a directory key block the header is entry 1, so the first file is entry 2.
+    /// A continuation block has no header, so its first file is entry 1.
     /// </summary>
     public const int SubdirectoryParentEntryNumberOffset = 0x25;
 
@@ -149,6 +161,27 @@ public static class ProdosLayout
 
     /// <summary>Pointers in one index block.</summary>
     public const int IndexPointers = 256;
+
+    /// <summary>Bytes addressed by one master-index slot (256 data blocks).</summary>
+    public const int TreeSlotBytes = IndexPointers * BlockSize;
+
+    /// <summary>Offset of the data-fork mini-entry in an extended key block.</summary>
+    public const int ExtendedDataForkOffset = 0x000;
+
+    /// <summary>Offset of the resource-fork mini-entry in an extended key block.</summary>
+    public const int ExtendedResourceForkOffset = 0x100;
+
+    /// <summary>Mini-entry offset of the storage-type byte. The name length is 0.</summary>
+    public const int ExtendedMiniStorageOffset = 0;
+
+    /// <summary>Mini-entry offset of the little-endian fork key pointer.</summary>
+    public const int ExtendedMiniKeyPointerOffset = 1;
+
+    /// <summary>Mini-entry offset of the little-endian blocks-used count.</summary>
+    public const int ExtendedMiniBlocksUsedOffset = 3;
+
+    /// <summary>Mini-entry offset of the 24-bit fork EOF.</summary>
+    public const int ExtendedMiniEofOffset = 5;
 
     /// <summary>ProDOS text file type.</summary>
     public const byte FileTypeText = 0x04;
@@ -261,6 +294,27 @@ public static class ProdosLayout
     public static bool IsLocked(byte access) => (access & WriteAccessBit) == 0;
 
     /// <summary>
+    /// Returns whether a volume-bitmap bit says the block is free.
+    /// </summary>
+    /// <param name="bitmap">The volume bitmap bytes, not the whole disk image.</param>
+    /// <param name="block">Zero-based block number.</param>
+    /// <returns><see langword="true"/> when bit 7 of the block's byte, shifted by <c>block % 8</c>, is set.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">If <paramref name="block"/> is negative or its byte is outside <paramref name="bitmap"/>.</exception>
+    /// <remarks>Block 0 is bit 7 of byte 0. The mask is <c>0x80 &gt;&gt; (block &amp; 7)</c>.</remarks>
+    public static bool IsBlockFree(ReadOnlySpan<byte> bitmap, int block)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(block);
+        var offset = block >> 3;
+        if ((uint)offset >= (uint)bitmap.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(block), "The bitmap byte is outside the buffer.");
+        }
+
+        var mask = (byte)(0x80 >> (block & 7));
+        return (bitmap[offset] & mask) != 0;
+    }
+
+    /// <summary>
     /// Returns whether <paramref name="name"/> is a legal on-disk ProDOS name.
     /// </summary>
     /// <param name="name">Uppercase name bytes, without the length nibble.</param>
@@ -295,7 +349,9 @@ public static class ProdosLayout
     /// <returns>
     /// <see langword="true"/> when the previous pointer is 0, the storage nibble is
     /// <see cref="StorageVolumeHeader"/>, the name is legal, the entry length and entries-per-block
-    /// are the standard values, and the recorded total blocks fit in the image.
+    /// are the standard values, the recorded total blocks fit in the image, and the bitmap
+    /// starting at the recorded pointer occupies <see cref="BitmapBlockCount"/> blocks that
+    /// also fit in that total.
     /// </returns>
     public static bool IsVolumeDirectoryKeyBlock(ReadOnlySpan<byte> block, int blockCount)
     {
@@ -336,7 +392,13 @@ public static class ProdosLayout
 
         var total = block[header + VolumeHeaderTotalBlocksOffset] | (block[header + VolumeHeaderTotalBlocksOffset + 1] << 8);
         var bitmap = block[header + VolumeHeaderBitmapPointerOffset] | (block[header + VolumeHeaderBitmapPointerOffset + 1] << 8);
-        return total >= 4 && total <= blockCount && bitmap > VolumeKeyBlock && bitmap < blockCount;
+        if (total < 4 || total > blockCount || bitmap <= VolumeKeyBlock)
+        {
+            return false;
+        }
+
+        var bitmapBlocks = BitmapBlockCount(total);
+        return (long)bitmap + bitmapBlocks <= total;
     }
 
     private static bool IsUpperLetter(byte c) => c is >= (byte)'A' and <= (byte)'Z';

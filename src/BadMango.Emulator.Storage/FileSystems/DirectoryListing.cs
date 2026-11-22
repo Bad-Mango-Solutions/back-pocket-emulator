@@ -11,9 +11,10 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// An empty volume root is a success with an empty <see cref="Entries"/> list.
 /// A missing path is a failure, so <c>disk ls</c> can tell it from an empty directory.
 /// Entries are in on-disk order. Deleted slots, unused slots, the ProDOS volume header,
-/// and ProDOS subdirectory headers are omitted.
+/// and ProDOS subdirectory headers are omitted. Compare <see cref="Status"/> and
+/// <see cref="Entries"/>. This type is a class because list equality is by reference.
 /// </remarks>
-public sealed record DirectoryListing
+public sealed class DirectoryListing
 {
     private DirectoryListing(bool succeeded, IReadOnlyList<FileEntry> entries, FileAccessStatus status, string reason)
     {

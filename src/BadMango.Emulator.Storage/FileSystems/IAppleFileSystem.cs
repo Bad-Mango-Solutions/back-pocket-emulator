@@ -21,13 +21,14 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// bytes when the ProDOS lowercase bit field is clear. Lookups ignore case.
 /// </para>
 /// <para>
-/// Paths follow <see cref="AppleFileSystemPaths"/>. <see cref="ListDirectory"/> of
-/// <see langword="null"/>, <c>""</c>, or <c>/</c> lists the volume root. A ProDOS
-/// subdirectory path lists that directory. DOS and Pascal have no subdirectories, so a
-/// non-root path is <see cref="FileAccessStatus.NotFound"/>. The volume itself is not a
-/// <see cref="FileEntry"/>. <see cref="GetFileInfo"/> of the root returns
-/// <see langword="null"/>. <see cref="TryReadFile"/> of a directory returns
-/// <see cref="FileAccessStatus.IsDirectory"/>.
+/// Paths follow <see cref="AppleFileSystemPaths"/>. ProDOS is hierarchical.
+/// DOS 3.3 and Pascal are flat: everything after one optional leading <c>/</c> is a
+/// single file name, so a name that contains <c>/</c> stays reachable.
+/// <see cref="ListDirectory"/> of <see langword="null"/>, <c>""</c>, or <c>/</c> lists the
+/// volume root. A ProDOS subdirectory path lists that directory. DOS and Pascal have no
+/// subdirectories. The volume itself is not a <see cref="FileEntry"/>.
+/// <see cref="GetFileInfo"/> of the root returns <see langword="null"/>.
+/// <see cref="TryReadFile"/> of a directory returns <see cref="FileAccessStatus.IsDirectory"/>.
 /// </para>
 /// <para>
 /// DOS catalogs read the type and lock bit from entry offset 2, not offset 0. Track
@@ -44,9 +45,13 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <see cref="FileAccessStatus.UnsupportedStorage"/> and no bytes.
 /// </para>
 /// <para>
-/// Pascal readers reject a header that fails <see cref="PascalLayout.IsVolumeHeader"/>
-/// from their constructor. Directory records are <see cref="PascalLayout.EntryLength"/>
-/// bytes packed across blocks 2–5. File length is <see cref="PascalLayout.FileLength"/>.
+/// A Pascal reader's constructor throws <see cref="ArgumentException"/> when
+/// <see cref="PascalLayout.IsVolumeHeader"/> is false. The Pascal probe catches that
+/// <see cref="ArgumentException"/> and returns <see cref="FileSystemProbeAttempt.Reject"/>.
+/// The mismatch does not propagate out of the probe. Directory records are
+/// <see cref="PascalLayout.EntryLength"/> bytes packed across blocks 2–5.
+/// File length is <see cref="PascalLayout.FileLength"/>. The kind is
+/// <see cref="PascalLayout.KindMask"/> of the kind word.
 /// </para>
 /// <para>
 /// Media exceptions propagate. Readers do not catch

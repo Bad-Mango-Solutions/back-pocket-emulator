@@ -9,18 +9,22 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Separators are <c>/</c>. A <see langword="null"/>, empty, or slash-only path is the
-/// volume root. A leading slash makes the path absolute: when the first segment equals
-/// <see cref="IAppleFileSystem.VolumeName"/> under
-/// <see cref="StringComparison.OrdinalIgnoreCase"/>, that segment is the volume prefix
-/// and is removed. <c>/SAMPLE/NOTE</c> and <c>NOTE</c> are the same file when the volume
-/// is <c>SAMPLE</c>. A path without a leading slash does not strip a volume prefix, so a
-/// DOS file named <c>254</c> is not confused with volume <c>254</c>.
-/// </para>
-/// <para>
+/// A <see langword="null"/>, empty, or slash-only path is the volume root.
+/// <see cref="AppleFileSystemPathStyle.Hierarchical"/> is ProDOS. A leading slash makes
+/// the path absolute: when the first segment equals <see cref="IAppleFileSystem.VolumeName"/>
+/// under <see cref="StringComparison.OrdinalIgnoreCase"/>, that segment is removed.
+/// <c>/SAMPLE/NOTE</c> and <c>NOTE</c> are the same file when the volume is <c>SAMPLE</c>.
+/// A path without a leading slash does not strip a volume prefix.
 /// <c>.</c>, <c>..</c>, and empty segments (<c>a//b</c>) are invalid. Readers return
 /// <see cref="FileAccessStatus.InvalidPath"/> for those. They do not throw.
-/// Backslashes are ordinary characters, not separators.
+/// </para>
+/// <para>
+/// <see cref="AppleFileSystemPathStyle.Flat"/> is DOS 3.3 and Pascal. One optional
+/// leading <c>/</c> is removed and everything after it is one file name, so <c>A/B</c>
+/// and <c>/A/B</c> both name the file <c>A/B</c>. An absolute path that is only the
+/// volume name (<c>/254</c> on volume <c>254</c>) is the root. A relative name equal to
+/// the volume number stays a file. <c>.</c> and <c>/</c> inside that name are legal.
+/// Backslashes are ordinary characters in both styles.
 /// </para>
 /// </remarks>
 public static class AppleFileSystemPaths
@@ -33,11 +37,17 @@ public static class AppleFileSystemPaths
     /// </summary>
     /// <param name="path">The path. <see langword="null"/>, empty, and slash-only paths are the root.</param>
     /// <param name="volumeName">The volume name used to strip one absolute prefix.</param>
-    /// <param name="segments">The segments. Empty when the path is the volume root.</param>
+    /// <param name="style">Hierarchical for ProDOS. Flat for DOS 3.3 and Pascal.</param>
+    /// <param name="segments">The segments. Empty when the path is the volume root. A flat name is one segment.</param>
     /// <param name="reason">Empty on success. A sentence when the path is illegal.</param>
     /// <returns><see langword="true"/> when <paramref name="path"/> is the root or a legal relative path.</returns>
     /// <exception cref="ArgumentException">If <paramref name="volumeName"/> is empty.</exception>
-    public static bool TryParse(string? path, string volumeName, out IReadOnlyList<string> segments, out string reason)
+    public static bool TryParse(
+        string? path,
+        string volumeName,
+        AppleFileSystemPathStyle style,
+        out IReadOnlyList<string> segments,
+        out string reason)
     {
         ArgumentException.ThrowIfNullOrEmpty(volumeName);
         if (IsRoot(path))
@@ -52,6 +62,16 @@ public static class AppleFileSystemPaths
             segments = Array.Empty<string>();
             reason = "The path contains a NUL character.";
             return false;
+        }
+
+        if (style == AppleFileSystemPathStyle.Flat)
+        {
+            return TryParseFlat(path, volumeName, out segments, out reason);
+        }
+
+        if (style != AppleFileSystemPathStyle.Hierarchical)
+        {
+            throw new ArgumentOutOfRangeException(nameof(style));
         }
 
         var absolute = path[0] == Separator;
@@ -129,6 +149,29 @@ public static class AppleFileSystemPaths
         }
 
         return string.Concat(directoryPath, Separator, name);
+    }
+
+    private static bool TryParseFlat(string path, string volumeName, out IReadOnlyList<string> segments, out string reason)
+    {
+        var absolute = path[0] == Separator;
+        var name = absolute ? path[1..] : path;
+        if (name.Length == 0)
+        {
+            segments = Array.Empty<string>();
+            reason = string.Empty;
+            return true;
+        }
+
+        if (absolute && name.Equals(volumeName, StringComparison.OrdinalIgnoreCase))
+        {
+            segments = Array.Empty<string>();
+            reason = string.Empty;
+            return true;
+        }
+
+        segments = new[] { name };
+        reason = string.Empty;
+        return true;
     }
 
     private static bool IsRoot(string? path)

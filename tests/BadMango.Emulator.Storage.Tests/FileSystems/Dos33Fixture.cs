@@ -136,8 +136,9 @@ public sealed class Dos33Fixture
             this.DataSectors = dataSectors;
             this.RawBytes = rawBytes;
             this.AllocatedUnits = allocatedUnits;
+            var payload = Dos33Layout.LogicalPayloadLength(fileType, rawBytes.Span);
             var header = Dos33Layout.LogicalHeaderLength(fileType);
-            this.LogicalBytes = rawBytes.Length >= header ? rawBytes[header..] : ReadOnlyMemory<byte>.Empty;
+            this.LogicalBytes = payload < 0 ? ReadOnlyMemory<byte>.Empty : rawBytes.Slice(header, payload);
         }
 
         /// <summary>Gets the catalog name.</summary>
@@ -185,7 +186,7 @@ public sealed class Dos33Fixture
         public ReadOnlyMemory<byte> RawBytes { get; }
 
         /// <summary>Gets the logical bytes a reader returns for <see cref="FileReadView.Logical"/>.</summary>
-        /// <value><see cref="RawBytes"/> with the DOS A/I/B header removed.</value>
+        /// <value>The header is removed and the payload is trimmed to the length word.</value>
         public ReadOnlyMemory<byte> LogicalBytes { get; }
 
         /// <summary>Gets the catalog sector count.</summary>

@@ -20,9 +20,11 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <see cref="ArgumentException"/>, <see cref="ArgumentNullException"/>,
 /// <see cref="ArgumentOutOfRangeException"/>, <see cref="InvalidOperationException"/>,
 /// <see cref="IOException"/>, and <see cref="ObjectDisposedException"/> for a bad index,
-/// a wrong buffer, a disposed image, or an I/O failure. A Pascal constructor that is
-/// given a non-Pascal header returns a rejected attempt; it does not throw for that
-/// mismatch. Register probes in <see cref="AppleFileSystemDetector.RecommendedProbeOrder"/>.
+/// a wrong buffer, a disposed image, or an I/O failure. The Pascal constructor throws
+/// <see cref="ArgumentException"/> when the header is not Pascal. The Pascal probe catches
+/// that <see cref="ArgumentException"/> and returns <see cref="FileSystemProbeAttempt.Reject"/>.
+/// It does not catch <see cref="ArgumentNullException"/> or any other failure.
+/// Register probes in <see cref="AppleFileSystemDetector.RecommendedProbeOrder"/>.
 /// </para>
 /// </remarks>
 public interface IAppleFileSystemProbe

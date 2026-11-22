@@ -22,8 +22,11 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// </para>
 /// <para>
 /// The free-sector bitmap starts at <see cref="VtocBitmapOffset"/>, four bytes per track.
-/// A set bit means free. Sector 0 is bit 7 of the track's first byte, sector 7 is bit 0,
-/// and sector 15 is bit 0 of the second byte. <see cref="IsSectorFree"/> is that mapping.
+/// Those four bytes are one big-endian value, and a set bit means free. The highest
+/// sector is the high bit: sector 15 is byte 0 bit 7, sector 8 is byte 0 bit 0, sector 7
+/// is byte 1 bit 7, and sector 0 is byte 1 bit 0. <see cref="IsSectorFree"/> is that mapping.
+/// A deleted catalog entry keeps its track/sector-list track in the last name byte
+/// (<see cref="EntryOriginalTrackOffset"/>), with the high bit set.
 /// </para>
 /// </remarks>
 public static class Dos33Layout
@@ -63,6 +66,12 @@ public static class Dos33Layout
 
     /// <summary>Entry offset of the 30-byte high-bit name.</summary>
     public const int EntryNameOffset = 3;
+
+    /// <summary>
+    /// Entry offset of the last name byte. A deleted file stores its original track here,
+    /// with the high bit set.
+    /// </summary>
+    public const int EntryOriginalTrackOffset = 0x20;
 
     /// <summary>Bytes in a catalog name, padded with <see cref="HighBitSpace"/>.</summary>
     public const int EntryNameLength = 30;
@@ -164,6 +173,34 @@ public static class Dos33Layout
     }
 
     /// <summary>
+    /// Returns how many payload bytes the logical view keeps after the DOS header.
+    /// </summary>
+    /// <param name="fileType">Catalog type. The lock bit is ignored.</param>
+    /// <param name="raw">Raw file bytes, including the header and sector padding.</param>
+    /// <returns>
+    /// The full raw length for text and other types. For binary, Applesoft, and Integer,
+    /// the minimum of the header's length word and the bytes after the header.
+    /// <c>-1</c> when the buffer is shorter than the header.
+    /// </returns>
+    public static int LogicalPayloadLength(byte fileType, ReadOnlySpan<byte> raw)
+    {
+        var header = LogicalHeaderLength(fileType);
+        if (header == 0)
+        {
+            return raw.Length;
+        }
+
+        if (raw.Length < header)
+        {
+            return -1;
+        }
+
+        var declared = raw[header - 2] | (raw[header - 1] << 8);
+        var available = raw.Length - header;
+        return Math.Min(declared, available);
+    }
+
+    /// <summary>
     /// Returns whether a sector is a DOS 3.3 VTOC for an image of the given geometry.
     /// </summary>
     /// <param name="sector">Track 17 sector 0. A short buffer is not a VTOC.</param>
@@ -216,16 +253,44 @@ public static class Dos33Layout
     /// <exception cref="ArgumentOutOfRangeException">If the bitmap byte would fall outside <paramref name="vtoc"/> or <paramref name="sector"/> is not 0–15.</exception>
     public static bool IsSectorFree(ReadOnlySpan<byte> vtoc, int track, int sector)
     {
+        var located = LocateSectorBit(vtoc, track, sector);
+        return (vtoc[located.Offset] & located.Mask) != 0;
+    }
+
+    /// <summary>
+    /// Sets or clears one free-sector bit. A set bit means the sector is free.
+    /// </summary>
+    /// <param name="vtoc">The VTOC sector.</param>
+    /// <param name="track">Track number.</param>
+    /// <param name="sector">DOS logical sector number, 0–15.</param>
+    /// <param name="free"><see langword="true"/> to mark the sector free.</param>
+    /// <exception cref="ArgumentOutOfRangeException">If the bitmap byte would fall outside <paramref name="vtoc"/> or <paramref name="sector"/> is not 0–15.</exception>
+    public static void SetSectorFree(Span<byte> vtoc, int track, int sector, bool free)
+    {
+        var located = LocateSectorBit(vtoc, track, sector);
+        if (free)
+        {
+            vtoc[located.Offset] |= located.Mask;
+        }
+        else
+        {
+            vtoc[located.Offset] = (byte)(vtoc[located.Offset] & ~located.Mask);
+        }
+    }
+
+    private static (int Offset, byte Mask) LocateSectorBit(ReadOnlySpan<byte> vtoc, int track, int sector)
+    {
         ArgumentOutOfRangeException.ThrowIfNegative(track);
         ArgumentOutOfRangeException.ThrowIfNegative(sector);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(sector, DefaultSectorsPerTrack);
-        var offset = VtocBitmapOffset + (track * BitmapBytesPerTrack) + (sector >> 3);
-        if (offset >= vtoc.Length)
+        var fromHighSector = (DefaultSectorsPerTrack - 1) - sector;
+        var offset = VtocBitmapOffset + (track * BitmapBytesPerTrack) + (fromHighSector >> 3);
+        if ((uint)offset >= (uint)vtoc.Length)
         {
             throw new ArgumentOutOfRangeException(nameof(track), "The bitmap byte is outside the VTOC.");
         }
 
-        var bit = 7 - (sector & 7);
-        return (vtoc[offset] & (1 << bit)) != 0;
+        var bit = 7 - (fromHighSector & 7);
+        return (offset, (byte)(1 << bit));
     }
 }

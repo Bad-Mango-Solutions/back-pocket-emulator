@@ -13,12 +13,14 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// A/I/B header and including sparse holes as zeros.
 /// </para>
 /// <para>
-/// <see cref="Logical"/> is <see cref="Raw"/> after DOS header stripping.
-/// <see cref="Dos33Layout.LogicalHeaderLength"/> is the number of leading bytes removed:
-/// 4 for a binary file, 2 for Applesoft or Integer BASIC, and 0 for every other DOS type.
-/// ProDOS and Pascal logical reads are identical to raw reads. Stripping does not
-/// interpret the length word inside a DOS header and does not drop trailing sector padding.
-/// A DOS file shorter than its header is <see cref="FileAccessStatus.CorruptStructure"/>.
+/// <see cref="Logical"/> is <see cref="Raw"/> after the DOS header is removed and the
+/// payload is trimmed. <see cref="Dos33Layout.LogicalHeaderLength"/> is 4 for a binary
+/// file, 2 for Applesoft or Integer BASIC, and 0 otherwise. For those three types the
+/// length kept is <see cref="Dos33Layout.LogicalPayloadLength"/>: the minimum of the
+/// header's length word and the bytes that remain after the header. Sector padding past
+/// that length is dropped. A DOS file shorter than its header is
+/// <see cref="FileAccessStatus.CorruptStructure"/>. ProDOS and Pascal logical reads are
+/// identical to raw reads.
 /// </para>
 /// </remarks>
 public enum FileReadView
@@ -26,6 +28,6 @@ public enum FileReadView
     /// <summary>On-disk bytes trimmed to end-of-file, including DOS A/I/B headers.</summary>
     Raw = 0,
 
-    /// <summary>Raw bytes with the DOS A/I/B header removed when the file type has one.</summary>
+    /// <summary>Raw bytes with the DOS A/I/B header removed and the payload trimmed to its length word.</summary>
     Logical = 1,
 }

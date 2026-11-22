@@ -11,9 +11,11 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// A successful read of an empty file has <see cref="Succeeded"/> set and an empty
 /// <see cref="Data"/> buffer. A failed read has an empty buffer and a <see cref="Reason"/>
 /// that <c>disk cat</c> can print. Unsupported ProDOS storage never puts placeholder
-/// text in <see cref="Data"/>.
+/// text in <see cref="Data"/>. Compare <see cref="Status"/> and the bytes in
+/// <see cref="Data"/>. This type is a class because <see cref="ReadOnlyMemory{T}"/>
+/// equality does not compare file contents.
 /// </remarks>
-public sealed record FileReadResult
+public sealed class FileReadResult
 {
     private FileReadResult(bool succeeded, ReadOnlyMemory<byte> data, FileAccessStatus status, string reason)
     {
