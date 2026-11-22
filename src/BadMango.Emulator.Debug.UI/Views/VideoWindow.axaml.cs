@@ -64,6 +64,7 @@ public partial class VideoWindow : Window
     private readonly DispatcherTimer fpsTimer;
     private readonly Stopwatch fpsStopwatch;
     private readonly HashSet<KeyboardKey> heldHostKeys = [];
+    private readonly HashSet<KeyboardKey> heldLegacyKeys = [];
 
     // Snapshot of display memory ($0400-$5FFF, main and aux) captured at VBlank start.
     // Rendering reads only from this snapshot, so the image never depends on the
@@ -313,6 +314,7 @@ public partial class VideoWindow : Window
         keyboardInput = null;
         keyboardDevice = null;
         heldHostKeys.Clear();
+        heldLegacyKeys.Clear();
         mainRam = ReadOnlyMemory<byte>.Empty;
         characterRom = Memory<byte>.Empty;
         snapshotValid = false;
@@ -412,6 +414,7 @@ public partial class VideoWindow : Window
         else if (TranslateKey(key, modifiers, capsLockActive) is byte keyCode)
         {
             keyboardDevice?.KeyDown(keyCode);
+            heldLegacyKeys.Add(keyboardKey);
         }
 
         handled = true;
@@ -447,6 +450,7 @@ public partial class VideoWindow : Window
         else
         {
             keyboardDevice?.KeyUp();
+            heldLegacyKeys.Remove(keyboardKey);
         }
 
         handled = true;
@@ -1059,23 +1063,22 @@ public partial class VideoWindow : Window
         rightAltPressed = false;
         keyboardDevice?.SetModifiers(KeyboardModifiers.None);
 
-        if (keyboardInput is null)
+        if (keyboardInput is not null)
         {
-            if (heldHostKeys.Count > 0)
+            foreach (KeyboardKey key in heldHostKeys)
             {
-                keyboardDevice?.KeyUp();
-                heldHostKeys.Clear();
+                keyboardInput.KeyUp(key, KeyboardModifiers.None);
             }
-
-            return;
-        }
-
-        foreach (KeyboardKey key in heldHostKeys)
-        {
-            keyboardInput.KeyUp(key, KeyboardModifiers.None);
         }
 
         heldHostKeys.Clear();
+
+        // KeyDown(ascii) is tracked here because that path does not fill heldHostKeys.
+        if (heldLegacyKeys.Count > 0)
+        {
+            keyboardDevice?.KeyUp();
+            heldLegacyKeys.Clear();
+        }
     }
 
     private string CreateAttachmentDiagnostic(IVideoDevice? previousDevice, IVideoDevice? currentDevice)
