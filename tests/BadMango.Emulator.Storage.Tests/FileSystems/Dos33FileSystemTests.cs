@@ -438,6 +438,43 @@ public class Dos33FileSystemTests
     }
 
     /// <summary>
+    /// A live entry whose name is only padding is skipped. The files around it stay readable.
+    /// </summary>
+    [Test]
+    public void Catalog_SkipsABlankNameWithoutFailingTheVolume()
+    {
+        var builder = new Dos33ImageBuilder();
+        builder.AddFile("KEEP", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x11 } });
+        builder.AddFile("BLANK", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x22 } });
+        builder.AddFile("TAIL", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x33 } });
+        var fixture = builder.Build();
+        var image = MutableImage(fixture);
+        var blank = fixture.Entries[1];
+        var tail = fixture.Entries[2];
+        Assume.That(blank.CatalogSlot, Is.LessThan(tail.CatalogSlot));
+        Assume.That(image[EntryOffset(blank) + Dos33Layout.CatalogEntry.TrackOffset], Is.EqualTo((byte)blank.TsTrack));
+        Assume.That(blank.TsTrack, Is.Not.EqualTo(Dos33Layout.UnusedTrack));
+        var nameAt = EntryOffset(blank) + Dos33Layout.CatalogEntry.NameOffset;
+        for (var i = 0; i < Dos33Layout.CatalogEntry.NameLength; i++)
+        {
+            image[nameAt + i] = Dos33Layout.CatalogEntry.HighBitSpace;
+        }
+
+        var fs = Open(fixture);
+        var listing = fs.ListDirectory(null);
+        var tailRead = fs.TryReadFile("TAIL", FileReadView.Raw);
+
+        Assert.That(listing.Succeeded, Is.True);
+        Assert.That(listing.Status, Is.EqualTo(FileAccessStatus.Success));
+        Assert.That(listing.Entries.Select(entry => entry.Name).ToArray(), Is.EqualTo(new[] { "KEEP", "TAIL" }));
+        Assert.That(fs.GetFileInfo("BLANK"), Is.Null);
+        Assert.That(fs.TryReadFile("BLANK", FileReadView.Raw).Status, Is.EqualTo(FileAccessStatus.NotFound));
+        Assert.That(tailRead.Succeeded, Is.True);
+        Assert.That(tailRead.Data.Span[0], Is.EqualTo(0x33));
+        Assert.That(fs.TryReadFile("KEEP", FileReadView.Raw).Data.Span[0], Is.EqualTo(0x11));
+    }
+
+    /// <summary>
     /// A catalog sector that points at itself is not an empty volume and not a partial list.
     /// </summary>
     [Test]

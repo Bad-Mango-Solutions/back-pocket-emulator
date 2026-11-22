@@ -302,14 +302,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             this.ReadIntoBuffer(track, sector);
             var nextTrack = this.sectorBuffer[Dos33Layout.Catalog.NextTrackOffset];
             var nextSector = this.sectorBuffer[Dos33Layout.Catalog.NextSectorOffset];
-            if (!this.TryCopyEntries(out var pending, out var endOfCatalog))
-            {
-                this.logger.Warning(
-                    "DOS catalog entry on track {Track} sector {Sector} has an empty name.",
-                    track,
-                    sector);
-                return this.Remember(CatalogSnapshot.Failed("A DOS catalog entry has an empty name."));
-            }
+            this.CopyEntries(out var pending, out var endOfCatalog);
 
             foreach (var item in pending)
             {
@@ -334,7 +327,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         return catalog;
     }
 
-    private bool TryCopyEntries(out List<PendingEntry> pending, out bool endOfCatalog)
+    private void CopyEntries(out List<PendingEntry> pending, out bool endOfCatalog)
     {
         pending = new List<PendingEntry>(Dos33Layout.Catalog.EntriesPerSector);
         endOfCatalog = false;
@@ -346,7 +339,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             if (tsTrack == Dos33Layout.UnusedTrack)
             {
                 endOfCatalog = true;
-                return true;
+                return;
             }
 
             if (tsTrack == Dos33Layout.DeletedTrack)
@@ -357,7 +350,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             var name = DecodeName(entry.Slice(Dos33Layout.CatalogEntry.NameOffset, Dos33Layout.CatalogEntry.NameLength));
             if (name is null)
             {
-                return false;
+                continue;
             }
 
             var typeByte = entry[Dos33Layout.CatalogEntry.TypeOffset];
@@ -370,8 +363,6 @@ public sealed class Dos33FileSystem : IAppleFileSystem
                 allocated,
                 name));
         }
-
-        return true;
     }
 
     private LocatedFile Locate(PendingEntry pending)
