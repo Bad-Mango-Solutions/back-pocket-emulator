@@ -203,6 +203,81 @@ public partial class DebugCommandsTests
     }
 
     /// <summary>
+    /// Verifies that <c>slot use</c> rebuilds a card when the active and target sets share a type
+    /// but differ in config or preset, and keeps the instance when type and config both match.
+    /// </summary>
+    [Test]
+    public void SlotCommand_Use_ConfigOrPresetChange_ReplacesCardAndKeepsUnchangedInstance()
+    {
+        JsonElement sharedConfig = CloneJson("{\"mode\":\"shared\"}");
+        JsonElement gameConfig = CloneJson("{\"mode\":\"game\"}");
+        JsonElement workConfig = CloneJson("{\"mode\":\"work\"}");
+        using var factory = RegisterTemporarySlotCardFactory(
+            "set-config-card",
+            (_, config) => new TestConfigSlotCard
+            {
+                TypeId = "set-config-card",
+                AppliedConfig = config,
+            });
+        var slotManager = new SlotManager(new IOPageDispatcher());
+        var runtimeState = new SlotSetRuntimeState(
+            new Dictionary<string, SlotSetRuntimeDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["game"] = new(
+                    "game",
+                    "game set",
+                    [
+                        new SlotCardProfile { Slot = 4, Type = "set-config-card", Config = gameConfig },
+                        new SlotCardProfile { Slot = 5, Type = "set-config-card", Config = sharedConfig },
+                        new SlotCardProfile { Slot = 6, Type = "set-config-card", Preset = "alpha" },
+                    ]),
+                ["workstation"] = new(
+                    "workstation",
+                    "work set",
+                    [
+                        new SlotCardProfile { Slot = 4, Type = "set-config-card", Config = workConfig },
+                        new SlotCardProfile { Slot = 5, Type = "set-config-card", Config = sharedConfig },
+                        new SlotCardProfile { Slot = 6, Type = "set-config-card", Preset = "beta" },
+                    ]),
+            },
+            "game");
+        IMachine machine = new MachineBuilder()
+            .WithAddressSpace(16)
+            .WithCpuFactory(static ctx => new Cpu65C02(ctx))
+            .AddComponent(slotManager)
+            .AddComponent(runtimeState)
+            .Build();
+        var slot4Before = new TestConfigSlotCard { TypeId = "set-config-card" };
+        var slot5Before = new TestConfigSlotCard { TypeId = "set-config-card" };
+        var slot6Before = new TestConfigSlotCard { TypeId = "set-config-card" };
+        machine.InsertSlotCard(4, slot4Before);
+        machine.InsertSlotCard(5, slot5Before);
+        machine.InsertSlotCard(6, slot6Before);
+        debugContext.AttachMachine(machine);
+        Assume.That(machine.State, Is.EqualTo(MachineState.Off));
+        Assume.That(runtimeState.IsModified, Is.False);
+
+        var result = new SlotCommand().Execute(debugContext, ["use", "workstation"]);
+        var slot4After = slotManager.GetCard(4) as TestConfigSlotCard;
+        var slot5After = slotManager.GetCard(5);
+        var slot6After = slotManager.GetCard(6);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(slot4After, Is.Not.Null);
+            Assert.That(slot4After, Is.Not.SameAs(slot4Before));
+            Assert.That(slot4After!.AppliedConfig?.GetProperty("mode").GetString(), Is.EqualTo("work"));
+            Assert.That(slot5After, Is.SameAs(slot5Before));
+            Assert.That(slot6After, Is.Not.Null);
+            Assert.That(slot6After, Is.Not.SameAs(slot6Before));
+            Assert.That(slot6After!.DeviceType, Is.EqualTo("set-config-card"));
+            Assert.That(runtimeState.ActiveSetName, Is.EqualTo("workstation"));
+            Assert.That(runtimeState.IsModified, Is.False);
+        });
+    }
+
+    /// <summary>
     /// Verifies that <c>slot use</c> rejects unknown set names and non-off machine states.
     /// </summary>
     [Test]
@@ -377,6 +452,12 @@ public partial class DebugCommandsTests
         }
     }
 
+    private static JsonElement CloneJson(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
     private static IDisposable RegisterTemporarySlotCardFactory(
         string typeId,
         Func<MachineBuilder, JsonElement?, ISlotCard> factory)
@@ -411,6 +492,8 @@ public partial class DebugCommandsTests
     private sealed class TestConfigSlotCard : ISlotCard
     {
         public string TypeId { get; init; } = "test-config-slot-card";
+
+        public JsonElement? AppliedConfig { get; init; }
 
         public int SlotNumber { get; set; }
 

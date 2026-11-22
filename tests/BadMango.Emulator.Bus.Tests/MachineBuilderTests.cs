@@ -1147,6 +1147,106 @@ public class MachineBuilderTests
     }
 
     /// <summary>
+    /// Verifies that a JSON <c>defaultSet</c> which differs from the set name only by case
+    /// still loads that set, using the set name's original casing.
+    /// </summary>
+    [Test]
+    public void FromProfile_SlotSets_DefaultSetDiffersOnlyByCase_LoadsMatchingSet()
+    {
+        var mockCpu = CreateMockCpu();
+        var profile = DeserializeSlotSetProfile(
+            "game",
+            """
+            {
+              "Game": {
+                "description": "Cased game set",
+                "cards": [
+                  { "slot": 4, "type": "game-card" }
+                ]
+              },
+              "workstation": {
+                "cards": [
+                  { "slot": 2, "type": "work-card" }
+                ]
+              }
+            }
+            """);
+        var sets = profile.Devices?.Slots?.Sets;
+        Assert.That(sets, Is.Not.Null);
+        Assert.That(sets!.ContainsKey("Game"), Is.True);
+        Assert.That(sets.ContainsKey("game"), Is.False, "JSON set names are case-sensitive.");
+
+        var createdTypes = new List<string>();
+        var builder = new MachineBuilder().WithCpuFactory(_ => mockCpu.Object);
+        builder.RegisterSlotCardFactory("base-card", (_, _) =>
+        {
+            createdTypes.Add("base-card");
+            return new FakeSlotCard("base-card");
+        });
+        builder.RegisterSlotCardFactory("game-card", (_, _) =>
+        {
+            createdTypes.Add("game-card");
+            return new FakeSlotCard("game-card");
+        });
+        builder.RegisterSlotCardFactory("work-card", (_, _) =>
+        {
+            createdTypes.Add("work-card");
+            return new FakeSlotCard("work-card");
+        });
+
+        var machine = builder.FromProfile(profile).Build();
+        var runtimeState = machine.GetComponent<SlotSetRuntimeState>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(createdTypes, Is.EquivalentTo(new[] { "base-card", "game-card" }));
+            Assert.That(runtimeState, Is.Not.Null);
+            Assert.That(runtimeState!.ActiveSetName, Is.EqualTo("Game"));
+            Assert.That(
+                runtimeState.Sets[runtimeState.ActiveSetName].Cards.Select(static card => card.Type),
+                Is.EquivalentTo(new[] { "base-card", "game-card" }));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that set names which differ only by case are rejected at profile load.
+    /// </summary>
+    [Test]
+    public void FromProfile_SlotSets_SetNamesThatDifferOnlyByCase_Throws()
+    {
+        var mockCpu = CreateMockCpu();
+        var profile = DeserializeSlotSetProfile(
+            "game",
+            """
+            {
+              "Game": {
+                "cards": [
+                  { "slot": 4, "type": "game-card" }
+                ]
+              },
+              "game": {
+                "cards": [
+                  { "slot": 2, "type": "work-card" }
+                ]
+              }
+            }
+            """);
+        var builder = new MachineBuilder().WithCpuFactory(_ => mockCpu.Object);
+        builder.RegisterSlotCardFactory("base-card", (_, _) => new FakeSlotCard("base-card"));
+        builder.RegisterSlotCardFactory("game-card", (_, _) => new FakeSlotCard("game-card"));
+        builder.RegisterSlotCardFactory("work-card", (_, _) => new FakeSlotCard("work-card"));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => builder.FromProfile(profile));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("differ only by case"));
+            Assert.That(ex.Message, Does.Contain("Game"));
+            Assert.That(ex.Message, Does.Contain("'game'"));
+        });
+    }
+
+    /// <summary>
     /// Verifies that <see cref="MachineBuilder.FromProfile"/> consumes a per-card
     /// <c>config.rom</c> string by looking up the named entry in <c>memory.rom-images</c>,
     /// loading the bytes, and pushing them into the freshly-built slot card via a
@@ -1402,6 +1502,42 @@ public class MachineBuilderTests
         mockCpu.Setup(c => c.IsStopRequested).Returns(false);
         mockCpu.Setup(c => c.Step()).Returns(new CpuStepResult(CpuRunState.Running, 1));
         return mockCpu;
+    }
+
+    private static Core.Configuration.MachineProfile DeserializeSlotSetProfile(string defaultSet, string setsJson)
+    {
+        string json = $$"""
+            {
+              "name": "test-profile",
+              "displayName": "Test Profile",
+              "description": "Test",
+              "addressSpace": 16,
+              "cpu": { "type": "65C02", "clockSpeed": 1000000 },
+              "memory": {
+                "regions": [
+                  {
+                    "name": "test-composite",
+                    "type": "composite",
+                    "start": "0xC000",
+                    "size": "0x1000",
+                    "permissions": "rw"
+                  }
+                ]
+              },
+              "devices": {
+                "slots": {
+                  "enabled": true,
+                  "defaultSet": "{{defaultSet}}",
+                  "cards": [
+                    { "slot": 6, "type": "base-card" }
+                  ],
+                  "sets": {{setsJson}}
+                }
+              }
+            }
+            """;
+
+        return new Core.Configuration.MachineProfileSerializer().Deserialize(json);
     }
 
     private static Core.Configuration.MachineProfile CreateSlotSetProfile(

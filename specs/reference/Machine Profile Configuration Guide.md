@@ -403,8 +403,8 @@ For backward compatibility, profiles may still provide only `cards` with no name
 | `internalC3Rom` | Use internal ROM at $C300 instead of slot 3 card |
 | `internalCxRom` | Use internal ROM at $C100-$CFFF instead of peripheral ROMs |
 | `cards` | Base array of slot card configurations |
-| `defaultSet` | (Optional) Name of the default set to apply when `sets` is configured |
-| `sets` | (Optional) Named slot-set overlays for runtime switching |
+| `defaultSet` | (Optional) Name of the default set to apply when `sets` is configured. The match ignores case, and the active set keeps the profile's set-name casing. |
+| `sets` | (Optional) Named slot-set overlays for runtime switching. Names that differ only by case are rejected. |
 
 #### Slot Card Configuration
 

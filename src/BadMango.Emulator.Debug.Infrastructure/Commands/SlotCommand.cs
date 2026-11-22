@@ -353,6 +353,11 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
             {
                 return false;
             }
+
+            // The live slots still match the active set, so a preset or config
+            // difference has to replace the installed card. Device type alone
+            // would keep the old instance and ignore the new configuration.
+            return true;
         }
 
         if (targetCard is null)

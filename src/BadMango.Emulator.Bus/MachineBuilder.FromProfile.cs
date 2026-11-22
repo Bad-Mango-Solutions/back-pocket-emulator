@@ -155,11 +155,8 @@ public sealed partial class MachineBuilder
                 "devices.slots.defaultSet is required when devices.slots.sets is configured.");
         }
 
-        if (!slots.Sets.ContainsKey(slots.DefaultSet))
-        {
-            throw new InvalidOperationException(
-                $"devices.slots.defaultSet '{slots.DefaultSet}' does not match any configured set.");
-        }
+        ValidateUniqueSlotSetNames(slots.Sets);
+        string activeSetName = ResolveSlotSetName(slots.Sets, slots.DefaultSet);
 
         var resolved = new Dictionary<string, SlotSetRuntimeDefinition>(StringComparer.OrdinalIgnoreCase);
         foreach (var (setName, setProfile) in slots.Sets)
@@ -168,7 +165,44 @@ public sealed partial class MachineBuilder
             resolved[setName] = BuildResolvedSet(setName, setProfile, baseCards);
         }
 
-        return (resolved[slots.DefaultSet].Cards, new SlotSetRuntimeState(resolved, slots.DefaultSet));
+        return (resolved[activeSetName].Cards, new SlotSetRuntimeState(resolved, activeSetName));
+    }
+
+    private static void ValidateUniqueSlotSetNames(IReadOnlyDictionary<string, SlotCardSetProfile> sets)
+    {
+        ArgumentNullException.ThrowIfNull(sets);
+
+        // JSON dictionaries compare keys with ordinal case. Runtime lookup does not,
+        // so two names that differ only by case would collapse into one set.
+        var seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string setName in sets.Keys)
+        {
+            if (!seen.TryAdd(setName, setName))
+            {
+                throw new InvalidOperationException(
+                    "devices.slots.sets names must be unique ignoring case. " +
+                    $"'{seen[setName]}' and '{setName}' differ only by case.");
+            }
+        }
+    }
+
+    private static string ResolveSlotSetName(
+        IReadOnlyDictionary<string, SlotCardSetProfile> sets,
+        string requestedName)
+    {
+        ArgumentNullException.ThrowIfNull(sets);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestedName);
+
+        foreach (string setName in sets.Keys)
+        {
+            if (string.Equals(setName, requestedName, StringComparison.OrdinalIgnoreCase))
+            {
+                return setName;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"devices.slots.defaultSet '{requestedName}' does not match any configured set.");
     }
 
     private static void ValidateSlotSet(string setName, SlotCardSetProfile setProfile)

@@ -81,6 +81,8 @@ public sealed class SlotSystemProfile
     /// </summary>
     /// <remarks>
     /// When <see cref="Sets"/> is configured, this value must name one of those sets.
+    /// The name is matched ignoring case, and the active set keeps the casing stored
+    /// in <see cref="Sets"/>. Set names that differ only by case are rejected.
     /// </remarks>
     [JsonPropertyName("defaultSet")]
     public string? DefaultSet { get; set; }

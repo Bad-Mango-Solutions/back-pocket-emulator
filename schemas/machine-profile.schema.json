@@ -426,11 +426,11 @@
                 },
                 "defaultSet": {
                     "type": "string",
-                    "description": "Default named slot set applied at build time when sets are configured"
+                    "description": "Default named slot set applied at build time when sets are configured. Matched ignoring case against set names."
                 },
                 "sets": {
                     "type": "object",
-                    "description": "Named slot-set overlays. Each set applies on top of cards and may clear a slot by setting type to null.",
+                    "description": "Named slot-set overlays. Each set applies on top of cards and may clear a slot by setting type to null. Names that differ only by case are rejected.",
                     "propertyNames": {
                         "minLength": 1
                     },
