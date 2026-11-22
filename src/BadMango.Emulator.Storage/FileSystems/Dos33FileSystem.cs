@@ -390,6 +390,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         var pairs = new List<TrackSectorPair>();
         var visited = new HashSet<(int Track, int Sector)>();
         var lastIndex = -1;
+        var ordinal = 0;
         var track = (int)startTrack;
         var sector = (int)startSector;
         while (track != 0)
@@ -417,6 +418,15 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             var nextSector = this.sectorBuffer[Dos33Layout.TrackSectorList.NextSectorOffset];
             var origin = this.sectorBuffer[Dos33Layout.TrackSectorList.SectorBaseOffset]
                 | (this.sectorBuffer[Dos33Layout.TrackSectorList.SectorBaseOffset + 1] << 8);
+            if (origin != ordinal * Dos33Layout.TrackSectorList.PairsPerSector)
+            {
+                this.logger.Warning(
+                    "DOS track/sector list ordinal {Ordinal} has sector offset {Origin}.",
+                    ordinal,
+                    origin);
+                return FailedList("The track/sector list sector offset is wrong.");
+            }
+
             for (var pair = 0; pair < Dos33Layout.TrackSectorList.PairsPerSector; pair++)
             {
                 var at = Dos33Layout.TrackSectorList.PairOffset + (pair * 2);
@@ -446,6 +456,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
 
             track = nextTrack;
             sector = nextSector;
+            ordinal++;
         }
 
         if (lastIndex >= 0 && ((long)lastIndex + 1) * Dos33Layout.SectorSize > int.MaxValue)

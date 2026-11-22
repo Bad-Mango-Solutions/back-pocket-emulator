@@ -158,8 +158,8 @@ public class Dos33FileSystemTests
     }
 
     /// <summary>
-    /// A file is the sectors named by its own track/sector list, including a later list
-    /// whose pair 0 starts at the list's sector base.
+    /// A file is the sectors named by its own track/sector list. The next list's sector
+    /// base is 122, and the gap before that pair is a hole.
     /// </summary>
     [Test]
     public void Read_FollowsThatFilesTrackSectorList()
@@ -194,19 +194,20 @@ public class Dos33FileSystemTests
         ts[pair0 + 2] = 0;
         ts[pair0 + 3] = 0;
         var link = Sector(image, linkTrack, linkSector);
-        link[Dos33Layout.TrackSectorList.SectorBaseOffset] = 2;
+        link[Dos33Layout.TrackSectorList.SectorBaseOffset] = (byte)Dos33Layout.TrackSectorList.PairsPerSector;
         link[Dos33Layout.TrackSectorList.PairOffset] = (byte)data1.Track;
         link[Dos33Layout.TrackSectorList.PairOffset + 1] = (byte)data1.Sector;
+        var tail = Dos33Layout.TrackSectorList.PairsPerSector * Dos33Layout.SectorSize;
 
         var fs = Open(fixture);
         var read = fs.TryReadFile("CHAIN", FileReadView.Raw);
 
         Assert.That(read.Succeeded, Is.True);
-        Assert.That(read.Data.Length, Is.EqualTo(Dos33Layout.SectorSize * 3));
+        Assert.That(read.Data.Length, Is.EqualTo(tail + Dos33Layout.SectorSize));
         Assert.That(read.Data.Span[0], Is.EqualTo(0x11));
-        Assert.That(read.Data.Span.Slice(Dos33Layout.SectorSize, Dos33Layout.SectorSize).ToArray(), Is.All.EqualTo(0));
-        Assert.That(read.Data.Span[Dos33Layout.SectorSize * 2], Is.EqualTo(0x22));
-        Assert.That(fs.GetFileInfo("CHAIN")!.EofBytes, Is.EqualTo(Dos33Layout.SectorSize * 3));
+        Assert.That(read.Data.Span[Dos33Layout.SectorSize], Is.EqualTo(0));
+        Assert.That(read.Data.Span[tail], Is.EqualTo(0x22));
+        Assert.That(fs.GetFileInfo("CHAIN")!.EofBytes, Is.EqualTo(tail + Dos33Layout.SectorSize));
     }
 
     /// <summary>
@@ -337,6 +338,59 @@ public class Dos33FileSystemTests
         Assert.That(catalogFs.GetFileInfo("BAD"), Is.Null);
         Assert.That(catalogRead.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
         Assert.That(catalogRead.Data.Length, Is.EqualTo(0));
+    }
+
+    /// <summary>
+    /// A list sector whose base is not its position times 122 is corrupt. <c>$FFFF</c> is not a 16MB file.
+    /// </summary>
+    [Test]
+    public void Read_WhenTheSectorOffsetDisagrees_ReturnsCorruptStructure()
+    {
+        var wide = TwoFiles();
+        var wideList = Sector(wide.Image, wide.Bad.TsTrack, wide.Bad.TsSector);
+        Assume.That(wideList[Dos33Layout.TrackSectorList.SectorBaseOffset], Is.EqualTo(0));
+        Assume.That(wideList[Dos33Layout.TrackSectorList.SectorBaseOffset + 1], Is.EqualTo(0));
+        wideList[Dos33Layout.TrackSectorList.SectorBaseOffset] = 0xFF;
+        wideList[Dos33Layout.TrackSectorList.SectorBaseOffset + 1] = 0xFF;
+
+        var wideFs = Open(wide.Fixture);
+        var wideRead = wideFs.TryReadFile("BAD", FileReadView.Raw);
+
+        Assert.That(wideFs.ListDirectory(null).Entries.Select(entry => entry.Name).ToArray(), Is.EqualTo(new[] { "GOOD", "BAD" }));
+        Assert.That(wideFs.GetFileInfo("BAD")!.EofBytes, Is.EqualTo(0));
+        Assert.That(wideRead.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(wideRead.Reason, Is.EqualTo("The track/sector list sector offset is wrong."));
+        Assert.That(wideRead.Data.Length, Is.EqualTo(0));
+        Assert.That(wideFs.TryReadFile("GOOD", FileReadView.Raw).Succeeded, Is.True);
+        Assert.That(wideFs.TryReadFile("GOOD", FileReadView.Raw).Data.Span[0], Is.EqualTo(0x11));
+
+        var builder = new Dos33ImageBuilder();
+        builder.AddFile("GOOD", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x11 } });
+        builder.AddFile("CHAIN", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x21 }, new byte[] { 0x22 } });
+        var fixture = builder.Build();
+        var image = MutableImage(fixture);
+        var chain = fixture.Entries[1];
+        var ts = Sector(image, chain.TsTrack, chain.TsSector);
+        Assume.That(TryFindZeroSector(image, fixture.TrackCount, out var linkTrack, out var linkSector), Is.True);
+        var pair = Dos33Layout.TrackSectorList.PairOffset;
+        ts[Dos33Layout.TrackSectorList.NextTrackOffset] = (byte)linkTrack;
+        ts[Dos33Layout.TrackSectorList.NextSectorOffset] = (byte)linkSector;
+        var link = Sector(image, linkTrack, linkSector);
+        link[pair] = ts[pair + 2];
+        link[pair + 1] = ts[pair + 3];
+        ts[pair + 2] = 0;
+        ts[pair + 3] = 0;
+        Assume.That(link[Dos33Layout.TrackSectorList.SectorBaseOffset], Is.EqualTo(0));
+
+        var fs = Open(fixture);
+        var read = fs.TryReadFile("CHAIN", FileReadView.Raw);
+
+        Assert.That(fs.GetFileInfo("GOOD")!.EofBytes, Is.EqualTo(Dos33Layout.SectorSize));
+        Assert.That(fs.GetFileInfo("CHAIN")!.EofBytes, Is.EqualTo(0));
+        Assert.That(read.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(read.Reason, Is.EqualTo("The track/sector list sector offset is wrong."));
+        Assert.That(read.Data.Length, Is.EqualTo(0));
+        Assert.That(fs.TryReadFile("GOOD", FileReadView.Raw).Data.Span[0], Is.EqualTo(0x11));
     }
 
     /// <summary>
