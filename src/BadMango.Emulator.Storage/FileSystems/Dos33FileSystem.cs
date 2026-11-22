@@ -302,7 +302,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             this.ReadIntoBuffer(track, sector);
             var nextTrack = this.sectorBuffer[Dos33Layout.Catalog.NextTrackOffset];
             var nextSector = this.sectorBuffer[Dos33Layout.Catalog.NextSectorOffset];
-            if (!this.TryCopyEntries(out var pending))
+            if (!this.TryCopyEntries(out var pending, out var endOfCatalog))
             {
                 this.logger.Warning(
                     "DOS catalog entry on track {Track} sector {Sector} has an empty name.",
@@ -314,6 +314,11 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             foreach (var item in pending)
             {
                 files.Add(this.Locate(item));
+            }
+
+            if (endOfCatalog)
+            {
+                break;
             }
 
             track = nextTrack;
@@ -329,15 +334,22 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         return catalog;
     }
 
-    private bool TryCopyEntries(out List<PendingEntry> pending)
+    private bool TryCopyEntries(out List<PendingEntry> pending, out bool endOfCatalog)
     {
         pending = new List<PendingEntry>(Dos33Layout.Catalog.EntriesPerSector);
+        endOfCatalog = false;
         for (var slot = 0; slot < Dos33Layout.Catalog.EntriesPerSector; slot++)
         {
             var offset = Dos33Layout.Catalog.HeaderLength + (slot * Dos33Layout.CatalogEntry.Length);
             var entry = this.sectorBuffer.AsSpan(offset, Dos33Layout.CatalogEntry.Length);
             var tsTrack = entry[Dos33Layout.CatalogEntry.TrackOffset];
-            if (tsTrack == Dos33Layout.UnusedTrack || tsTrack == Dos33Layout.DeletedTrack)
+            if (tsTrack == Dos33Layout.UnusedTrack)
+            {
+                endOfCatalog = true;
+                return true;
+            }
+
+            if (tsTrack == Dos33Layout.DeletedTrack)
             {
                 continue;
             }

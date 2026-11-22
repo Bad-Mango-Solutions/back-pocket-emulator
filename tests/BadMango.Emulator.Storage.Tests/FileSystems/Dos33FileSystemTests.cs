@@ -394,6 +394,50 @@ public class Dos33FileSystemTests
     }
 
     /// <summary>
+    /// A track byte of zero ends the catalog. A later live entry, including one on the next sector, is not listed.
+    /// </summary>
+    [Test]
+    public void Catalog_StopsAtTheFirstUnusedTrackByte()
+    {
+        var builder = new Dos33ImageBuilder();
+        for (var i = 0; i < 8; i++)
+        {
+            builder.AddFile(
+                "F" + i.ToString(CultureInfo.InvariantCulture),
+                Dos33FileType.Text,
+                false,
+                false,
+                new byte[]?[] { new byte[] { (byte)(0x30 + i) } });
+        }
+
+        var fixture = builder.Build();
+        var image = MutableImage(fixture);
+        var hole = fixture.Entries[2];
+        var after = fixture.Entries[3];
+        var nextSector = fixture.Entries[7];
+        Assume.That(hole.CatalogSector, Is.EqualTo(Dos33Layout.DefaultFirstCatalogSector));
+        Assume.That(after.CatalogSector, Is.EqualTo(hole.CatalogSector));
+        Assume.That(after.CatalogSlot, Is.GreaterThan(hole.CatalogSlot));
+        Assume.That(nextSector.CatalogSector, Is.EqualTo(14));
+        Assume.That(image[EntryOffset(hole) + Dos33Layout.CatalogEntry.TrackOffset], Is.EqualTo((byte)hole.TsTrack));
+        Assume.That(hole.TsTrack, Is.Not.Zero);
+        image[EntryOffset(hole) + Dos33Layout.CatalogEntry.TrackOffset] = Dos33Layout.UnusedTrack;
+        Assume.That(image[EntryOffset(after) + Dos33Layout.CatalogEntry.TrackOffset], Is.Not.EqualTo(Dos33Layout.UnusedTrack));
+
+        var fs = Open(fixture);
+        var listing = fs.ListDirectory(null);
+
+        Assert.That(listing.Succeeded, Is.True);
+        Assert.That(listing.Entries.Select(entry => entry.Name).ToArray(), Is.EqualTo(new[] { "F0", "F1" }));
+        Assert.That(fs.GetFileInfo("F3"), Is.Null);
+        Assert.That(fs.GetFileInfo("F7"), Is.Null);
+        Assert.That(fs.TryReadFile("F3", FileReadView.Raw).Status, Is.EqualTo(FileAccessStatus.NotFound));
+        var kept = fs.TryReadFile("F0", FileReadView.Raw);
+        Assert.That(kept.Succeeded, Is.True);
+        Assert.That(kept.Data.Span[0], Is.EqualTo(0x30));
+    }
+
+    /// <summary>
     /// A catalog sector that points at itself is not an empty volume and not a partial list.
     /// </summary>
     [Test]
