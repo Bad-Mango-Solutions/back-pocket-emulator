@@ -16,25 +16,34 @@ using Serilog;
 /// The volume name is the VTOC volume number as an invariant decimal. DOS 3.3 has no
 /// text volume name. The catalog chain starts at the VTOC's first catalog sector and
 /// follows <see cref="Dos33Layout.Catalog.NextTrackOffset"/>. It does not scan the rest
-/// of track 17. The type and the lock bit are the byte at
-/// <see cref="Dos33Layout.CatalogEntry.TypeOffset"/>. Track
-/// <see cref="Dos33Layout.UnusedTrack"/> and track <see cref="Dos33Layout.DeletedTrack"/>
-/// are not files.
+/// of track 17. A track byte of <see cref="Dos33Layout.UnusedTrack"/> ends the catalog,
+/// including later sectors in the chain. A track byte of <see cref="Dos33Layout.DeletedTrack"/>
+/// is skipped, and so is a live entry whose name is only padding. The type and the lock
+/// bit are the byte at <see cref="Dos33Layout.CatalogEntry.TypeOffset"/>.
 /// </para>
 /// <para>
 /// File bytes come from that file's track/sector list, including later list sectors.
-/// Pair 0 of a list describes the file sector at
-/// <see cref="Dos33Layout.TrackSectorList.SectorBaseOffset"/>. A <c>$00 $00</c> pair
-/// before the last occupied pair is 256 zero bytes, not the end of the file. A repeated
-/// catalog sector fails <see cref="ListDirectory"/>. A repeated track/sector-list sector
-/// fails <see cref="TryReadFile"/> with <see cref="FileAccessStatus.CorruptStructure"/>.
-/// The catalog entry is still listed, with an end-of-file of zero.
+/// The little-endian word at <see cref="Dos33Layout.TrackSectorList.SectorBaseOffset"/>
+/// must be that list's position times <see cref="Dos33Layout.TrackSectorList.PairsPerSector"/>.
+/// A <c>$00 $00</c> pair before the last occupied pair is 256 zero bytes, not the end of
+/// the file. A repeated catalog sector, or a catalog link past the disk, fails
+/// <see cref="ListDirectory"/>. A repeated track/sector list, a list or data pair past
+/// the disk, or a sector base that disagrees with the list position fails
+/// <see cref="TryReadFile"/> with <see cref="FileAccessStatus.CorruptStructure"/>.
+/// That catalog entry is still listed, with an end-of-file of zero.
 /// </para>
 /// <para>
 /// <see cref="FileReadView.Logical"/> removes an A, I, or B header through
-/// <see cref="Dos33Layout.LogicalPayloadLength(byte, ReadOnlySpan{byte})"/>. One 256-byte
-/// sector buffer is allocated for the life of the reader and reused. Media exceptions
-/// are not caught.
+/// <see cref="Dos33Layout.LogicalPayloadLength(byte, ReadOnlySpan{byte})"/>.
+/// A text file's logical view is the raw bytes. It is not cut at the first <c>$00</c>.
+/// DOS text is random-access and may contain interior zeros.
+/// </para>
+/// <para>
+/// One <see cref="Lock"/> guards the sector buffer and the cache, so concurrent calls are safe.
+/// The catalog and the file bytes are cached for the lifetime of the reader. Reopen the
+/// volume after the image changes. Name lookup uses
+/// <see cref="StringComparison.OrdinalIgnoreCase"/>, which DOS itself does not.
+/// Media exceptions are not caught.
 /// </para>
 /// </remarks>
 public sealed class Dos33FileSystem : IAppleFileSystem
@@ -104,7 +113,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     /// </param>
     /// <returns>
     /// Live catalog entries in on-disk order, or a failure when the path is illegal,
-    /// missing, a file, or the catalog chain repeats a sector.
+    /// missing, a file, or the catalog chain repeats a sector or leaves the disk.
     /// </returns>
     public DirectoryListing ListDirectory(string? path)
     {
@@ -121,7 +130,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     /// <param name="view">Raw sectors, or the logical view with the A/I/B header removed.</param>
     /// <returns>
     /// The file bytes, or a failure when the path is missing, the root, illegal, shorter
-    /// than its header, or the track/sector list repeats a sector.
+    /// than its header, or the track/sector list repeats, leaves the disk, or has a bad sector base.
     /// </returns>
     /// <exception cref="ArgumentNullException">If <paramref name="path"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">If <paramref name="view"/> is not a defined view.</exception>
@@ -145,7 +154,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     /// <param name="path">Volume-relative file name. Not <see langword="null"/>.</param>
     /// <returns>
     /// The entry, or <see langword="null"/> when the path is missing, illegal, the volume
-    /// root, or the catalog chain repeats a sector.
+    /// root, or the catalog chain repeats a sector or leaves the disk. Lookup ignores case.
     /// </returns>
     /// <exception cref="ArgumentNullException">If <paramref name="path"/> is <see langword="null"/>.</exception>
     public FileEntry? GetFileInfo(string path)
