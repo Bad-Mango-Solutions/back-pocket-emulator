@@ -10,23 +10,23 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <remarks>
 /// <para>
 /// The VTOC is track <see cref="VtocTrack"/> sector <see cref="VtocSector"/>. The type byte
-/// and the lock bit are at catalog entry offset <see cref="EntryTypeOffset"/>, not offset 0.
+/// and the lock bit are at <see cref="CatalogEntry.TypeOffset"/>, not offset 0.
 /// Offset 0 is the track of the track/sector list: <see cref="UnusedTrack"/> has never been
 /// used, and <see cref="DeletedTrack"/> is a deleted file. Neither is a live file.
 /// </para>
 /// <para>
-/// Track/sector pairs start at <see cref="TsPairOffset"/>. A <c>$00 $00</c> pair that still
-/// has an occupied pair after it is a sparse hole, not the end of the list. Readers follow
-/// the catalog chain and that file's list. They do not rescan track 17 for file data.
-/// A repeated next pointer is a corrupt loop.
+/// Track/sector pairs start at <see cref="TrackSectorList.PairOffset"/>. A <c>$00 $00</c> pair
+/// that still has an occupied pair after it is a sparse hole, not the end of the list.
+/// Readers follow the catalog chain and that file's list. They do not rescan track 17 for
+/// file data. A repeated next pointer is a corrupt loop.
 /// </para>
 /// <para>
-/// The free-sector bitmap starts at <see cref="VtocBitmapOffset"/>, four bytes per track.
+/// The free-sector bitmap starts at <see cref="Vtoc.BitmapOffset"/>, four bytes per track.
 /// Those four bytes are one big-endian value, and a set bit means free. The highest
 /// sector is the high bit: sector 15 is byte 0 bit 7, sector 8 is byte 0 bit 0, sector 7
 /// is byte 1 bit 7, and sector 0 is byte 1 bit 0. <see cref="IsSectorFree"/> is that mapping.
 /// A deleted catalog entry stores its original track/sector-list track byte, unchanged,
-/// in the last name byte (<see cref="EntryOriginalTrackOffset"/>).
+/// in <see cref="CatalogEntry.OriginalTrackOffset"/>.
 /// </para>
 /// </remarks>
 public static class Dos33Layout
@@ -46,68 +46,17 @@ public static class Dos33Layout
     /// <summary>First catalog sector DOS 3.3 INIT writes.</summary>
     public const int DefaultFirstCatalogSector = 15;
 
-    /// <summary>Bytes before the first catalog entry in a catalog sector.</summary>
-    public const int CatalogHeaderLength = 0x0B;
-
-    /// <summary>Bytes in one catalog entry.</summary>
-    public const int CatalogEntryLength = 35;
-
-    /// <summary>Catalog entries in one sector.</summary>
-    public const int CatalogEntriesPerSector = 7;
-
-    /// <summary>Entry offset of the track/sector-list track.</summary>
-    public const int EntryTrackOffset = 0;
-
-    /// <summary>Entry offset of the track/sector-list sector.</summary>
-    public const int EntrySectorOffset = 1;
-
-    /// <summary>Entry offset of the file type and lock bit. Not offset 0.</summary>
-    public const int EntryTypeOffset = 2;
-
-    /// <summary>Entry offset of the 30-byte high-bit name.</summary>
-    public const int EntryNameOffset = 3;
-
-    /// <summary>
-    /// Entry offset of the last name byte. A deleted file stores its original track byte
-    /// here, unchanged.
-    /// </summary>
-    public const int EntryOriginalTrackOffset = 0x20;
-
-    /// <summary>Bytes in a catalog name, padded with <see cref="HighBitSpace"/>.</summary>
-    public const int EntryNameLength = 30;
-
-    /// <summary>Entry offset of the little-endian sector count.</summary>
-    public const int EntrySectorCountOffset = 0x21;
-
     /// <summary>Track value of a deleted catalog entry.</summary>
     public const byte DeletedTrack = 0xFF;
 
     /// <summary>Track value of a catalog slot that has never been used.</summary>
     public const byte UnusedTrack = 0x00;
 
-    /// <summary>Lock bit in the type byte at <see cref="EntryTypeOffset"/>.</summary>
+    /// <summary>Lock bit in the catalog type byte. It is not part of <see cref="Dos33FileType"/>.</summary>
     public const byte LockedMask = 0x80;
 
-    /// <summary>File-type bits in the type byte. The lock bit is not part of the type.</summary>
+    /// <summary>File-type bits in the catalog type byte.</summary>
     public const byte FileTypeMask = 0x7F;
-
-    /// <summary>Text file type.</summary>
-    public const byte FileTypeText = 0x00;
-
-    /// <summary>Integer BASIC file type.</summary>
-    public const byte FileTypeInteger = 0x01;
-
-    /// <summary>Applesoft BASIC file type.</summary>
-    public const byte FileTypeApplesoft = 0x02;
-
-    /// <summary>Binary file type.</summary>
-    public const byte FileTypeBinary = 0x04;
-
-    /// <summary>Offset of the first track/sector pair in a track/sector list.</summary>
-    public const int TsPairOffset = 0x0C;
-
-    /// <summary>Pairs stored in one track/sector-list sector.</summary>
-    public const int TsPairsPerSector = 122;
 
     /// <summary>Address and length header on a binary file, in bytes.</summary>
     public const int BinaryHeaderLength = 4;
@@ -115,62 +64,30 @@ public static class Dos33Layout
     /// <summary>Length header on an Applesoft or Integer BASIC file, in bytes.</summary>
     public const int BasicHeaderLength = 2;
 
-    /// <summary>VTOC offset of the first catalog track.</summary>
-    public const int VtocCatalogTrackOffset = 0x01;
-
-    /// <summary>VTOC offset of the first catalog sector.</summary>
-    public const int VtocCatalogSectorOffset = 0x02;
-
-    /// <summary>VTOC offset of the DOS version. DOS 3.3 stores <see cref="DosVersion33"/>.</summary>
-    public const int VtocDosVersionOffset = 0x03;
-
-    /// <summary>VTOC offset of the volume number.</summary>
-    public const int VtocVolumeOffset = 0x06;
-
-    /// <summary>VTOC offset of the maximum pairs per track/sector list.</summary>
-    public const int VtocMaxPairsOffset = 0x27;
-
-    /// <summary>VTOC offset of the track count.</summary>
-    public const int VtocTrackCountOffset = 0x34;
-
-    /// <summary>VTOC offset of the sectors-per-track count.</summary>
-    public const int VtocSectorsPerTrackOffset = 0x35;
-
-    /// <summary>VTOC offset of the little-endian bytes-per-sector count.</summary>
-    public const int VtocBytesPerSectorOffset = 0x36;
-
-    /// <summary>VTOC offset of the free-sector bitmap.</summary>
-    public const int VtocBitmapOffset = 0x38;
-
-    /// <summary>Bitmap bytes reserved for one track.</summary>
-    public const int BitmapBytesPerTrack = 4;
-
-    /// <summary>DOS release byte written by DOS 3.3.</summary>
-    public const byte DosVersion33 = 0x03;
-
-    /// <summary>Catalog name pad: ASCII space with the high bit set.</summary>
-    public const byte HighBitSpace = 0xA0;
+    /// <summary>
+    /// Returns how many leading raw bytes the logical view removes for a DOS file type.
+    /// </summary>
+    /// <param name="fileType">Catalog type. The lock bit is ignored. An unknown type returns 0.</param>
+    /// <returns>4 for binary, 2 for Applesoft or Integer BASIC, otherwise 0.</returns>
+    public static int LogicalHeaderLength(byte fileType)
+    {
+        var kind = (Dos33FileType)(fileType & FileTypeMask);
+        return Enum.IsDefined(kind) ? LogicalHeaderLength(kind) : 0;
+    }
 
     /// <summary>
     /// Returns how many leading raw bytes the logical view removes for a DOS file type.
     /// </summary>
-    /// <param name="fileType">Catalog type. The lock bit is ignored.</param>
+    /// <param name="fileType">Catalog type without the lock bit.</param>
     /// <returns>4 for binary, 2 for Applesoft or Integer BASIC, otherwise 0.</returns>
-    public static int LogicalHeaderLength(byte fileType)
+    /// <exception cref="ArgumentOutOfRangeException">If <paramref name="fileType"/> is not a defined value.</exception>
+    public static int LogicalHeaderLength(Dos33FileType fileType) => fileType switch
     {
-        var kind = (byte)(fileType & FileTypeMask);
-        if (kind == FileTypeBinary)
-        {
-            return BinaryHeaderLength;
-        }
-
-        if (kind == FileTypeApplesoft || kind == FileTypeInteger)
-        {
-            return BasicHeaderLength;
-        }
-
-        return 0;
-    }
+        Dos33FileType.Binary or Dos33FileType.AdditionalBinary => BinaryHeaderLength,
+        Dos33FileType.Applesoft or Dos33FileType.Integer or Dos33FileType.AdditionalApplesoft => BasicHeaderLength,
+        Dos33FileType.Text or Dos33FileType.S or Dos33FileType.Relocatable => 0,
+        _ => throw new ArgumentOutOfRangeException(nameof(fileType), (byte)fileType, "The DOS file type is not defined."),
+    };
 
     /// <summary>
     /// Returns how many payload bytes the logical view keeps after the DOS header.
@@ -182,23 +99,21 @@ public static class Dos33Layout
     /// the minimum of the header's length word and the bytes after the header.
     /// <c>-1</c> when the buffer is shorter than the header.
     /// </returns>
-    public static int LogicalPayloadLength(byte fileType, ReadOnlySpan<byte> raw)
-    {
-        var header = LogicalHeaderLength(fileType);
-        if (header == 0)
-        {
-            return raw.Length;
-        }
+    public static int LogicalPayloadLength(byte fileType, ReadOnlySpan<byte> raw) =>
+        LogicalPayloadLength(LogicalHeaderLength(fileType), raw);
 
-        if (raw.Length < header)
-        {
-            return -1;
-        }
-
-        var declared = raw[header - 2] | (raw[header - 1] << 8);
-        var available = raw.Length - header;
-        return Math.Min(declared, available);
-    }
+    /// <summary>
+    /// Returns how many payload bytes the logical view keeps after the DOS header.
+    /// </summary>
+    /// <param name="fileType">Catalog type without the lock bit.</param>
+    /// <param name="raw">Raw file bytes, including the header and sector padding.</param>
+    /// <returns>
+    /// The full raw length for text and other types. For binary, Applesoft, and Integer,
+    /// the minimum of the header's length word and the bytes after the header.
+    /// <c>-1</c> when the buffer is shorter than the header.
+    /// </returns>
+    public static int LogicalPayloadLength(Dos33FileType fileType, ReadOnlySpan<byte> raw) =>
+        LogicalPayloadLength(LogicalHeaderLength(fileType), raw);
 
     /// <summary>
     /// Returns whether a sector is a DOS 3.3 VTOC for an image of the given geometry.
@@ -217,29 +132,29 @@ public static class Dos33Layout
             return false;
         }
 
-        if (sector[VtocCatalogTrackOffset] != VtocTrack || sector[VtocDosVersionOffset] != DosVersion33)
+        if (sector[Vtoc.CatalogTrackOffset] != VtocTrack || sector[Vtoc.DosVersionOffset] != Vtoc.Version33)
         {
             return false;
         }
 
-        var catalogSector = sector[VtocCatalogSectorOffset];
+        var catalogSector = sector[Vtoc.CatalogSectorOffset];
         if (catalogSector == 0 || catalogSector >= sectorsPerTrack)
         {
             return false;
         }
 
-        var volume = sector[VtocVolumeOffset];
-        if (volume is < 1 or > 254 || sector[VtocMaxPairsOffset] == 0)
+        var volume = sector[Vtoc.VolumeOffset];
+        if (volume is < 1 or > 254 || sector[Vtoc.MaxPairsOffset] == 0)
         {
             return false;
         }
 
-        if (sector[VtocTrackCountOffset] != trackCount || sector[VtocSectorsPerTrackOffset] != sectorsPerTrack)
+        if (sector[Vtoc.TrackCountOffset] != trackCount || sector[Vtoc.SectorsPerTrackOffset] != sectorsPerTrack)
         {
             return false;
         }
 
-        var bytesPerSector = sector[VtocBytesPerSectorOffset] | (sector[VtocBytesPerSectorOffset + 1] << 8);
+        var bytesPerSector = sector[Vtoc.BytesPerSectorOffset] | (sector[Vtoc.BytesPerSectorOffset + 1] << 8);
         return bytesPerSector == SectorSize;
     }
 
@@ -278,13 +193,30 @@ public static class Dos33Layout
         }
     }
 
+    private static int LogicalPayloadLength(int header, ReadOnlySpan<byte> raw)
+    {
+        if (header == 0)
+        {
+            return raw.Length;
+        }
+
+        if (raw.Length < header)
+        {
+            return -1;
+        }
+
+        var declared = raw[header - 2] | (raw[header - 1] << 8);
+        var available = raw.Length - header;
+        return Math.Min(declared, available);
+    }
+
     private static (int Offset, byte Mask) LocateSectorBit(ReadOnlySpan<byte> vtoc, int track, int sector)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(track);
         ArgumentOutOfRangeException.ThrowIfNegative(sector);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(sector, DefaultSectorsPerTrack);
         var fromHighSector = (DefaultSectorsPerTrack - 1) - sector;
-        var offset = VtocBitmapOffset + (track * BitmapBytesPerTrack) + (fromHighSector >> 3);
+        var offset = Vtoc.BitmapOffset + (track * Vtoc.BitmapBytesPerTrack) + (fromHighSector >> 3);
         if ((uint)offset >= (uint)vtoc.Length)
         {
             throw new ArgumentOutOfRangeException(nameof(track), "The bitmap byte is outside the VTOC.");
@@ -292,5 +224,95 @@ public static class Dos33Layout
 
         var bit = 7 - (fromHighSector & 7);
         return (offset, (byte)(1 << bit));
+    }
+
+    /// <summary>Bytes of one catalog sector that are not file entries.</summary>
+    public static class Catalog
+    {
+        /// <summary>Bytes before the first catalog entry.</summary>
+        public const int HeaderLength = 0x0B;
+
+        /// <summary>Catalog entries in one sector.</summary>
+        public const int EntriesPerSector = 7;
+    }
+
+    /// <summary>One 35-byte catalog entry.</summary>
+    public static class CatalogEntry
+    {
+        /// <summary>Bytes in one catalog entry.</summary>
+        public const int Length = 35;
+
+        /// <summary>Offset of the track/sector-list track.</summary>
+        public const int TrackOffset = 0;
+
+        /// <summary>Offset of the track/sector-list sector.</summary>
+        public const int SectorOffset = 1;
+
+        /// <summary>Offset of the file type and lock bit. Not offset 0.</summary>
+        public const int TypeOffset = 2;
+
+        /// <summary>Offset of the 30-byte high-bit name.</summary>
+        public const int NameOffset = 3;
+
+        /// <summary>Bytes in a catalog name, padded with <see cref="HighBitSpace"/>.</summary>
+        public const int NameLength = 30;
+
+        /// <summary>
+        /// Offset of the last name byte. A deleted file stores its original track byte here, unchanged.
+        /// </summary>
+        public const int OriginalTrackOffset = 0x20;
+
+        /// <summary>Offset of the little-endian sector count.</summary>
+        public const int SectorCountOffset = 0x21;
+
+        /// <summary>Catalog name pad: ASCII space with the high bit set.</summary>
+        public const byte HighBitSpace = 0xA0;
+    }
+
+    /// <summary>One track/sector-list sector.</summary>
+    public static class TrackSectorList
+    {
+        /// <summary>Offset of the first track/sector pair.</summary>
+        public const int PairOffset = 0x0C;
+
+        /// <summary>Pairs stored in one list sector.</summary>
+        public const int PairsPerSector = 122;
+    }
+
+    /// <summary>Offsets within the VTOC sector.</summary>
+    public static class Vtoc
+    {
+        /// <summary>Offset of the first catalog track.</summary>
+        public const int CatalogTrackOffset = 0x01;
+
+        /// <summary>Offset of the first catalog sector.</summary>
+        public const int CatalogSectorOffset = 0x02;
+
+        /// <summary>Offset of the DOS version. DOS 3.3 stores <see cref="Version33"/>.</summary>
+        public const int DosVersionOffset = 0x03;
+
+        /// <summary>Offset of the volume number.</summary>
+        public const int VolumeOffset = 0x06;
+
+        /// <summary>Offset of the maximum pairs per track/sector list.</summary>
+        public const int MaxPairsOffset = 0x27;
+
+        /// <summary>Offset of the track count.</summary>
+        public const int TrackCountOffset = 0x34;
+
+        /// <summary>Offset of the sectors-per-track count.</summary>
+        public const int SectorsPerTrackOffset = 0x35;
+
+        /// <summary>Offset of the little-endian bytes-per-sector count.</summary>
+        public const int BytesPerSectorOffset = 0x36;
+
+        /// <summary>Offset of the free-sector bitmap.</summary>
+        public const int BitmapOffset = 0x38;
+
+        /// <summary>Bitmap bytes reserved for one track.</summary>
+        public const int BitmapBytesPerTrack = 4;
+
+        /// <summary>DOS release byte written by DOS 3.3.</summary>
+        public const byte Version33 = 0x03;
     }
 }

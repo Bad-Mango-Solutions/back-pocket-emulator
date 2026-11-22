@@ -60,27 +60,27 @@ public sealed class ProdosFixture
     public static ProdosFixture CreateCatalogSample()
     {
         var builder = new ProdosImageBuilder(ProdosLayout.StandardFloppyBlocks, "SAMPLE");
-        builder.AddSeedling("HELLO", ProdosLayout.FileTypeText, auxType: 0, new byte[] { (byte)'h', (byte)'i' }, locked: false);
-        builder.AddSeedling("LOCKED", ProdosLayout.FileTypeBinary, auxType: 0x0803, new byte[] { 1, 2, 3, 4 }, locked: true);
+        builder.AddSeedling("HELLO", ProdosFileType.Text, auxType: 0, new byte[] { (byte)'h', (byte)'i' }, locked: false);
+        builder.AddSeedling("LOCKED", ProdosFileType.Binary, auxType: 0x0803, new byte[] { 1, 2, 3, 4 }, locked: true);
 
         var sapling = new byte[]?[3];
         sapling[0] = new byte[ProdosLayout.BlockSize];
         sapling[0].AsSpan().Fill(0x11);
         sapling[2] = new byte[10];
         sapling[2].AsSpan().Fill(0x22);
-        builder.AddSapling("SAPLING", ProdosLayout.FileTypeBinary, auxType: 0, sapling, locked: false, minimumBlockForLast: 260);
+        builder.AddSapling("SAPLING", ProdosFileType.Binary, auxType: 0, sapling, locked: false, minimumBlockForLast: 260);
 
         var treeFirst = new byte[ProdosLayout.BlockSize];
         treeFirst[0] = 0x33;
         var tree = new byte[]?[3];
         tree[0] = treeFirst;
         tree[2] = new byte[] { 0x44, 0x44 };
-        builder.AddTree("TREE", ProdosLayout.FileTypeBinary, auxType: 0, tree, subIndexMinimumBlock: 261, locked: false);
+        builder.AddTree("TREE", ProdosFileType.Binary, auxType: 0, tree, subIndexMinimumBlock: 261, locked: false);
 
         builder.AddSubdirectory(
             "SUB",
-            new[] { new SeedlingSpec("NOTE", ProdosLayout.FileTypeText, 0, new byte[] { (byte)'N' }, false) });
-        builder.AddExtended("FORKED", ProdosLayout.FileTypeText);
+            new[] { new SeedlingSpec("NOTE", ProdosFileType.Text, 0, new byte[] { (byte)'N' }, false) });
+        builder.AddExtended("FORKED", ProdosFileType.Text);
         return builder.Build();
     }
 
@@ -96,7 +96,7 @@ public sealed class ProdosFixture
     /// <param name="AuxType">Auxiliary type.</param>
     /// <param name="Data">End-of-file bytes. At most one block.</param>
     /// <param name="Locked">Whether the write bit is clear.</param>
-    public readonly record struct SeedlingSpec(string Name, byte FileType, ushort AuxType, ReadOnlyMemory<byte> Data, bool Locked);
+    public readonly record struct SeedlingSpec(string Name, ProdosFileType FileType, ushort AuxType, ReadOnlyMemory<byte> Data, bool Locked);
 
     /// <summary>One root or nested catalog entry in a <see cref="ProdosFixture"/>.</summary>
     public sealed class Entry
@@ -121,7 +121,7 @@ public sealed class ProdosFixture
         public Entry(
             string name,
             string path,
-            byte fileType,
+            ProdosFileType fileType,
             ushort auxType,
             int eofBytes,
             int allocatedUnits,
@@ -160,7 +160,7 @@ public sealed class ProdosFixture
 
         /// <summary>Gets the ProDOS file type.</summary>
         /// <value>The type byte.</value>
-        public byte FileType { get; }
+        public ProdosFileType FileType { get; }
 
         /// <summary>Gets the auxiliary type.</summary>
         /// <value>The aux type.</value>

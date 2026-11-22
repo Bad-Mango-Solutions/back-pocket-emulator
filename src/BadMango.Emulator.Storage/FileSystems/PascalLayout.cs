@@ -11,7 +11,7 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <para>
 /// Blocks 0 and 1 are boot blocks. The directory is <see cref="DirectoryBytes"/> bytes
 /// beginning at block <see cref="DirectoryStartBlock"/> and covering
-/// <see cref="DirectoryBlockCount"/> blocks. Entries are <see cref="EntryLength"/> bytes
+/// <see cref="DirectoryBlockCount"/> blocks. Records are <see cref="EntryLength"/> bytes
 /// and are packed across block boundaries. Entry 0 is the volume header and is not a file.
 /// Up to <see cref="MaxFiles"/> file entries follow. Words are little-endian.
 /// </para>
@@ -20,11 +20,10 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <see cref="FileSystemProbeAttempt.Reject"/> when it is false. The probe does not catch.
 /// The constructor throws <see cref="ArgumentException"/> only as a guard for a caller that
 /// skips the check. A block-read <see cref="ArgumentOutOfRangeException"/> is not a rejection.
-/// The recorded block count must equal the
-/// image size. A larger container is not a Pascal volume, unlike a ProDOS image whose
-/// <c>total_blocks</c> may be smaller than the file. The file kind is
-/// <see cref="KindMask"/> of the kind word. Bit 15 (<see cref="FilerWildcardBit"/>) is
-/// the Filer wildcard flag and is not part of the kind.
+/// The recorded block count must equal the image size. A larger container is not a Pascal
+/// volume, unlike a ProDOS image whose <c>total_blocks</c> may be smaller than the file.
+/// The file kind is <see cref="KindMask"/> of the kind word. Bit 15
+/// (<see cref="FilerWildcardBit"/>) is the Filer wildcard flag and is not part of the kind.
 /// </para>
 /// </remarks>
 public static class PascalLayout
@@ -49,57 +48,6 @@ public static class PascalLayout
 
     /// <summary>First block after a standard directory. The volume header stores this value.</summary>
     public const int FirstDataBlock = 6;
-
-    /// <summary>Maximum characters in a volume name, not counting the length byte.</summary>
-    public const int VolumeNameCapacity = 7;
-
-    /// <summary>Maximum characters in a file name, not counting the length byte.</summary>
-    public const int FileNameCapacity = 15;
-
-    /// <summary>Offset of the length-prefixed volume name in the header.</summary>
-    public const int VolumeNameOffset = 6;
-
-    /// <summary>Offset of the length-prefixed file name in a file entry.</summary>
-    public const int FileNameOffset = 6;
-
-    /// <summary>Bytes reserved for a file name, including the length byte.</summary>
-    public const int FileNameFieldLength = 16;
-
-    /// <summary>Header offset of the little-endian volume block count.</summary>
-    public const int VolumeBlocksOffset = 0x0E;
-
-    /// <summary>Header offset of the little-endian file count.</summary>
-    public const int FileCountOffset = 0x10;
-
-    /// <summary>File-entry offset of the little-endian bytes used in the last block.</summary>
-    public const int FileLastBlockBytesOffset = 0x16;
-
-    /// <summary>Volume-header kind, and the untyped file kind.</summary>
-    public const byte KindUntyped = 0;
-
-    /// <summary>Bad-block file kind.</summary>
-    public const byte KindBad = 1;
-
-    /// <summary>Code file kind.</summary>
-    public const byte KindCode = 2;
-
-    /// <summary>Text file kind.</summary>
-    public const byte KindText = 3;
-
-    /// <summary>Info file kind.</summary>
-    public const byte KindInfo = 4;
-
-    /// <summary>Data file kind.</summary>
-    public const byte KindData = 5;
-
-    /// <summary>Graf file kind.</summary>
-    public const byte KindGraf = 6;
-
-    /// <summary>Foto file kind.</summary>
-    public const byte KindFoto = 7;
-
-    /// <summary>Secure-directory file kind.</summary>
-    public const byte KindSecure = 8;
 
     /// <summary>Mask for bits 0–3 of the file-kind word.</summary>
     public const int KindMask = 0x000F;
@@ -138,10 +86,10 @@ public static class PascalLayout
     /// <param name="blockCount">Blocks the media exposes.</param>
     /// <returns>
     /// <see langword="true"/> when the first block is 0, the directory ends at block
-    /// <see cref="FirstDataBlock"/>, the kind is 0, the name is 1–7 printable characters,
-    /// the recorded block count equals <paramref name="blockCount"/>, and the file count
-    /// is at most <see cref="MaxFiles"/>. Equality with the image is required: a Pascal
-    /// header that names a different size is not this volume. ProDOS allows
+    /// <see cref="FirstDataBlock"/>, the kind is <see cref="PascalFileKind.Untyped"/>, the name
+    /// is 1–7 printable characters, the recorded block count equals <paramref name="blockCount"/>,
+    /// and the file count is at most <see cref="MaxFiles"/>. Equality with the image is required:
+    /// a Pascal header that names a different size is not this volume. ProDOS allows
     /// <c>total_blocks</c> to be smaller than the image; Pascal does not.
     /// </returns>
     public static bool IsVolumeHeader(ReadOnlySpan<byte> directory, int blockCount)
@@ -151,33 +99,83 @@ public static class PascalLayout
             return false;
         }
 
-        var first = ReadU16(directory, 0);
-        var next = ReadU16(directory, 2);
-        var kind = ReadU16(directory, 4);
-        if (first != 0 || next != FirstDataBlock || kind != KindUntyped)
+        var first = ReadU16(directory, VolumeHeader.FirstBlockOffset);
+        var next = ReadU16(directory, VolumeHeader.NextBlockOffset);
+        var kind = ReadU16(directory, VolumeHeader.KindOffset);
+        if (first != 0 || next != FirstDataBlock || kind != (int)PascalFileKind.Untyped)
         {
             return false;
         }
 
-        var nameLength = directory[VolumeNameOffset];
-        if (nameLength is < 1 or > VolumeNameCapacity)
+        var nameLength = directory[VolumeHeader.NameOffset];
+        if (nameLength is < 1 or > VolumeHeader.NameCapacity)
         {
             return false;
         }
 
         for (var i = 0; i < nameLength; i++)
         {
-            var c = directory[VolumeNameOffset + 1 + i];
+            var c = directory[VolumeHeader.NameOffset + 1 + i];
             if (c is < 0x21 or > 0x7E)
             {
                 return false;
             }
         }
 
-        var blocks = ReadU16(directory, VolumeBlocksOffset);
-        var fileCount = ReadU16(directory, FileCountOffset);
+        var blocks = ReadU16(directory, VolumeHeader.BlocksOffset);
+        var fileCount = ReadU16(directory, VolumeHeader.FileCountOffset);
         return blocks == blockCount && fileCount <= MaxFiles;
     }
 
     private static int ReadU16(ReadOnlySpan<byte> data, int offset) => data[offset] | (data[offset + 1] << 8);
+
+    /// <summary>The first 26-byte directory record, which names the volume.</summary>
+    public static class VolumeHeader
+    {
+        /// <summary>Offset of the first block word. It is always 0.</summary>
+        public const int FirstBlockOffset = 0;
+
+        /// <summary>Offset of the next-block word. A standard directory stores 6.</summary>
+        public const int NextBlockOffset = 2;
+
+        /// <summary>Offset of the kind word. The volume header stores <see cref="PascalFileKind.Untyped"/>.</summary>
+        public const int KindOffset = 4;
+
+        /// <summary>Offset of the length-prefixed volume name.</summary>
+        public const int NameOffset = 6;
+
+        /// <summary>Maximum characters in a volume name, not counting the length byte.</summary>
+        public const int NameCapacity = 7;
+
+        /// <summary>Offset of the little-endian volume block count.</summary>
+        public const int BlocksOffset = 0x0E;
+
+        /// <summary>Offset of the little-endian file count.</summary>
+        public const int FileCountOffset = 0x10;
+    }
+
+    /// <summary>One 26-byte file record after the volume header.</summary>
+    public static class DirectoryEntry
+    {
+        /// <summary>Offset of the first-block word.</summary>
+        public const int FirstBlockOffset = 0;
+
+        /// <summary>Offset of the exclusive end-block word.</summary>
+        public const int NextBlockOffset = 2;
+
+        /// <summary>Offset of the kind word. Bits 0–3 are <see cref="PascalFileKind"/>.</summary>
+        public const int KindOffset = 4;
+
+        /// <summary>Offset of the length-prefixed file name.</summary>
+        public const int NameOffset = 6;
+
+        /// <summary>Maximum characters in a file name, not counting the length byte.</summary>
+        public const int NameCapacity = 15;
+
+        /// <summary>Bytes reserved for a file name, including the length byte.</summary>
+        public const int NameFieldLength = 16;
+
+        /// <summary>Offset of the little-endian bytes used in the last block.</summary>
+        public const int LastBlockBytesOffset = 0x16;
+    }
 }

@@ -65,17 +65,17 @@ public sealed class Dos33Fixture
     public static Dos33Fixture CreateCatalogSample(byte volume = 254, int trackCount = 18)
     {
         var builder = new Dos33ImageBuilder(trackCount, volume);
-        builder.AddFile("HELLO", Dos33Layout.FileTypeText, locked: false, deleted: false, new byte[]?[] { new byte[] { (byte)'H', (byte)'I' } });
-        builder.AddFile("LOCKED", Dos33Layout.FileTypeBinary, locked: true, deleted: false, new byte[]?[] { new byte[] { 0xA0, 0x08, 0x02, 0x00, (byte)'O', (byte)'K' } });
-        builder.AddFile("BASIC", Dos33Layout.FileTypeApplesoft, locked: false, deleted: false, new byte[]?[] { new byte[] { 0x02, 0x00, 0x11, 0x22 } });
-        builder.AddFile("INTBAS", Dos33Layout.FileTypeInteger, locked: false, deleted: false, new byte[]?[] { new byte[] { 0x01, 0x00, 0x33 } });
+        builder.AddFile("HELLO", Dos33FileType.Text, locked: false, deleted: false, new byte[]?[] { new byte[] { (byte)'H', (byte)'I' } });
+        builder.AddFile("LOCKED", Dos33FileType.Binary, locked: true, deleted: false, new byte[]?[] { new byte[] { 0xA0, 0x08, 0x02, 0x00, (byte)'O', (byte)'K' } });
+        builder.AddFile("BASIC", Dos33FileType.Applesoft, locked: false, deleted: false, new byte[]?[] { new byte[] { 0x02, 0x00, 0x11, 0x22 } });
+        builder.AddFile("INTBAS", Dos33FileType.Integer, locked: false, deleted: false, new byte[]?[] { new byte[] { 0x01, 0x00, 0x33 } });
         builder.AddFile(
             "SPARSE",
-            Dos33Layout.FileTypeText,
+            Dos33FileType.Text,
             locked: false,
             deleted: false,
             new byte[]?[] { new byte[] { (byte)'A', (byte)'A' }, null, new byte[] { (byte)'B', (byte)'B' } });
-        builder.AddFile("GONE", Dos33Layout.FileTypeText, locked: false, deleted: true, new byte[]?[] { new byte[] { (byte)'X' } });
+        builder.AddFile("GONE", Dos33FileType.Text, locked: false, deleted: true, new byte[]?[] { new byte[] { (byte)'X' } });
         return builder.Build();
     }
 
@@ -112,7 +112,7 @@ public sealed class Dos33Fixture
         /// <param name="allocatedUnits">Catalog sector count, including the track/sector list.</param>
         public Entry(
             string name,
-            byte fileType,
+            Dos33FileType fileType,
             bool isLocked,
             bool isDeleted,
             int catalogTrack,
@@ -147,7 +147,7 @@ public sealed class Dos33Fixture
 
         /// <summary>Gets the file type without the lock bit.</summary>
         /// <value>The type byte a reader stores on <see cref="FileEntry"/>.</value>
-        public byte FileType { get; }
+        public Dos33FileType FileType { get; }
 
         /// <summary>Gets a value indicating whether the lock bit is set.</summary>
         /// <value><see langword="true"/> when the catalog type byte has bit 7 set.</value>

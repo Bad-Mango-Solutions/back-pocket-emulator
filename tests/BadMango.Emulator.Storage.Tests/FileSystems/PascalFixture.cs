@@ -56,10 +56,10 @@ public sealed class PascalFixture
     public static PascalFixture CreateCatalogSample()
     {
         var builder = new PascalImageBuilder(blockCount: 9, volumeName: "SAMPLE");
-        builder.AddFile("NOTE.TEXT", PascalLayout.KindText, "Pascal"u8.ToArray());
+        builder.AddFile("NOTE.TEXT", PascalFileKind.Text, "Pascal"u8.ToArray());
         var code = new byte[600];
         code.AsSpan().Fill(0xAB);
-        builder.AddFile("UNIT.CODE", PascalLayout.KindCode, code);
+        builder.AddFile("UNIT.CODE", PascalFileKind.Code, code);
         return builder.Build();
     }
 
@@ -95,7 +95,7 @@ public sealed class PascalFixture
         /// <param name="endBlock">First block after the file.</param>
         /// <param name="bytesInLastBlock">Bytes used in the last block.</param>
         /// <param name="data">The file bytes a reader returns.</param>
-        public Entry(string name, byte kind, int startBlock, int endBlock, int bytesInLastBlock, ReadOnlyMemory<byte> data)
+        public Entry(string name, PascalFileKind kind, int startBlock, int endBlock, int bytesInLastBlock, ReadOnlyMemory<byte> data)
         {
             this.Name = name;
             this.Kind = kind;
@@ -111,7 +111,7 @@ public sealed class PascalFixture
 
         /// <summary>Gets the file kind.</summary>
         /// <value>Bits 0–3 of the directory kind word.</value>
-        public byte Kind { get; }
+        public PascalFileKind Kind { get; }
 
         /// <summary>Gets the first block.</summary>
         /// <value>The start block.</value>

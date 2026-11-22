@@ -11,9 +11,9 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <para>
 /// The file-type byte and the storage kind are different fields. DOS keeps the
 /// catalog type (T/I/A/B) separate from the track/sector list. ProDOS keeps the
-/// file type (<c>$04</c> text, <c>$06</c> binary, <c>$0F</c> directory, …) separate
-/// from the storage-type nibble. Pascal's kind nibble is the file type; its bytes
-/// are one contiguous run of blocks.
+/// file type (<see cref="ProdosFileType"/>) separate from the
+/// <see cref="ProdosStorageType"/> nibble. Pascal's <see cref="PascalFileKind"/> is
+/// the file type; its bytes are one contiguous run of blocks.
 /// </para>
 /// <para>
 /// <see cref="ProdosExtended"/> and <see cref="ProdosPascalArea"/> are recognized

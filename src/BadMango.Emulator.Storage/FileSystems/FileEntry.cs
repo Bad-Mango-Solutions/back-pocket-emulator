@@ -21,9 +21,9 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// </para>
 /// <para>
 /// <see cref="FileType"/> is the catalog type with the DOS lock bit removed
-/// (<see cref="Dos33Layout.FileTypeMask"/>). ProDOS file types are the type byte
-/// (<c>$04</c> text, <c>$0F</c> directory), not the storage-type nibble.
-/// Pascal file types are the kind in bits 0–3 of the directory word.
+/// (<see cref="Dos33Layout.FileTypeMask"/>, <see cref="Dos33FileType"/>). ProDOS file types
+/// are <see cref="ProdosFileType"/>, not the <see cref="ProdosStorageType"/> nibble.
+/// Pascal file types are <see cref="PascalFileKind"/>, bits 0–3 of the directory word.
 /// <see cref="AuxType"/> is the ProDOS auxiliary type. DOS and Pascal catalogs have
 /// no auxiliary type, so readers set it to 0. A DOS binary load address lives in the
 /// file header, not in this field.

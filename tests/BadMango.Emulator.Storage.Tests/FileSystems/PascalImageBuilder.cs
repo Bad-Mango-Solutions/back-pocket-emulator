@@ -33,26 +33,20 @@ public sealed class PascalImageBuilder
         }
 
         this.blockCount = blockCount;
-        this.volumeName = Normalize(volumeName, PascalLayout.VolumeNameCapacity, nameof(volumeName));
+        this.volumeName = Normalize(volumeName, PascalLayout.VolumeHeader.NameCapacity, nameof(volumeName));
     }
 
     /// <summary>
     /// Adds a contiguous file after the directory.
     /// </summary>
     /// <param name="name">File name, 1–15 characters.</param>
-    /// <param name="kind">Kind nibble, 0–15.</param>
+    /// <param name="kind">File kind. The Filer wildcard bit is not stored.</param>
     /// <param name="data">File bytes. Empty files are rejected.</param>
     /// <returns>This builder.</returns>
     /// <exception cref="ArgumentException">If the name or payload is not usable.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">If <paramref name="kind"/> does not fit in four bits.</exception>
     /// <exception cref="InvalidOperationException">If the file does not fit, or the directory already has 77 files.</exception>
-    public PascalImageBuilder AddFile(string name, byte kind, ReadOnlyMemory<byte> data)
+    public PascalImageBuilder AddFile(string name, PascalFileKind kind, ReadOnlyMemory<byte> data)
     {
-        if (kind > 0x0F)
-        {
-            throw new ArgumentOutOfRangeException(nameof(kind), "Pascal file kinds are 0 through 15.");
-        }
-
         if (data.Length == 0)
         {
             throw new ArgumentException("Pascal fixture files are non-empty.", nameof(data));
@@ -73,7 +67,7 @@ public sealed class PascalImageBuilder
         var end = start + blocks;
         this.nextBlock = end;
         var bytesInLast = data.Length - ((blocks - 1) * PascalLayout.BlockSize);
-        this.files.Add(new FileSpec(Normalize(name, PascalLayout.FileNameCapacity, nameof(name)), kind, start, end, bytesInLast, data.ToArray()));
+        this.files.Add(new FileSpec(Normalize(name, PascalLayout.DirectoryEntry.NameCapacity, nameof(name)), kind, start, end, bytesInLast, data.ToArray()));
         return this;
     }
 
@@ -85,23 +79,23 @@ public sealed class PascalImageBuilder
     {
         var image = new byte[this.blockCount * PascalLayout.BlockSize];
         var directory = new byte[PascalLayout.DirectoryBytes];
-        WriteU16(directory, 0, 0);
-        WriteU16(directory, 2, PascalLayout.FirstDataBlock);
-        WriteU16(directory, 4, PascalLayout.KindUntyped);
-        WriteName(directory.AsSpan(PascalLayout.VolumeNameOffset, PascalLayout.VolumeNameCapacity + 1), this.volumeName);
-        WriteU16(directory, PascalLayout.VolumeBlocksOffset, this.blockCount);
-        WriteU16(directory, PascalLayout.FileCountOffset, this.files.Count);
+        WriteU16(directory, PascalLayout.VolumeHeader.FirstBlockOffset, 0);
+        WriteU16(directory, PascalLayout.VolumeHeader.NextBlockOffset, PascalLayout.FirstDataBlock);
+        WriteU16(directory, PascalLayout.VolumeHeader.KindOffset, (int)PascalFileKind.Untyped);
+        WriteName(directory.AsSpan(PascalLayout.VolumeHeader.NameOffset, PascalLayout.VolumeHeader.NameCapacity + 1), this.volumeName);
+        WriteU16(directory, PascalLayout.VolumeHeader.BlocksOffset, this.blockCount);
+        WriteU16(directory, PascalLayout.VolumeHeader.FileCountOffset, this.files.Count);
 
         var entries = new List<PascalFixture.Entry>(this.files.Count);
         for (var i = 0; i < this.files.Count; i++)
         {
             var file = this.files[i];
             var entry = directory.AsSpan((i + 1) * PascalLayout.EntryLength, PascalLayout.EntryLength);
-            WriteU16(entry, 0, file.StartBlock);
-            WriteU16(entry, 2, file.EndBlock);
-            WriteU16(entry, 4, file.Kind);
-            WriteName(entry.Slice(PascalLayout.FileNameOffset, PascalLayout.FileNameFieldLength), file.Name);
-            WriteU16(entry, PascalLayout.FileLastBlockBytesOffset, file.BytesInLastBlock);
+            WriteU16(entry, PascalLayout.DirectoryEntry.FirstBlockOffset, file.StartBlock);
+            WriteU16(entry, PascalLayout.DirectoryEntry.NextBlockOffset, file.EndBlock);
+            WriteU16(entry, PascalLayout.DirectoryEntry.KindOffset, (int)file.Kind);
+            WriteName(entry.Slice(PascalLayout.DirectoryEntry.NameOffset, PascalLayout.DirectoryEntry.NameFieldLength), file.Name);
+            WriteU16(entry, PascalLayout.DirectoryEntry.LastBlockBytesOffset, file.BytesInLastBlock);
             file.Data.CopyTo(image.AsSpan(file.StartBlock * PascalLayout.BlockSize, file.Data.Length));
             entries.Add(new PascalFixture.Entry(file.Name, file.Kind, file.StartBlock, file.EndBlock, file.BytesInLastBlock, file.Data));
         }
@@ -155,7 +149,7 @@ public sealed class PascalImageBuilder
 
     private sealed class FileSpec
     {
-        public FileSpec(string name, byte kind, int startBlock, int endBlock, int bytesInLastBlock, byte[] data)
+        public FileSpec(string name, PascalFileKind kind, int startBlock, int endBlock, int bytesInLastBlock, byte[] data)
         {
             this.Name = name;
             this.Kind = kind;
@@ -167,7 +161,7 @@ public sealed class PascalImageBuilder
 
         public string Name { get; }
 
-        public byte Kind { get; }
+        public PascalFileKind Kind { get; }
 
         public int StartBlock { get; }
 

@@ -16,12 +16,12 @@ public class AppleFileSystemContractTests
     [Test]
     public void FileEntry_IsImmutable()
     {
-        var entry = new FileEntry("NOTE", "NOTE", Dos33Layout.FileTypeText, 0, 256, 2, 256, false, false, FileStorageKind.DosTrackSectorList);
-        var copy = new FileEntry("NOTE", "NOTE", Dos33Layout.FileTypeText, 0, 256, 2, 256, true, false, FileStorageKind.DosTrackSectorList);
+        var entry = new FileEntry("NOTE", "NOTE", (byte)Dos33FileType.Text, 0, 256, 2, 256, false, false, FileStorageKind.DosTrackSectorList);
+        var copy = new FileEntry("NOTE", "NOTE", (byte)Dos33FileType.Text, 0, 256, 2, 256, true, false, FileStorageKind.DosTrackSectorList);
 
         Assert.That(entry.IsLocked, Is.False);
         Assert.That(copy.IsLocked, Is.True);
-        Assert.That(entry, Is.EqualTo(new FileEntry("NOTE", "NOTE", Dos33Layout.FileTypeText, 0, 256, 2, 256, false, false, FileStorageKind.DosTrackSectorList)));
+        Assert.That(entry, Is.EqualTo(new FileEntry("NOTE", "NOTE", (byte)Dos33FileType.Text, 0, 256, 2, 256, false, false, FileStorageKind.DosTrackSectorList)));
     }
 
     /// <summary>
@@ -93,11 +93,16 @@ public class AppleFileSystemContractTests
     [Test]
     public void DosLogicalHeaderLength_StripsBinaryAndBasicOnly()
     {
-        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33Layout.FileTypeBinary), Is.EqualTo(4));
-        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33Layout.FileTypeApplesoft), Is.EqualTo(2));
-        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33Layout.FileTypeInteger), Is.EqualTo(2));
-        Assert.That(Dos33Layout.LogicalHeaderLength((byte)(Dos33Layout.FileTypeBinary | Dos33Layout.LockedMask)), Is.EqualTo(4));
-        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33Layout.FileTypeText), Is.EqualTo(0));
+        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33FileType.Binary), Is.EqualTo(4));
+        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33FileType.AdditionalBinary), Is.EqualTo(4));
+        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33FileType.Applesoft), Is.EqualTo(2));
+        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33FileType.AdditionalApplesoft), Is.EqualTo(2));
+        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33FileType.Integer), Is.EqualTo(2));
+        Assert.That(Dos33Layout.LogicalHeaderLength((byte)((byte)Dos33FileType.Binary | Dos33Layout.LockedMask)), Is.EqualTo(4));
+        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33FileType.Text), Is.EqualTo(0));
+        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33FileType.S), Is.EqualTo(0));
+        Assert.That(Dos33Layout.LogicalHeaderLength(Dos33FileType.Relocatable), Is.EqualTo(0));
+        Assert.That(Dos33Layout.LogicalHeaderLength((byte)0x7F), Is.EqualTo(0));
     }
 
     /// <summary>
@@ -112,6 +117,24 @@ public class AppleFileSystemContractTests
 
         Assert.That(ProdosLayout.ReadIndexPointer(block, 2), Is.EqualTo(260));
         Assert.That(ProdosLayout.ReadIndexPointer(block, 1), Is.EqualTo(0));
+    }
+
+    /// <summary>
+    /// Every ProDOS storage nibble maps to a storage kind, and an unknown nibble does not.
+    /// </summary>
+    [Test]
+    public void ProdosStorageType_MapsEveryDefinedNibble()
+    {
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.Seedling), Is.EqualTo(FileStorageKind.ProdosSeedling));
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.Sapling), Is.EqualTo(FileStorageKind.ProdosSapling));
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.Tree), Is.EqualTo(FileStorageKind.ProdosTree));
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.PascalArea), Is.EqualTo(FileStorageKind.ProdosPascalArea));
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.Extended), Is.EqualTo(FileStorageKind.ProdosExtended));
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.Subdirectory), Is.EqualTo(FileStorageKind.ProdosSubdirectory));
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.Deleted), Is.EqualTo(FileStorageKind.None));
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.SubdirectoryHeader), Is.EqualTo(FileStorageKind.None));
+        Assert.That(ProdosLayout.ToStorageKind(ProdosStorageType.VolumeHeader), Is.EqualTo(FileStorageKind.None));
+        Assert.That(ProdosLayout.ToStorageKind((byte)0x06), Is.EqualTo(FileStorageKind.None));
     }
 
     /// <summary>

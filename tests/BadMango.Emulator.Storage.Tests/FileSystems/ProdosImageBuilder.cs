@@ -54,7 +54,7 @@ public sealed class ProdosImageBuilder
     /// <param name="eof">When set, the EOF field. At most 512. A larger file is a sapling.</param>
     /// <returns>This builder.</returns>
     /// <exception cref="ArgumentOutOfRangeException">If <paramref name="eof"/> is greater than 512.</exception>
-    public ProdosImageBuilder AddSeedling(string name, byte fileType, ushort auxType, ReadOnlyMemory<byte> data, bool locked, int? eof = null)
+    public ProdosImageBuilder AddSeedling(string name, ProdosFileType fileType, ushort auxType, ReadOnlyMemory<byte> data, bool locked, int? eof = null)
     {
         if (eof is > ProdosLayout.BlockSize)
         {
@@ -79,7 +79,7 @@ public sealed class ProdosImageBuilder
     /// <returns>This builder.</returns>
     public ProdosImageBuilder AddSapling(
         string name,
-        byte fileType,
+        ProdosFileType fileType,
         ushort auxType,
         IReadOnlyList<byte[]?> dataBlocks,
         bool locked,
@@ -106,14 +106,14 @@ public sealed class ProdosImageBuilder
     /// <returns>This builder.</returns>
     public ProdosImageBuilder AddTree(
         string name,
-        byte fileType,
+        ProdosFileType fileType,
         ushort auxType,
         IReadOnlyList<byte[]?> subIndexData,
         int subIndexMinimumBlock,
         bool locked,
         int masterSlot = 0)
     {
-        if (masterSlot is < 0 or >= ProdosLayout.IndexPointers)
+        if (masterSlot is < 0 or >= ProdosLayout.Index.PointerCount)
         {
             throw new ArgumentOutOfRangeException(nameof(masterSlot), "A master index has 256 slots.");
         }
@@ -131,7 +131,7 @@ public sealed class ProdosImageBuilder
     /// <param name="name">File name.</param>
     /// <param name="fileType">ProDOS file type.</param>
     /// <returns>This builder.</returns>
-    public ProdosImageBuilder AddExtended(string name, byte fileType)
+    public ProdosImageBuilder AddExtended(string name, ProdosFileType fileType)
     {
         this.root.Add(new Pending(name, fileType, 0, false, PendingKind.Extended, Array.Empty<byte[]?>(), 0, 0));
         return this;
@@ -149,7 +149,7 @@ public sealed class ProdosImageBuilder
             throw new ArgumentException("This fixture builder stores at most 12 files in a subdirectory.", nameof(children));
         }
 
-        this.root.Add(new Pending(name, ProdosLayout.FileTypeDirectory, 0, false, PendingKind.Directory, Array.Empty<byte[]?>(), 0, 0)
+        this.root.Add(new Pending(name, ProdosFileType.Directory, 0, false, PendingKind.Directory, Array.Empty<byte[]?>(), 0, 0)
         {
             Children = children,
         });
@@ -186,7 +186,7 @@ public sealed class ProdosImageBuilder
         return this;
     }
 
-    private Pending CreateSeedling(string name, byte fileType, ushort auxType, ReadOnlyMemory<byte> data, bool locked, int headerBlock, string directoryPath)
+    private Pending CreateSeedling(string name, ProdosFileType fileType, ushort auxType, ReadOnlyMemory<byte> data, bool locked, int headerBlock, string directoryPath)
     {
         if (data.Length > ProdosLayout.BlockSize)
         {
@@ -250,9 +250,9 @@ public sealed class ProdosImageBuilder
         masterPointers[pending.MasterSlot] = subIndex;
         WriteIndex(image, master, masterPointers);
         var subRaw = LogicalBytes(pending.Blocks, dataPointers);
-        var naturalLength = (pending.MasterSlot * ProdosLayout.TreeSlotBytes) + subRaw.Length;
+        var naturalLength = (pending.MasterSlot * ProdosLayout.Index.SlotBytes) + subRaw.Length;
         var raw = new byte[ResolveEof(naturalLength, pending.ExplicitEof)];
-        subRaw.CopyTo(raw.AsSpan(pending.MasterSlot * ProdosLayout.TreeSlotBytes));
+        subRaw.CopyTo(raw.AsSpan(pending.MasterSlot * ProdosLayout.Index.SlotBytes));
         var usedBlocks = 2 + dataPointers.Count(pointer => pointer != 0);
         return new ProdosFixture.Entry(
             name,
@@ -280,8 +280,8 @@ public sealed class ProdosImageBuilder
         dataFork.CopyTo(image.AsSpan(dataBlock * ProdosLayout.BlockSize));
         resourceFork.CopyTo(image.AsSpan(resourceBlock * ProdosLayout.BlockSize));
         var key = Allocate(used, 0);
-        WriteForkMiniEntry(image, key, ProdosLayout.ExtendedDataForkOffset, dataBlock, dataFork.Length);
-        WriteForkMiniEntry(image, key, ProdosLayout.ExtendedResourceForkOffset, resourceBlock, resourceFork.Length);
+        WriteForkMiniEntry(image, key, ProdosLayout.ExtendedKeyBlock.DataForkOffset, dataBlock, dataFork.Length);
+        WriteForkMiniEntry(image, key, ProdosLayout.ExtendedKeyBlock.ResourceForkOffset, resourceBlock, resourceFork.Length);
         return new ProdosFixture.Entry(
             name,
             name,
@@ -308,8 +308,8 @@ public sealed class ProdosImageBuilder
             var spec = pending.Children[i];
             var child = this.CreateSeedling(spec.Name, spec.FileType, spec.AuxType, spec.Data, spec.Locked, key, name);
             var placed = this.PlaceSeedling(image, used, child, Normalize(spec.Name));
-            var slot = (key * ProdosLayout.BlockSize) + ProdosLayout.KeyBlockHeaderOffset + ((i + 1) * ProdosLayout.EntryLength);
-            FileEntryBytes(placed, key).CopyTo(image.AsSpan(slot, ProdosLayout.EntryLength));
+            var slot = (key * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset + ((i + 1) * ProdosLayout.Entry.Length);
+            FileEntryBytes(placed, key).CopyTo(image.AsSpan(slot, ProdosLayout.Entry.Length));
             children.Add(placed);
         }
 
@@ -317,7 +317,7 @@ public sealed class ProdosImageBuilder
         return new ProdosFixture.Entry(
             name,
             name,
-            ProdosLayout.FileTypeDirectory,
+            ProdosFileType.Directory,
             0,
             ProdosLayout.BlockSize,
             1,
@@ -333,7 +333,7 @@ public sealed class ProdosImageBuilder
 
     private int[] AllocateData(byte[] image, bool[] used, IReadOnlyList<byte[]?> blocks, int minimumForLast)
     {
-        if (blocks.Count == 0 || blocks.Count > ProdosLayout.IndexPointers)
+        if (blocks.Count == 0 || blocks.Count > ProdosLayout.Index.PointerCount)
         {
             throw new ArgumentException("An index needs 1 to 256 slots.");
         }
@@ -384,7 +384,7 @@ public sealed class ProdosImageBuilder
         cursor = WriteSlots(image, ProdosLayout.VolumeKeyBlock, startSlot: 1, slotCount: 12, entries, cursor);
         for (var i = 1; i < directoryBlocks && cursor < entries.Count; i++)
         {
-            cursor = WriteSlots(image, ProdosLayout.VolumeKeyBlock + i, startSlot: 0, slotCount: ProdosLayout.EntriesPerBlock, entries, cursor);
+            cursor = WriteSlots(image, ProdosLayout.VolumeKeyBlock + i, startSlot: 0, slotCount: ProdosLayout.Directory.EntriesPerBlock, entries, cursor);
         }
 
         if (cursor != entries.Count)
@@ -398,14 +398,14 @@ public sealed class ProdosImageBuilder
         for (var slot = startSlot; slot < startSlot + slotCount && cursor < entries.Count; slot++)
         {
             var entry = entries[cursor];
-            var offset = (block * ProdosLayout.BlockSize) + ProdosLayout.KeyBlockHeaderOffset + (slot * ProdosLayout.EntryLength);
-            FileEntryBytes(entry, ProdosLayout.VolumeKeyBlock).CopyTo(image.AsSpan(offset, ProdosLayout.EntryLength));
+            var offset = (block * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset + (slot * ProdosLayout.Entry.Length);
+            FileEntryBytes(entry, ProdosLayout.VolumeKeyBlock).CopyTo(image.AsSpan(offset, ProdosLayout.Entry.Length));
             if (entry.IsDirectory)
             {
                 var entryNumber = slot + 1;
-                var headerBase = (entry.KeyBlock * ProdosLayout.BlockSize) + ProdosLayout.KeyBlockHeaderOffset;
-                image[headerBase + ProdosLayout.SubdirectoryParentEntryNumberOffset] = (byte)entryNumber;
-                WriteU16(image.AsSpan(headerBase + ProdosLayout.SubdirectoryParentPointerOffset), block);
+                var headerBase = (entry.KeyBlock * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset;
+                image[headerBase + ProdosLayout.SubdirectoryHeader.ParentEntryNumberOffset] = (byte)entryNumber;
+                WriteU16(image.AsSpan(headerBase + ProdosLayout.SubdirectoryHeader.ParentPointerOffset), block);
             }
 
             cursor++;
@@ -416,14 +416,14 @@ public sealed class ProdosImageBuilder
 
     private void WriteVolumeHeader(byte[] image, int fileCount)
     {
-        var header = image.AsSpan((ProdosLayout.VolumeKeyBlock * ProdosLayout.BlockSize) + ProdosLayout.KeyBlockHeaderOffset, ProdosLayout.EntryLength);
-        WriteName(header, ProdosLayout.StorageVolumeHeader, this.volumeName);
-        header[ProdosLayout.AccessOffset] = ProdosLayout.AccessUnlocked;
-        header[ProdosLayout.VolumeHeaderEntryLengthOffset] = ProdosLayout.EntryLength;
-        header[ProdosLayout.VolumeHeaderEntriesPerBlockOffset] = ProdosLayout.EntriesPerBlock;
-        WriteU16(header[ProdosLayout.VolumeHeaderFileCountOffset..], fileCount);
-        WriteU16(header[ProdosLayout.VolumeHeaderBitmapPointerOffset..], ProdosLayout.BitmapPointer(this.blockCount));
-        WriteU16(header[ProdosLayout.VolumeHeaderTotalBlocksOffset..], this.blockCount);
+        var header = image.AsSpan((ProdosLayout.VolumeKeyBlock * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset, ProdosLayout.Entry.Length);
+        WriteName(header, ProdosStorageType.VolumeHeader, this.volumeName);
+        header[ProdosLayout.Entry.AccessOffset] = ProdosLayout.AccessUnlocked;
+        header[ProdosLayout.VolumeHeader.EntryLengthOffset] = ProdosLayout.Entry.Length;
+        header[ProdosLayout.VolumeHeader.EntriesPerBlockOffset] = ProdosLayout.Directory.EntriesPerBlock;
+        WriteU16(header[ProdosLayout.VolumeHeader.FileCountOffset..], fileCount);
+        WriteU16(header[ProdosLayout.VolumeHeader.BitmapPointerOffset..], ProdosLayout.BitmapPointer(this.blockCount));
+        WriteU16(header[ProdosLayout.VolumeHeader.TotalBlocksOffset..], this.blockCount);
     }
 
     private void WriteBitmap(byte[] image, bool[] used)
@@ -446,47 +446,50 @@ public sealed class ProdosImageBuilder
 
     private void WriteSubdirectoryHeader(byte[] image, int key, string name, int fileCount)
     {
-        var header = image.AsSpan((key * ProdosLayout.BlockSize) + ProdosLayout.KeyBlockHeaderOffset, ProdosLayout.EntryLength);
-        WriteName(header, ProdosLayout.StorageSubdirectoryHeader, name);
-        header[ProdosLayout.SubdirectoryReservedOffset] = ProdosLayout.SubdirectoryReservedMark;
-        header[ProdosLayout.AccessOffset] = ProdosLayout.AccessUnlocked;
-        header[ProdosLayout.VolumeHeaderEntryLengthOffset] = ProdosLayout.EntryLength;
-        header[ProdosLayout.VolumeHeaderEntriesPerBlockOffset] = ProdosLayout.EntriesPerBlock;
-        WriteU16(header[ProdosLayout.VolumeHeaderFileCountOffset..], fileCount);
-        header[ProdosLayout.SubdirectoryParentEntryLengthOffset] = ProdosLayout.EntryLength;
+        var header = image.AsSpan((key * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset, ProdosLayout.Entry.Length);
+        WriteName(header, ProdosStorageType.SubdirectoryHeader, name);
+        header[ProdosLayout.SubdirectoryHeader.ReservedOffset] = ProdosLayout.SubdirectoryHeader.ReservedMark;
+        header[ProdosLayout.Entry.AccessOffset] = ProdosLayout.AccessUnlocked;
+        header[ProdosLayout.SubdirectoryHeader.EntryLengthOffset] = ProdosLayout.Entry.Length;
+        header[ProdosLayout.SubdirectoryHeader.EntriesPerBlockOffset] = ProdosLayout.Directory.EntriesPerBlock;
+        WriteU16(header[ProdosLayout.SubdirectoryHeader.FileCountOffset..], fileCount);
+        header[ProdosLayout.SubdirectoryHeader.ParentEntryLengthOffset] = ProdosLayout.Entry.Length;
     }
 
     private byte[] FileEntryBytes(ProdosFixture.Entry entry, int headerBlock)
     {
-        var bytes = new byte[ProdosLayout.EntryLength];
+        var bytes = new byte[ProdosLayout.Entry.Length];
         WriteName(bytes, StorageOf(entry.StorageKind), entry.Name);
-        bytes[ProdosLayout.FileTypeOffset] = entry.FileType;
-        WriteU16(bytes.AsSpan(ProdosLayout.KeyPointerOffset), entry.KeyBlock);
-        WriteU16(bytes.AsSpan(ProdosLayout.BlocksUsedOffset), entry.AllocatedUnits);
-        WriteU24(bytes.AsSpan(ProdosLayout.EofOffset), entry.EofBytes);
-        bytes[ProdosLayout.AccessOffset] = entry.IsLocked ? ProdosLayout.AccessLocked : ProdosLayout.AccessUnlocked;
-        WriteU16(bytes.AsSpan(ProdosLayout.AuxTypeOffset), entry.AuxType);
-        WriteU16(bytes.AsSpan(ProdosLayout.HeaderPointerOffset), headerBlock);
+        bytes[ProdosLayout.Entry.FileTypeOffset] = (byte)entry.FileType;
+        WriteU16(bytes.AsSpan(ProdosLayout.Entry.KeyPointerOffset), entry.KeyBlock);
+        WriteU16(bytes.AsSpan(ProdosLayout.Entry.BlocksUsedOffset), entry.AllocatedUnits);
+        WriteU24(bytes.AsSpan(ProdosLayout.Entry.EofOffset), entry.EofBytes);
+        bytes[ProdosLayout.Entry.AccessOffset] = entry.IsLocked ? ProdosLayout.AccessLocked : ProdosLayout.AccessUnlocked;
+        WriteU16(bytes.AsSpan(ProdosLayout.Entry.AuxTypeOffset), entry.AuxType);
+        WriteU16(bytes.AsSpan(ProdosLayout.Entry.HeaderPointerOffset), headerBlock);
         return bytes;
     }
 
-    private byte StorageOf(FileStorageKind kind) => kind switch
+    private ProdosStorageType StorageOf(FileStorageKind kind) => kind switch
     {
-        FileStorageKind.ProdosSeedling => ProdosLayout.StorageSeedling,
-        FileStorageKind.ProdosSapling => ProdosLayout.StorageSapling,
-        FileStorageKind.ProdosTree => ProdosLayout.StorageTree,
-        FileStorageKind.ProdosSubdirectory => ProdosLayout.StorageSubdirectory,
-        FileStorageKind.ProdosExtended => ProdosLayout.StorageExtended,
+        FileStorageKind.ProdosSeedling => ProdosStorageType.Seedling,
+        FileStorageKind.ProdosSapling => ProdosStorageType.Sapling,
+        FileStorageKind.ProdosTree => ProdosStorageType.Tree,
+        FileStorageKind.ProdosPascalArea => ProdosStorageType.PascalArea,
+        FileStorageKind.ProdosExtended => ProdosStorageType.Extended,
+        FileStorageKind.ProdosSubdirectory => ProdosStorageType.Subdirectory,
+        FileStorageKind.None or FileStorageKind.DosTrackSectorList or FileStorageKind.PascalContiguous =>
+            throw new InvalidOperationException("The fixture entry has no ProDOS storage type."),
         _ => throw new InvalidOperationException("The fixture entry has no ProDOS storage type."),
     };
 
     private void WriteForkMiniEntry(byte[] image, int keyBlock, int forkOffset, int dataBlock, int eof)
     {
         var span = image.AsSpan((keyBlock * ProdosLayout.BlockSize) + forkOffset);
-        span[ProdosLayout.ExtendedMiniStorageOffset] = (byte)(ProdosLayout.StorageSeedling << 4);
-        WriteU16(span[ProdosLayout.ExtendedMiniKeyPointerOffset..], dataBlock);
-        WriteU16(span[ProdosLayout.ExtendedMiniBlocksUsedOffset..], 1);
-        WriteU24(span[ProdosLayout.ExtendedMiniEofOffset..], eof);
+        span[ProdosLayout.ExtendedKeyBlock.StorageOffset] = (byte)((byte)ProdosStorageType.Seedling << 4);
+        WriteU16(span[ProdosLayout.ExtendedKeyBlock.KeyPointerOffset..], dataBlock);
+        WriteU16(span[ProdosLayout.ExtendedKeyBlock.BlocksUsedOffset..], 1);
+        WriteU24(span[ProdosLayout.ExtendedKeyBlock.EofOffset..], eof);
     }
 
     private int ResolveEof(int naturalLength, int? requested, int maximum = 0xFFFFFF)
@@ -521,8 +524,8 @@ public sealed class ProdosImageBuilder
         var span = image.AsSpan(block * ProdosLayout.BlockSize, ProdosLayout.BlockSize);
         for (var i = 0; i < pointers.Count; i++)
         {
-            span[ProdosLayout.IndexLowHalf + i] = (byte)pointers[i];
-            span[ProdosLayout.IndexHighHalf + i] = (byte)(pointers[i] >> 8);
+            span[ProdosLayout.Index.LowHalf + i] = (byte)pointers[i];
+            span[ProdosLayout.Index.HighHalf + i] = (byte)(pointers[i] >> 8);
         }
     }
 
@@ -600,11 +603,11 @@ public sealed class ProdosImageBuilder
             Array.Empty<ProdosFixture.Entry>());
     }
 
-    private void WriteName(Span<byte> entry, byte storage, string name)
+    private void WriteName(Span<byte> entry, ProdosStorageType storage, string name)
     {
         var bytes = System.Text.Encoding.ASCII.GetBytes(name);
-        entry[0] = (byte)((storage << 4) | bytes.Length);
-        bytes.CopyTo(entry[ProdosLayout.NameOffset..]);
+        entry[0] = (byte)(((byte)storage << 4) | bytes.Length);
+        bytes.CopyTo(entry[ProdosLayout.Entry.NameOffset..]);
     }
 
     private string Normalize(string name)
@@ -634,7 +637,7 @@ public sealed class ProdosImageBuilder
 
     private sealed class Pending
     {
-        public Pending(string name, byte fileType, ushort auxType, bool locked, PendingKind kind, IReadOnlyList<byte[]?> blocks, int minimumBlockForLast, int subIndexMinimumBlock)
+        public Pending(string name, ProdosFileType fileType, ushort auxType, bool locked, PendingKind kind, IReadOnlyList<byte[]?> blocks, int minimumBlockForLast, int subIndexMinimumBlock)
         {
             this.Name = name;
             this.FileType = fileType;
@@ -652,7 +655,7 @@ public sealed class ProdosImageBuilder
 
         public string Name { get; }
 
-        public byte FileType { get; }
+        public ProdosFileType FileType { get; }
 
         public ushort AuxType { get; }
 

@@ -54,8 +54,8 @@ public sealed class Dos33ImageBuilder
     /// Each body is at most 256 bytes and is padded with zeros. The caller includes any A/I/B header.
     /// </param>
     /// <returns>This builder.</returns>
-    /// <exception cref="ArgumentException">If the name, type, or sector list is not usable.</exception>
-    public Dos33ImageBuilder AddFile(string name, byte fileType, bool locked, bool deleted, IReadOnlyList<byte[]?> dataSectors)
+    /// <exception cref="ArgumentException">If the name or sector list is not usable.</exception>
+    public Dos33ImageBuilder AddFile(string name, Dos33FileType fileType, bool locked, bool deleted, IReadOnlyList<byte[]?> dataSectors)
     {
         this.files.Add(new FileSpec(NormalizeName(name), fileType, locked, deleted, CopySectors(dataSectors)));
         return this;
@@ -123,7 +123,7 @@ public sealed class Dos33ImageBuilder
 
     private void WriteCatalog(byte[] image, bool[,] used, List<PlacedFile> placed, List<Dos33Fixture.Entry> entries)
     {
-        var chunkCount = Math.Max(1, (placed.Count + Dos33Layout.CatalogEntriesPerSector - 1) / Dos33Layout.CatalogEntriesPerSector);
+        var chunkCount = Math.Max(1, (placed.Count + Dos33Layout.Catalog.EntriesPerSector - 1) / Dos33Layout.Catalog.EntriesPerSector);
         var first = Dos33Layout.DefaultFirstCatalogSector;
         if (first - chunkCount + 1 < 1)
         {
@@ -141,24 +141,24 @@ public sealed class Dos33ImageBuilder
                 catalog[2] = (byte)(sector - 1);
             }
 
-            var start = chunk * Dos33Layout.CatalogEntriesPerSector;
-            var count = Math.Min(Dos33Layout.CatalogEntriesPerSector, placed.Count - start);
+            var start = chunk * Dos33Layout.Catalog.EntriesPerSector;
+            var count = Math.Min(Dos33Layout.Catalog.EntriesPerSector, placed.Count - start);
             for (var slot = 0; slot < count; slot++)
             {
                 var file = placed[start + slot];
-                var entry = catalog.AsSpan(Dos33Layout.CatalogHeaderLength + (slot * Dos33Layout.CatalogEntryLength), Dos33Layout.CatalogEntryLength);
-                entry[Dos33Layout.EntryTrackOffset] = file.Spec.Deleted ? Dos33Layout.DeletedTrack : (byte)file.Ts.Track;
-                entry[Dos33Layout.EntrySectorOffset] = (byte)file.Ts.Sector;
-                entry[Dos33Layout.EntryTypeOffset] = (byte)(file.Spec.FileType | (file.Spec.Locked ? Dos33Layout.LockedMask : 0));
-                WriteName(entry.Slice(Dos33Layout.EntryNameOffset, Dos33Layout.EntryNameLength), file.Spec.Name);
+                var entry = catalog.AsSpan(Dos33Layout.Catalog.HeaderLength + (slot * Dos33Layout.CatalogEntry.Length), Dos33Layout.CatalogEntry.Length);
+                entry[Dos33Layout.CatalogEntry.TrackOffset] = file.Spec.Deleted ? Dos33Layout.DeletedTrack : (byte)file.Ts.Track;
+                entry[Dos33Layout.CatalogEntry.SectorOffset] = (byte)file.Ts.Sector;
+                entry[Dos33Layout.CatalogEntry.TypeOffset] = (byte)((byte)file.Spec.FileType | (file.Spec.Locked ? Dos33Layout.LockedMask : 0));
+                WriteName(entry.Slice(Dos33Layout.CatalogEntry.NameOffset, Dos33Layout.CatalogEntry.NameLength), file.Spec.Name);
                 if (file.Spec.Deleted)
                 {
-                    entry[Dos33Layout.EntryOriginalTrackOffset] = (byte)file.Ts.Track;
+                    entry[Dos33Layout.CatalogEntry.OriginalTrackOffset] = (byte)file.Ts.Track;
                 }
 
                 var allocated = 1 + file.Data.Count(item => item.Allocated);
-                entry[Dos33Layout.EntrySectorCountOffset] = (byte)allocated;
-                entry[Dos33Layout.EntrySectorCountOffset + 1] = (byte)(allocated >> 8);
+                entry[Dos33Layout.CatalogEntry.SectorCountOffset] = (byte)allocated;
+                entry[Dos33Layout.CatalogEntry.SectorCountOffset + 1] = (byte)(allocated >> 8);
                 var raw = BuildRaw(file);
                 entries.Add(new Dos33Fixture.Entry(
                     file.Spec.Name,
@@ -183,15 +183,15 @@ public sealed class Dos33ImageBuilder
     private void WriteVtoc(byte[] image, bool[,] used)
     {
         var vtoc = new byte[SectorSize];
-        vtoc[Dos33Layout.VtocCatalogTrackOffset] = Dos33Layout.VtocTrack;
-        vtoc[Dos33Layout.VtocCatalogSectorOffset] = Dos33Layout.DefaultFirstCatalogSector;
-        vtoc[Dos33Layout.VtocDosVersionOffset] = Dos33Layout.DosVersion33;
-        vtoc[Dos33Layout.VtocVolumeOffset] = this.volume;
-        vtoc[Dos33Layout.VtocMaxPairsOffset] = Dos33Layout.TsPairsPerSector;
+        vtoc[Dos33Layout.Vtoc.CatalogTrackOffset] = Dos33Layout.VtocTrack;
+        vtoc[Dos33Layout.Vtoc.CatalogSectorOffset] = Dos33Layout.DefaultFirstCatalogSector;
+        vtoc[Dos33Layout.Vtoc.DosVersionOffset] = Dos33Layout.Vtoc.Version33;
+        vtoc[Dos33Layout.Vtoc.VolumeOffset] = this.volume;
+        vtoc[Dos33Layout.Vtoc.MaxPairsOffset] = Dos33Layout.TrackSectorList.PairsPerSector;
         vtoc[0x31] = 1;
-        vtoc[Dos33Layout.VtocTrackCountOffset] = (byte)this.trackCount;
-        vtoc[Dos33Layout.VtocSectorsPerTrackOffset] = SectorsPerTrack;
-        vtoc[Dos33Layout.VtocBytesPerSectorOffset + 1] = 1;
+        vtoc[Dos33Layout.Vtoc.TrackCountOffset] = (byte)this.trackCount;
+        vtoc[Dos33Layout.Vtoc.SectorsPerTrackOffset] = SectorsPerTrack;
+        vtoc[Dos33Layout.Vtoc.BytesPerSectorOffset + 1] = 1;
         for (var catalogSector = 0; catalogSector < SectorsPerTrack; catalogSector++)
         {
             used[Dos33Layout.VtocTrack, catalogSector] = true;
@@ -218,7 +218,7 @@ public sealed class Dos33ImageBuilder
 
     private void WriteTsList(byte[] image, int track, int sector, IReadOnlyList<Dos33Fixture.SectorRef> data)
     {
-        if (data.Count > Dos33Layout.TsPairsPerSector)
+        if (data.Count > Dos33Layout.TrackSectorList.PairsPerSector)
         {
             throw new InvalidOperationException("A DOS fixture track/sector list holds at most 122 pairs.");
         }
@@ -227,7 +227,7 @@ public sealed class Dos33ImageBuilder
         for (var i = 0; i < data.Count; i++)
         {
             var pair = data[i];
-            var offset = Dos33Layout.TsPairOffset + (i * 2);
+            var offset = Dos33Layout.TrackSectorList.PairOffset + (i * 2);
             if (!pair.Allocated)
             {
                 continue;
@@ -281,7 +281,7 @@ public sealed class Dos33ImageBuilder
 
     private void WriteName(Span<byte> destination, string name)
     {
-        destination.Fill(Dos33Layout.HighBitSpace);
+        destination.Fill(Dos33Layout.CatalogEntry.HighBitSpace);
         for (var i = 0; i < name.Length; i++)
         {
             destination[i] = (byte)(name[i] | 0x80);
@@ -292,7 +292,7 @@ public sealed class Dos33ImageBuilder
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
         var upper = name.ToUpperInvariant();
-        if (upper.Length > Dos33Layout.EntryNameLength)
+        if (upper.Length > Dos33Layout.CatalogEntry.NameLength)
         {
             throw new ArgumentException("DOS 3.3 names are at most 30 characters.", nameof(name));
         }
@@ -313,7 +313,7 @@ public sealed class Dos33ImageBuilder
     private byte[]?[] CopySectors(IReadOnlyList<byte[]?> dataSectors)
     {
         ArgumentNullException.ThrowIfNull(dataSectors);
-        if (dataSectors.Count == 0 || dataSectors.Count > Dos33Layout.TsPairsPerSector)
+        if (dataSectors.Count == 0 || dataSectors.Count > Dos33Layout.TrackSectorList.PairsPerSector)
         {
             throw new ArgumentException("A DOS fixture file needs 1 to 122 track/sector pairs.", nameof(dataSectors));
         }
@@ -349,13 +349,8 @@ public sealed class Dos33ImageBuilder
 
     private sealed class FileSpec
     {
-        public FileSpec(string name, byte fileType, bool locked, bool deleted, byte[]?[] sectors)
+        public FileSpec(string name, Dos33FileType fileType, bool locked, bool deleted, byte[]?[] sectors)
         {
-            if ((fileType & Dos33Layout.LockedMask) != 0)
-            {
-                throw new ArgumentException("Pass the DOS lock flag separately from the file type.", nameof(fileType));
-            }
-
             this.Name = name;
             this.FileType = fileType;
             this.Locked = locked;
@@ -365,7 +360,7 @@ public sealed class Dos33ImageBuilder
 
         public string Name { get; }
 
-        public byte FileType { get; }
+        public Dos33FileType FileType { get; }
 
         public bool Locked { get; }
 

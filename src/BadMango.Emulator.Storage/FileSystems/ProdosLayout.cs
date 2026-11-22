@@ -9,30 +9,25 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The volume key block is block <see cref="VolumeKeyBlock"/>. Its first entry, at offset
-/// <see cref="KeyBlockHeaderOffset"/>, is the volume header (storage type
-/// <see cref="StorageVolumeHeader"/>). That header is not a file. A subdirectory key block
-/// starts with storage type <see cref="StorageSubdirectoryHeader"/>, which is also not a file.
-/// A subdirectory file in its parent directory is storage type <see cref="StorageSubdirectory"/>.
+/// The volume key block is block <see cref="VolumeKeyBlock"/>. Its first entry, at
+/// <see cref="Directory.FirstEntryOffset"/>, is the volume header
+/// (<see cref="ProdosStorageType.VolumeHeader"/>). That header is not a file. A subdirectory
+/// key block starts with <see cref="ProdosStorageType.SubdirectoryHeader"/>, which is also
+/// not a file. A subdirectory file in its parent is <see cref="ProdosStorageType.Subdirectory"/>.
 /// </para>
 /// <para>
 /// Index blocks are not adjacent byte pairs. <see cref="ReadIndexPointer"/> reads byte
-/// <c>i</c> from the low half and byte <c>256 + i</c> from the high half. A zero pointer is
-/// a sparse hole. Readers still emit zeros and stop at the EOF field, not at the first hole.
-/// Storage types <see cref="StorageExtended"/> and <see cref="StoragePascalArea"/> are
-/// <see cref="FileAccessStatus.UnsupportedStorage"/>. An extended file's key block holds a
-/// data-fork mini-entry at <see cref="ExtendedDataForkOffset"/> and a resource-fork
-/// mini-entry at <see cref="ExtendedResourceForkOffset"/>. Readers do not return those
-/// fork bytes as the file.
+/// <c>i</c> from <see cref="Index.LowHalf"/> and byte <c>256 + i</c> from <see cref="Index.HighHalf"/>.
+/// A zero pointer is a sparse hole. Readers still emit zeros and stop at the EOF field.
+/// <see cref="ProdosStorageType.Extended"/> and <see cref="ProdosStorageType.PascalArea"/> are
+/// <see cref="FileAccessStatus.UnsupportedStorage"/>. An extended key block holds a data-fork
+/// mini-entry at <see cref="ExtendedKeyBlock.DataForkOffset"/> and a resource-fork mini-entry
+/// at <see cref="ExtendedKeyBlock.ResourceForkOffset"/>.
 /// </para>
 /// <para>
-/// The volume bitmap stores one bit per block, and a set bit means free. Block 0 is
-/// bit 7 of byte 0. <see cref="IsBlockFree"/> is that mapping.
-/// </para>
-/// <para>
-/// Offsets named on the volume header and the subdirectory header are entry-relative.
-/// Add <see cref="KeyBlockHeaderOffset"/> to reach them in the key block. File-entry offsets
-/// are also entry-relative and differ from the header after the name field.
+/// Header field offsets are entry-relative. Add <see cref="Directory.FirstEntryOffset"/> to
+/// reach them in a key block. The volume bitmap stores one bit per block, and a set bit means
+/// free. Block 0 is bit 7 of byte 0. <see cref="IsBlockFree"/> is that mapping.
 /// </para>
 /// </remarks>
 public static class ProdosLayout
@@ -43,41 +38,8 @@ public static class ProdosLayout
     /// <summary>Block that holds the volume directory key block.</summary>
     public const int VolumeKeyBlock = 2;
 
-    /// <summary>Bytes in one directory entry, including the header.</summary>
-    public const int EntryLength = 0x27;
-
-    /// <summary>Directory entries that fit in one block.</summary>
-    public const int EntriesPerBlock = 0x0D;
-
-    /// <summary>Offset of the first entry in a directory block. The four bytes before it are the block links.</summary>
-    public const int KeyBlockHeaderOffset = 4;
-
     /// <summary>Maximum characters in a ProDOS name.</summary>
     public const int NameCapacity = 15;
-
-    /// <summary>Entry offset of the name bytes.</summary>
-    public const int NameOffset = 0x01;
-
-    /// <summary>File-entry offset of the ProDOS file type.</summary>
-    public const int FileTypeOffset = 0x10;
-
-    /// <summary>File-entry offset of the little-endian key pointer.</summary>
-    public const int KeyPointerOffset = 0x11;
-
-    /// <summary>File-entry offset of the little-endian blocks-used count.</summary>
-    public const int BlocksUsedOffset = 0x13;
-
-    /// <summary>File-entry offset of the 24-bit end-of-file.</summary>
-    public const int EofOffset = 0x15;
-
-    /// <summary>Entry offset of the access byte on both headers and file entries.</summary>
-    public const int AccessOffset = 0x1E;
-
-    /// <summary>File-entry offset of the little-endian auxiliary type.</summary>
-    public const int AuxTypeOffset = 0x1F;
-
-    /// <summary>File-entry offset of the directory key block that contains the entry.</summary>
-    public const int HeaderPointerOffset = 0x25;
 
     /// <summary>Access bit that allows writing. Clear means locked.</summary>
     public const byte WriteAccessBit = 0x02;
@@ -87,110 +49,6 @@ public static class ProdosLayout
 
     /// <summary>Locked access: destroy, rename, and read, with the write bit clear.</summary>
     public const byte AccessLocked = 0xC1;
-
-    /// <summary>Storage type of a deleted or unused entry.</summary>
-    public const byte StorageDeleted = 0x00;
-
-    /// <summary>Storage type of a seedling file.</summary>
-    public const byte StorageSeedling = 0x01;
-
-    /// <summary>Storage type of a sapling file.</summary>
-    public const byte StorageSapling = 0x02;
-
-    /// <summary>Storage type of a tree file.</summary>
-    public const byte StorageTree = 0x03;
-
-    /// <summary>Storage type of a Pascal area. Not a readable file.</summary>
-    public const byte StoragePascalArea = 0x04;
-
-    /// <summary>Storage type of a GS/OS extended file. Not a readable file.</summary>
-    public const byte StorageExtended = 0x05;
-
-    /// <summary>Storage type of a subdirectory file entry in its parent.</summary>
-    public const byte StorageSubdirectory = 0x0D;
-
-    /// <summary>Storage type of the header inside a subdirectory key block.</summary>
-    public const byte StorageSubdirectoryHeader = 0x0E;
-
-    /// <summary>Storage type of the volume directory header.</summary>
-    public const byte StorageVolumeHeader = 0x0F;
-
-    /// <summary>Header entry offset of <see cref="EntryLength"/>.</summary>
-    public const int VolumeHeaderEntryLengthOffset = 0x1F;
-
-    /// <summary>Header entry offset of <see cref="EntriesPerBlock"/>.</summary>
-    public const int VolumeHeaderEntriesPerBlockOffset = 0x20;
-
-    /// <summary>Header entry offset of the active-entry count. The header itself is not included.</summary>
-    public const int VolumeHeaderFileCountOffset = 0x21;
-
-    /// <summary>Volume-header entry offset of the first bitmap block.</summary>
-    public const int VolumeHeaderBitmapPointerOffset = 0x23;
-
-    /// <summary>Volume-header entry offset of the volume's block count.</summary>
-    public const int VolumeHeaderTotalBlocksOffset = 0x25;
-
-    /// <summary>Subdirectory-header entry offset of the <c>$75</c> ProDOS 8 reserved mark.</summary>
-    public const int SubdirectoryReservedOffset = 0x10;
-
-    /// <summary>Value ProDOS 8 stores at <see cref="SubdirectoryReservedOffset"/>.</summary>
-    public const byte SubdirectoryReservedMark = 0x75;
-
-    /// <summary>
-    /// Subdirectory-header entry offset of the parent directory block.
-    /// This is the block that contains the subdirectory's entry. It is the volume key
-    /// block only when the entry is stored there.
-    /// </summary>
-    public const int SubdirectoryParentPointerOffset = 0x23;
-
-    /// <summary>
-    /// Subdirectory-header entry offset of the 1-based entry number in the parent block.
-    /// In a directory key block the header is entry 1, so the first file is entry 2.
-    /// A continuation block has no header, so its first file is entry 1.
-    /// </summary>
-    public const int SubdirectoryParentEntryNumberOffset = 0x25;
-
-    /// <summary>Subdirectory-header entry offset of the parent entry length.</summary>
-    public const int SubdirectoryParentEntryLengthOffset = 0x26;
-
-    /// <summary>Index-block offset of pointer 0's low byte. Pointer <c>i</c> is at this offset plus <c>i</c>.</summary>
-    public const int IndexLowHalf = 0;
-
-    /// <summary>Index-block offset of pointer 0's high byte. Pointer <c>i</c> is at this offset plus <c>i</c>.</summary>
-    public const int IndexHighHalf = 256;
-
-    /// <summary>Pointers in one index block.</summary>
-    public const int IndexPointers = 256;
-
-    /// <summary>Bytes addressed by one master-index slot (256 data blocks).</summary>
-    public const int TreeSlotBytes = IndexPointers * BlockSize;
-
-    /// <summary>Offset of the data-fork mini-entry in an extended key block.</summary>
-    public const int ExtendedDataForkOffset = 0x000;
-
-    /// <summary>Offset of the resource-fork mini-entry in an extended key block.</summary>
-    public const int ExtendedResourceForkOffset = 0x100;
-
-    /// <summary>Mini-entry offset of the storage-type byte. The name length is 0.</summary>
-    public const int ExtendedMiniStorageOffset = 0;
-
-    /// <summary>Mini-entry offset of the little-endian fork key pointer.</summary>
-    public const int ExtendedMiniKeyPointerOffset = 1;
-
-    /// <summary>Mini-entry offset of the little-endian blocks-used count.</summary>
-    public const int ExtendedMiniBlocksUsedOffset = 3;
-
-    /// <summary>Mini-entry offset of the 24-bit fork EOF.</summary>
-    public const int ExtendedMiniEofOffset = 5;
-
-    /// <summary>ProDOS text file type.</summary>
-    public const byte FileTypeText = 0x04;
-
-    /// <summary>ProDOS binary file type.</summary>
-    public const byte FileTypeBinary = 0x06;
-
-    /// <summary>ProDOS directory file type.</summary>
-    public const byte FileTypeDirectory = 0x0F;
 
     /// <summary>Bits in one bitmap block.</summary>
     public const int BitsPerBitmapBlock = 4096;
@@ -264,27 +122,41 @@ public static class ProdosLayout
         }
 
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, IndexPointers);
-        return indexBlock[IndexLowHalf + index] | (indexBlock[IndexHighHalf + index] << 8);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Index.PointerCount);
+        return indexBlock[Index.LowHalf + index] | (indexBlock[Index.HighHalf + index] << 8);
     }
+
+    /// <summary>
+    /// Maps a storage-type nibble onto <see cref="FileStorageKind"/>.
+    /// </summary>
+    /// <param name="storageType">The storage type.</param>
+    /// <returns>
+    /// The matching kind. Headers, deleted slots, and an undefined cast return <see cref="FileStorageKind.None"/>.
+    /// </returns>
+    public static FileStorageKind ToStorageKind(ProdosStorageType storageType) => storageType switch
+    {
+        ProdosStorageType.Seedling => FileStorageKind.ProdosSeedling,
+        ProdosStorageType.Sapling => FileStorageKind.ProdosSapling,
+        ProdosStorageType.Tree => FileStorageKind.ProdosTree,
+        ProdosStorageType.Subdirectory => FileStorageKind.ProdosSubdirectory,
+        ProdosStorageType.Extended => FileStorageKind.ProdosExtended,
+        ProdosStorageType.PascalArea => FileStorageKind.ProdosPascalArea,
+        ProdosStorageType.Deleted or ProdosStorageType.SubdirectoryHeader or ProdosStorageType.VolumeHeader => FileStorageKind.None,
+        _ => FileStorageKind.None,
+    };
 
     /// <summary>
     /// Maps a storage-type nibble onto <see cref="FileStorageKind"/>.
     /// </summary>
     /// <param name="storageNibble">The high nibble of a directory entry's first byte.</param>
     /// <returns>
-    /// The matching kind. Headers, deleted slots, and unknown nibbles return <see cref="FileStorageKind.None"/>.
+    /// The matching kind. Unknown nibbles, headers, and deleted slots return <see cref="FileStorageKind.None"/>.
     /// </returns>
-    public static FileStorageKind ToStorageKind(byte storageNibble) => storageNibble switch
+    public static FileStorageKind ToStorageKind(byte storageNibble)
     {
-        StorageSeedling => FileStorageKind.ProdosSeedling,
-        StorageSapling => FileStorageKind.ProdosSapling,
-        StorageTree => FileStorageKind.ProdosTree,
-        StorageSubdirectory => FileStorageKind.ProdosSubdirectory,
-        StorageExtended => FileStorageKind.ProdosExtended,
-        StoragePascalArea => FileStorageKind.ProdosPascalArea,
-        _ => FileStorageKind.None,
-    };
+        var storageType = (ProdosStorageType)storageNibble;
+        return Enum.IsDefined(storageType) ? ToStorageKind(storageType) : FileStorageKind.None;
+    }
 
     /// <summary>
     /// Returns whether a ProDOS access byte denies writing.
@@ -348,10 +220,10 @@ public static class ProdosLayout
     /// <param name="blockCount">Blocks the media exposes.</param>
     /// <returns>
     /// <see langword="true"/> when the previous pointer is 0, the storage nibble is
-    /// <see cref="StorageVolumeHeader"/>, the name is legal, the entry length and entries-per-block
-    /// are the standard values, the recorded total blocks fit in the image, and the bitmap
-    /// starting at the recorded pointer occupies <see cref="BitmapBlockCount"/> blocks that
-    /// also fit in that total.
+    /// <see cref="ProdosStorageType.VolumeHeader"/>, the name is legal, the entry length and
+    /// entries-per-block are the standard values, the recorded total blocks fit in the image,
+    /// and the bitmap starting at the recorded pointer occupies <see cref="BitmapBlockCount"/>
+    /// blocks that also fit in that total.
     /// </returns>
     public static bool IsVolumeDirectoryKeyBlock(ReadOnlySpan<byte> block, int blockCount)
     {
@@ -371,27 +243,27 @@ public static class ProdosLayout
             return false;
         }
 
-        var storageAndLength = block[KeyBlockHeaderOffset];
-        if ((storageAndLength >> 4) != StorageVolumeHeader)
+        var storageAndLength = block[Directory.FirstEntryOffset];
+        if ((storageAndLength >> 4) != (byte)ProdosStorageType.VolumeHeader)
         {
             return false;
         }
 
         var nameLength = storageAndLength & 0x0F;
-        if (!IsValidName(block.Slice(KeyBlockHeaderOffset + NameOffset, nameLength)))
+        if (!IsValidName(block.Slice(Directory.FirstEntryOffset + Entry.NameOffset, nameLength)))
         {
             return false;
         }
 
-        var header = KeyBlockHeaderOffset;
-        if (block[header + VolumeHeaderEntryLengthOffset] != EntryLength
-            || block[header + VolumeHeaderEntriesPerBlockOffset] != EntriesPerBlock)
+        var header = Directory.FirstEntryOffset;
+        if (block[header + VolumeHeader.EntryLengthOffset] != Entry.Length
+            || block[header + VolumeHeader.EntriesPerBlockOffset] != Directory.EntriesPerBlock)
         {
             return false;
         }
 
-        var total = block[header + VolumeHeaderTotalBlocksOffset] | (block[header + VolumeHeaderTotalBlocksOffset + 1] << 8);
-        var bitmap = block[header + VolumeHeaderBitmapPointerOffset] | (block[header + VolumeHeaderBitmapPointerOffset + 1] << 8);
+        var total = block[header + VolumeHeader.TotalBlocksOffset] | (block[header + VolumeHeader.TotalBlocksOffset + 1] << 8);
+        var bitmap = block[header + VolumeHeader.BitmapPointerOffset] | (block[header + VolumeHeader.BitmapPointerOffset + 1] << 8);
         if (total < 4 || total > blockCount || bitmap <= VolumeKeyBlock)
         {
             return false;
@@ -404,4 +276,137 @@ public static class ProdosLayout
     private static bool IsUpperLetter(byte c) => c is >= (byte)'A' and <= (byte)'Z';
 
     private static bool IsDigit(byte c) => c is >= (byte)'0' and <= (byte)'9';
+
+    /// <summary>A directory block: the link words, then entry slots.</summary>
+    public static class Directory
+    {
+        /// <summary>Offset of the first entry. The four bytes before it are the block links.</summary>
+        public const int FirstEntryOffset = 4;
+
+        /// <summary>Entry slots in one directory block.</summary>
+        public const int EntriesPerBlock = 0x0D;
+    }
+
+    /// <summary>One 39-byte file or header entry. Offsets are entry-relative.</summary>
+    public static class Entry
+    {
+        /// <summary>Bytes in one directory entry.</summary>
+        public const int Length = 0x27;
+
+        /// <summary>Offset of the name bytes.</summary>
+        public const int NameOffset = 0x01;
+
+        /// <summary>Offset of the ProDOS file type.</summary>
+        public const int FileTypeOffset = 0x10;
+
+        /// <summary>Offset of the little-endian key pointer.</summary>
+        public const int KeyPointerOffset = 0x11;
+
+        /// <summary>Offset of the little-endian blocks-used count.</summary>
+        public const int BlocksUsedOffset = 0x13;
+
+        /// <summary>Offset of the 24-bit end-of-file.</summary>
+        public const int EofOffset = 0x15;
+
+        /// <summary>Offset of the access byte. Headers use the same entry-relative offset.</summary>
+        public const int AccessOffset = 0x1E;
+
+        /// <summary>Offset of the little-endian auxiliary type.</summary>
+        public const int AuxTypeOffset = 0x1F;
+
+        /// <summary>Offset of the directory key block that contains the entry.</summary>
+        public const int HeaderPointerOffset = 0x25;
+    }
+
+    /// <summary>Entry-relative fields of a volume directory header.</summary>
+    public static class VolumeHeader
+    {
+        /// <summary>Offset of the standard entry length.</summary>
+        public const int EntryLengthOffset = 0x1F;
+
+        /// <summary>Offset of the entries-per-block count.</summary>
+        public const int EntriesPerBlockOffset = 0x20;
+
+        /// <summary>Offset of the active-entry count. The header itself is not included.</summary>
+        public const int FileCountOffset = 0x21;
+
+        /// <summary>Offset of the first bitmap block.</summary>
+        public const int BitmapPointerOffset = 0x23;
+
+        /// <summary>Offset of the volume's block count.</summary>
+        public const int TotalBlocksOffset = 0x25;
+    }
+
+    /// <summary>Entry-relative fields of a subdirectory header.</summary>
+    public static class SubdirectoryHeader
+    {
+        /// <summary>Offset of the ProDOS 8 reserved mark.</summary>
+        public const int ReservedOffset = 0x10;
+
+        /// <summary>Value ProDOS 8 stores at <see cref="ReservedOffset"/>.</summary>
+        public const byte ReservedMark = 0x75;
+
+        /// <summary>Offset of the standard entry length. Same entry-relative slot as the volume header.</summary>
+        public const int EntryLengthOffset = 0x1F;
+
+        /// <summary>Offset of the entries-per-block count.</summary>
+        public const int EntriesPerBlockOffset = 0x20;
+
+        /// <summary>Offset of the active-entry count. The header itself is not included.</summary>
+        public const int FileCountOffset = 0x21;
+
+        /// <summary>
+        /// Offset of the parent directory block. This is the block that contains the
+        /// subdirectory's entry, which is the volume key block only when the entry lives there.
+        /// </summary>
+        public const int ParentPointerOffset = 0x23;
+
+        /// <summary>
+        /// Offset of the 1-based entry number in the parent block.
+        /// In a directory key block the header is entry 1, so the first file is entry 2.
+        /// A continuation block has no header, so its first file is entry 1.
+        /// </summary>
+        public const int ParentEntryNumberOffset = 0x25;
+
+        /// <summary>Offset of the parent entry length.</summary>
+        public const int ParentEntryLengthOffset = 0x26;
+    }
+
+    /// <summary>A sapling index or a tree master index.</summary>
+    public static class Index
+    {
+        /// <summary>Offset of pointer 0's low byte. Pointer <c>i</c> is at this offset plus <c>i</c>.</summary>
+        public const int LowHalf = 0;
+
+        /// <summary>Offset of pointer 0's high byte. Pointer <c>i</c> is at this offset plus <c>i</c>.</summary>
+        public const int HighHalf = 256;
+
+        /// <summary>Pointers in one index block.</summary>
+        public const int PointerCount = 256;
+
+        /// <summary>Bytes addressed by one master-index slot.</summary>
+        public const int SlotBytes = PointerCount * BlockSize;
+    }
+
+    /// <summary>Key block of a storage-type <see cref="ProdosStorageType.Extended"/> file.</summary>
+    public static class ExtendedKeyBlock
+    {
+        /// <summary>Offset of the data-fork mini-entry.</summary>
+        public const int DataForkOffset = 0x000;
+
+        /// <summary>Offset of the resource-fork mini-entry.</summary>
+        public const int ResourceForkOffset = 0x100;
+
+        /// <summary>Mini-entry offset of the storage-type byte. The name length is 0.</summary>
+        public const int StorageOffset = 0;
+
+        /// <summary>Mini-entry offset of the little-endian fork key pointer.</summary>
+        public const int KeyPointerOffset = 1;
+
+        /// <summary>Mini-entry offset of the little-endian blocks-used count.</summary>
+        public const int BlocksUsedOffset = 3;
+
+        /// <summary>Mini-entry offset of the 24-bit fork EOF.</summary>
+        public const int EofOffset = 5;
+    }
 }
