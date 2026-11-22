@@ -179,18 +179,8 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         return new string(chars[..length]);
     }
 
-    private static LocatedFile? Find(CatalogSnapshot catalog, string name)
-    {
-        foreach (var file in catalog.Files)
-        {
-            if (file.Entry.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
-                return file;
-            }
-        }
-
-        return null;
-    }
+    private static LocatedFile? Find(CatalogSnapshot catalog, string name) =>
+        catalog.Files.FirstOrDefault(file => file.Entry.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     private DirectoryListing List(string? path)
     {
