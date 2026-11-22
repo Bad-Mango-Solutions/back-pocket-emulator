@@ -6,6 +6,7 @@ namespace BadMango.Emulator.Debug.UI.Tests;
 
 using Avalonia.Controls;
 using Avalonia.Headless.NUnit;
+using Avalonia.Input;
 using Avalonia.Threading;
 
 using BadMango.Emulator.Bus;
@@ -14,6 +15,8 @@ using BadMango.Emulator.Debug.UI.Views;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.Interfaces;
 using BadMango.Emulator.Rendering;
+
+using Moq;
 
 using Serilog;
 using Serilog.Core;
@@ -381,6 +384,80 @@ public class VideoWindowTests
         InvokeWindowClosed(window);
         Assert.DoesNotThrow(() => window.AttachMachine(mockMachine.Object));
         mockVideoDevice.VerifyAdd(v => v.VBlankOccurred += It.IsAny<Action>(), Times.Never);
+    }
+
+    /// <summary>
+    /// Verifies deactivation clears modifier state and releases live keys.
+    /// </summary>
+    [AvaloniaTest]
+    public void OnDeactivated_ClearsModifiersAndReleasesHeldKeys()
+    {
+        var window = new VideoWindow();
+        var mockMachine = CreateMockMachineWithKeyboard(out var keyboardDevice, out var keyboardInput);
+        window.AttachMachine(mockMachine.Object);
+
+        bool handledAlt = InvokeHandleHostKeyDown(window, Key.LeftAlt, KeyModifiers.Alt);
+        bool handledA = InvokeHandleHostKeyDown(window, Key.A, KeyModifiers.Alt);
+        InvokeWindowDeactivated(window);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handledAlt, Is.True);
+            Assert.That(handledA, Is.True);
+            keyboardDevice.Verify(k => k.SetModifiers(KeyboardModifiers.None), Times.AtLeastOnce);
+            keyboardInput.Verify(k => k.KeyUp(KeyboardKey.LeftOption, KeyboardModifiers.None), Times.Once);
+            keyboardInput.Verify(k => k.KeyUp(KeyboardKey.A, KeyboardModifiers.None), Times.Once);
+        });
+    }
+
+    /// <summary>
+    /// Verifies releasing one key while another is held uses per-key release through input.
+    /// </summary>
+    [AvaloniaTest]
+    public void HandleHostKeyUp_WhenAnotherKeyHeld_UsesPerKeyRelease()
+    {
+        var window = new VideoWindow();
+        var mockMachine = CreateMockMachineWithKeyboard(out var keyboardDevice, out var keyboardInput);
+        window.AttachMachine(mockMachine.Object);
+
+        _ = InvokeHandleHostKeyDown(window, Key.A, KeyModifiers.None);
+        _ = InvokeHandleHostKeyDown(window, Key.B, KeyModifiers.None);
+        bool handled = InvokeHandleHostKeyUp(window, Key.B, KeyModifiers.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handled, Is.True);
+            keyboardInput.Verify(k => k.KeyUp(KeyboardKey.B, KeyboardModifiers.None), Times.Once);
+            keyboardInput.Verify(k => k.KeyUp(KeyboardKey.A, It.IsAny<KeyboardModifiers>()), Times.Never);
+            keyboardDevice.Verify(k => k.KeyUp(), Times.Never);
+        });
+    }
+
+    /// <summary>
+    /// Verifies dropped key diagnostics are logged for missing mapping and missing keyboard.
+    /// </summary>
+    [AvaloniaTest]
+    public void HandleHostKeyDown_LogsDroppedKeyDiagnostics()
+    {
+        var sink = new TestLogEventSink();
+        using var logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(sink).CreateLogger();
+        var window = new VideoWindow(logger);
+        var mockMachine = CreateMockMachineWithKeyboard(out _, out _);
+        window.AttachMachine(mockMachine.Object);
+
+        _ = InvokeHandleHostKeyDown(window, Key.ImeProcessed, KeyModifiers.None);
+        window.DetachMachine();
+        _ = InvokeHandleHostKeyDown(window, Key.A, KeyModifiers.None);
+        InvokeWindowActivated(window);
+        InvokeWindowDeactivated(window);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sink.ContainsMessage(LogEventLevel.Debug, "no keyboard mapping"), Is.True);
+            Assert.That(sink.ContainsMessage(LogEventLevel.Debug, "no keyboard device attached"), Is.True);
+            Assert.That(sink.ContainsMessage(LogEventLevel.Debug, "activated"), Is.True);
+            Assert.That(sink.ContainsMessage(LogEventLevel.Debug, "deactivated"), Is.True);
+        });
     }
 
     /// <summary>
@@ -1191,6 +1268,42 @@ public class VideoWindowTests
         closedMethod!.Invoke(window, [null, EventArgs.Empty]);
     }
 
+    private static void InvokeWindowActivated(VideoWindow window)
+    {
+        var method = typeof(VideoWindow).GetMethod(
+            "OnWindowActivated",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        method!.Invoke(window, [null, EventArgs.Empty]);
+    }
+
+    private static void InvokeWindowDeactivated(VideoWindow window)
+    {
+        var method = typeof(VideoWindow).GetMethod(
+            "OnWindowDeactivated",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        method!.Invoke(window, [null, EventArgs.Empty]);
+    }
+
+    private static bool InvokeHandleHostKeyDown(VideoWindow window, Key key, KeyModifiers modifiers)
+    {
+        var method = typeof(VideoWindow).GetMethod(
+            "HandleHostKeyDown",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        object[] args = [key, modifiers, false];
+        method!.Invoke(window, args);
+        return (bool)args[2];
+    }
+
+    private static bool InvokeHandleHostKeyUp(VideoWindow window, Key key, KeyModifiers modifiers)
+    {
+        var method = typeof(VideoWindow).GetMethod(
+            "HandleHostKeyUp",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        object[] args = [key, modifiers, false];
+        method!.Invoke(window, args);
+        return (bool)args[2];
+    }
+
     /// <summary>
     /// Creates a mock machine whose main memory provider exposes a writable physical RAM.
     /// </summary>
@@ -1232,6 +1345,26 @@ public class VideoWindowTests
         return mockMachine;
     }
 
+    private static Mock<IMachine> CreateMockMachineWithKeyboard(out Mock<EmulatorKeyboardDevice> keyboardDevice, out Mock<IKeyboardInput> keyboardInput)
+    {
+        var machine = CreateMockMachineWithMainMemoryProvider(out _, out _);
+        keyboardDevice = new Mock<EmulatorKeyboardDevice>(MockBehavior.Strict);
+        keyboardDevice.SetupGet(k => k.Translator).Returns(new AppleIIeKeyTranslator());
+        keyboardDevice.Setup(k => k.SetModifiers(It.IsAny<KeyboardModifiers>()));
+        keyboardDevice.Setup(k => k.KeyDown(It.IsAny<byte>()));
+        keyboardDevice.Setup(k => k.KeyUp());
+
+        keyboardInput = new Mock<IKeyboardInput>(MockBehavior.Strict);
+        keyboardInput.SetupGet(k => k.IsTyping).Returns(false);
+        keyboardInput.SetupGet(k => k.Journal).Returns(Mock.Of<IKeyboardInputJournal>());
+        keyboardInput.Setup(k => k.KeyDown(It.IsAny<KeyboardKey>(), It.IsAny<KeyboardModifiers>()));
+        keyboardInput.Setup(k => k.KeyUp(It.IsAny<KeyboardKey>(), It.IsAny<KeyboardModifiers>()));
+
+        machine.Setup(m => m.GetComponent<EmulatorKeyboardDevice>()).Returns(keyboardDevice.Object);
+        machine.Setup(m => m.GetComponent<IKeyboardInput>()).Returns(keyboardInput.Object);
+        return machine;
+    }
+
     /// <summary>
     /// Creates a mock machine with an IMainMemoryProvider component.
     /// </summary>
@@ -1264,6 +1397,7 @@ public class VideoWindowTests
         mockMachine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns((IExtended80ColumnDevice?)null);
         mockMachine.Setup(m => m.GetComponent<ICharacterDevice>()).Returns((ICharacterDevice?)null);
         mockMachine.Setup(m => m.GetComponent<ICharacterRomProvider>()).Returns((ICharacterRomProvider?)null);
+        mockMachine.Setup(m => m.GetComponent<IKeyboardInput>()).Returns((IKeyboardInput?)null);
         mockMachine.Setup(m => m.GetComponent<EmulatorKeyboardDevice>()).Returns((EmulatorKeyboardDevice?)null);
 
         return mockMachine;
@@ -1290,6 +1424,7 @@ public class VideoWindowTests
         mockMachine.Setup(m => m.GetComponent<IExtended80ColumnDevice>()).Returns((IExtended80ColumnDevice?)null);
         mockMachine.Setup(m => m.GetComponent<ICharacterDevice>()).Returns((ICharacterDevice?)null);
         mockMachine.Setup(m => m.GetComponent<ICharacterRomProvider>()).Returns((ICharacterRomProvider?)null);
+        mockMachine.Setup(m => m.GetComponent<IKeyboardInput>()).Returns((IKeyboardInput?)null);
         mockMachine.Setup(m => m.GetComponent<EmulatorKeyboardDevice>()).Returns((EmulatorKeyboardDevice?)null);
 
         return mockMachine;
@@ -1313,6 +1448,14 @@ public class VideoWindowTests
             lock (eventsLock)
             {
                 return events.Count(e => e.Level == level);
+            }
+        }
+
+        public bool ContainsMessage(LogEventLevel level, string fragment)
+        {
+            lock (eventsLock)
+            {
+                return events.Any(e => e.Level == level && e.RenderMessage().Contains(fragment, StringComparison.Ordinal));
             }
         }
     }
