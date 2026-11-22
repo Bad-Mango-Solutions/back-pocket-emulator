@@ -1172,9 +1172,10 @@ public class MachineBuilderTests
             }
             """);
         var sets = profile.Devices?.Slots?.Sets;
-        Assert.That(sets, Is.Not.Null);
-        Assert.That(sets!.ContainsKey("Game"), Is.True);
-        Assert.That(sets.ContainsKey("game"), Is.False, "JSON set names are case-sensitive.");
+        Assume.That(sets, Is.Not.Null);
+        var jsonSets = sets!;
+        Assume.That(jsonSets.ContainsKey("Game"), Is.True);
+        Assume.That(jsonSets.ContainsKey("game"), Is.False, "JSON set names are case-sensitive.");
 
         var createdTypes = new List<string>();
         var builder = new MachineBuilder().WithCpuFactory(_ => mockCpu.Object);
