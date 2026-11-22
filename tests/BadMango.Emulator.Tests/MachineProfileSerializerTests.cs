@@ -237,14 +237,20 @@ public class MachineProfileSerializerTests
             Assert.That(deserialized.Devices?.Slots?.Enabled, Is.True);
             Assert.That(deserialized.Devices?.Slots?.InternalC3Rom, Is.True);
             Assert.That(deserialized.Devices?.Slots?.Cards, Is.Not.Null);
+            Assert.That(deserialized.Devices?.Slots?.DefaultSet, Is.EqualTo("game"));
+            Assert.That(deserialized.Devices?.Slots?.Sets, Is.Not.Null);
+            Assert.That(deserialized.Devices?.Slots?.Sets, Contains.Key("game"));
         });
         Assert.That(deserialized.Devices.Slots.Cards, Has.Count.EqualTo(1));
 
         var card = deserialized.Devices.Slots.Cards![0];
+        var setCard = deserialized.Devices.Slots.Sets!["game"].Cards![0];
         Assert.Multiple(() =>
         {
             Assert.That(card?.Slot, Is.EqualTo(4));
             Assert.That(card?.Type, Is.EqualTo("pocketwatch"));
+            Assert.That(setCard.Slot, Is.EqualTo(4));
+            Assert.That(setCard.Type, Is.EqualTo("pocketwatch"));
         });
     }
 
@@ -664,6 +670,7 @@ public class MachineProfileSerializerTests
                 Enabled = true,
                 InternalC3Rom = true,
                 InternalCxRom = false,
+                DefaultSet = "game",
                 Cards =
                 [
                     new()
@@ -673,6 +680,21 @@ public class MachineProfileSerializerTests
                         Config = JsonDocument.Parse("{\"timeSource\":\"host\"}").RootElement,
                     },
                 ],
+                Sets = new Dictionary<string, SlotCardSetProfile>
+                {
+                    ["game"] = new()
+                    {
+                        Description = "Clock in slot 4",
+                        Cards =
+                        [
+                            new()
+                            {
+                                Slot = 4,
+                                Type = "pocketwatch",
+                            },
+                        ],
+                    },
+                },
             },
         };
         return profile;

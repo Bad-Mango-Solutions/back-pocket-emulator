@@ -9,6 +9,7 @@ using System.Text.Json;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Core.Configuration;
 using BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 using BadMango.Emulator.Devices;
 
@@ -21,12 +22,12 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
     /// Initializes a new instance of the <see cref="SlotCommand"/> class.
     /// </summary>
     public SlotCommand()
-        : base("slot", "List, insert, or remove expansion slot cards")
+        : base("slot", "List, inspect sets, insert, remove, or switch slot-card assignments")
     {
     }
 
     /// <inheritdoc/>
-    public override string Usage => "slot <list|types|insert|remove> [args]";
+    public override string Usage => "slot <list|sets|types|use|insert|remove> [args]";
 
     /// <inheritdoc/>
     public string Synopsis => this.Usage;
@@ -34,7 +35,8 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
     /// <inheritdoc/>
     public string DetailedDescription =>
         "Shows the current slot map for slots 1-7, lists available slot-card type ids, " +
-        "or mutates the live session by inserting/removing cards while the machine is off. " +
+        "lists profile-defined slot sets, switches sets, or mutates the live session by inserting/removing cards " +
+        "while the machine is off. " +
         "Runtime slot edits never rewrite the profile file on disk.";
 
     /// <inheritdoc/>
@@ -44,6 +46,8 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
     public IReadOnlyList<string> Examples { get; } =
     [
         "slot list",
+        "slot sets",
+        "slot use game",
         "slot types",
         "slot insert 5 pocketwatch",
         "slot insert 6 disk-ii-compatible rom=slot6-boot",
@@ -52,7 +56,7 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
 
     /// <inheritdoc/>
     public string? SideEffects =>
-        "The insert/remove subcommands mutate only the live machine session and require the machine to be off.";
+        "The use/insert/remove subcommands mutate only the live machine session and require the machine to be off.";
 
     /// <inheritdoc/>
     public IReadOnlyList<string> SeeAlso { get; } = ["devicetypes", "devicemap", "power"];
@@ -81,11 +85,13 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
         return args[0].ToLowerInvariant() switch
         {
             "list" => ExecuteList(debugContext),
+            "sets" => ExecuteSets(machine, debugContext),
             "types" => ExecuteTypes(debugContext),
+            "use" => ExecuteUse(debugContext, machine, args),
             "insert" => ExecuteInsert(debugContext, machine, args),
             "remove" => ExecuteRemove(machine, args),
             _ => CommandResult.UsageError(
-                $"Unknown 'slot' subcommand '{args[0]}'. Use list, types, insert, or remove."),
+                $"Unknown 'slot' subcommand '{args[0]}'. Use list, sets, types, use, insert, or remove."),
         };
     }
 
@@ -94,6 +100,15 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
         if (!DiskRuntimeHelpers.TryGetSlotManager(context, out var slotManager, out var error))
         {
             return CommandResult.Error(error!);
+        }
+
+        var runtimeState = context.Machine?.GetComponent<SlotSetRuntimeState>();
+        if (runtimeState is not null)
+        {
+            string activeLabel = runtimeState.IsModified
+                ? "(modified)"
+                : runtimeState.ActiveSetName;
+            context.Output.WriteLine($"Active slot set: {activeLabel}");
         }
 
         context.Output.WriteLine("Slot  Type                  Name                        Notes");
@@ -107,6 +122,32 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
                 ? "internal C3 ROM"
                 : string.Empty;
             context.Output.WriteLine($"{slot,4}  {type,-20}  {name,-26}  {notes}");
+        }
+
+        return CommandResult.Ok();
+    }
+
+    private static CommandResult ExecuteSets(IMachine machine, IDebugContext context)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var runtimeState = machine.GetComponent<SlotSetRuntimeState>();
+        if (runtimeState is null || runtimeState.Sets.Count == 0)
+        {
+            context.Output.WriteLine("No named slot sets are configured for this machine.");
+            return CommandResult.Ok();
+        }
+
+        string activeSet = runtimeState.ActiveSetName;
+        context.Output.WriteLine("Slot sets:");
+        foreach (var set in runtimeState.Sets.Values.OrderBy(static set => set.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            string marker = string.Equals(set.Name, activeSet, StringComparison.OrdinalIgnoreCase)
+                ? runtimeState.IsModified ? " (active, modified)" : " (active)"
+                : string.Empty;
+            string description = string.IsNullOrWhiteSpace(set.Description) ? string.Empty : $" - {set.Description}";
+            context.Output.WriteLine($"  {set.Name}{marker}{description}");
         }
 
         return CommandResult.Ok();
@@ -183,7 +224,80 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error(ex.Message);
         }
 
+        machine.GetComponent<SlotSetRuntimeState>()?.MarkModified();
         return CommandResult.Ok($"Inserted {card.DeviceType} into slot {slot}.");
+    }
+
+    private static CommandResult ExecuteUse(IDebugContext context, IMachine machine, string[] args)
+    {
+        if (args.Length != 2)
+        {
+            return CommandResult.UsageError("Usage: slot use <name>.");
+        }
+
+        if (machine.State != MachineState.Off)
+        {
+            return CommandResult.Error("Slot changes require the machine to be off. Use 'power --off' first.");
+        }
+
+        var runtimeState = machine.GetComponent<SlotSetRuntimeState>();
+        if (runtimeState is null || runtimeState.Sets.Count == 0)
+        {
+            return CommandResult.Error("No named slot sets are configured for this machine.");
+        }
+
+        if (!runtimeState.Sets.TryGetValue(args[1], out var target))
+        {
+            return CommandResult.Error($"Unknown slot set '{args[1]}'.");
+        }
+
+        if (!DiskRuntimeHelpers.TryGetSlotManager(context, out var slotManager, out var error))
+        {
+            return CommandResult.Error(error!);
+        }
+
+        var desiredBySlot = target.Cards.ToDictionary(card => card.Slot);
+        var warnings = new List<string>();
+
+        for (int slot = PeripheralSlots.Minimum; slot <= PeripheralSlots.Maximum; slot++)
+        {
+            desiredBySlot.TryGetValue(slot, out var targetCard);
+            var existing = slotManager!.GetCard(slot);
+            if (!NeedsReplacement(runtimeState, slot, targetCard, existing))
+            {
+                continue;
+            }
+
+            if (existing is not null)
+            {
+                machine.RemoveSlotCard(slot);
+            }
+
+            if (targetCard is null)
+            {
+                continue;
+            }
+
+            var built = TryCreateSlotCard(targetCard);
+            if (built is null)
+            {
+                warnings.Add($"Skipped slot {slot}: unknown slot-card type '{targetCard.Type}'.");
+                continue;
+            }
+
+            machine.InsertSlotCard(slot, built);
+        }
+
+        runtimeState.MarkActiveSet(target.Name);
+
+        foreach (var warning in warnings)
+        {
+            context.Output.WriteLine($"Warning: {warning}");
+        }
+
+        return warnings.Count == 0
+            ? CommandResult.Ok($"Applied slot set '{target.Name}'.")
+            : CommandResult.Ok($"Applied slot set '{target.Name}' with {warnings.Count} warning(s).");
     }
 
     private static CommandResult ExecuteRemove(IMachine machine, string[] args)
@@ -221,7 +335,80 @@ public sealed class SlotCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error($"Slot removal failed: {ex.Message}");
         }
 
+        machine.GetComponent<SlotSetRuntimeState>()?.MarkModified();
         return CommandResult.Ok($"Removed slot card from slot {slot}.");
+    }
+
+    private static bool NeedsReplacement(
+        SlotSetRuntimeState runtimeState,
+        int slot,
+        SlotCardProfile? targetCard,
+        ISlotCard? existingCard)
+    {
+        if (!runtimeState.IsModified &&
+            runtimeState.Sets.TryGetValue(runtimeState.ActiveSetName, out var activeSet))
+        {
+            var activeCard = activeSet.Cards.FirstOrDefault(card => card.Slot == slot);
+            if (CardsEquivalent(activeCard, targetCard))
+            {
+                return false;
+            }
+
+            // The live slots still match the active set, so a preset or config
+            // difference has to replace the installed card. Device type alone
+            // would keep the old instance and ignore the new configuration.
+            return true;
+        }
+
+        if (targetCard is null)
+        {
+            return existingCard is not null;
+        }
+
+        return existingCard is null ||
+            !string.Equals(existingCard.DeviceType, targetCard.Type, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool CardsEquivalent(SlotCardProfile? left, SlotCardProfile? right)
+    {
+        if (left is null || right is null)
+        {
+            return left is null && right is null;
+        }
+
+        if (left.Slot != right.Slot ||
+            !string.Equals(left.Type, right.Type, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(left.Preset, right.Preset, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return JsonEquals(left.Config, right.Config);
+    }
+
+    private static bool JsonEquals(JsonElement? left, JsonElement? right)
+    {
+        if (!left.HasValue || !right.HasValue)
+        {
+            return left.HasValue == right.HasValue;
+        }
+
+        return left.Value.GetRawText() == right.Value.GetRawText();
+    }
+
+    private static ISlotCard? TryCreateSlotCard(SlotCardProfile cardProfile)
+    {
+        DeviceFactoryRegistry.EnsureInitialized();
+        var builder = new MachineBuilder();
+
+        bool created = SlotCardFactory.TryCreate(
+            builder,
+            DeviceFactoryRegistry.SlotCardFactories,
+            cardProfile.Type,
+            cardProfile.Config,
+            out var card);
+
+        return created ? card : null;
     }
 
     private static bool TryParseSlot(string token, out int slot)

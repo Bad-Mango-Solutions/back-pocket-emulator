@@ -116,10 +116,16 @@ public sealed partial class MachineBuilder
             }
         }
 
-        // Configure slot cards (from the devices.slots.cards section)
-        if (profile.Devices?.Slots?.Cards is not null && profile.Devices.Slots.Enabled)
+        // Configure slot cards (from the devices.slots section)
+        if (profile.Devices?.Slots is { Enabled: true } slotProfile)
         {
-            foreach (var cardEntry in profile.Devices.Slots.Cards)
+            var (cards, runtimeState) = ResolveEffectiveSlotCards(slotProfile);
+            if (runtimeState is not null)
+            {
+                AddComponent(runtimeState);
+            }
+
+            foreach (var cardEntry in cards)
             {
                 ConfigureSlotCard(cardEntry, romImages);
             }
@@ -130,6 +136,153 @@ public sealed partial class MachineBuilder
 #endif
 
         return this;
+    }
+
+    private static (IReadOnlyList<SlotCardProfile> Cards, SlotSetRuntimeState? RuntimeState) ResolveEffectiveSlotCards(
+        SlotSystemProfile slots)
+    {
+        ArgumentNullException.ThrowIfNull(slots);
+
+        var baseCards = slots.Cards ?? [];
+        if (slots.Sets is null || slots.Sets.Count == 0)
+        {
+            return (baseCards, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(slots.DefaultSet))
+        {
+            throw new InvalidOperationException(
+                "devices.slots.defaultSet is required when devices.slots.sets is configured.");
+        }
+
+        ValidateUniqueSlotSetNames(slots.Sets);
+        string activeSetName = ResolveSlotSetName(slots.Sets, slots.DefaultSet);
+
+        var resolved = new Dictionary<string, SlotSetRuntimeDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (setName, setProfile) in slots.Sets)
+        {
+            ValidateSlotSet(setName, setProfile);
+            resolved[setName] = BuildResolvedSet(setName, setProfile, baseCards);
+        }
+
+        return (resolved[activeSetName].Cards, new SlotSetRuntimeState(resolved, activeSetName));
+    }
+
+    private static void ValidateUniqueSlotSetNames(IReadOnlyDictionary<string, SlotCardSetProfile> sets)
+    {
+        ArgumentNullException.ThrowIfNull(sets);
+
+        // JSON dictionaries compare keys with ordinal case. Runtime lookup does not,
+        // so two names that differ only by case would collapse into one set.
+        var seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string setName in sets.Keys)
+        {
+            if (!seen.TryAdd(setName, setName))
+            {
+                throw new InvalidOperationException(
+                    "devices.slots.sets names must be unique ignoring case. " +
+                    $"'{seen[setName]}' and '{setName}' differ only by case.");
+            }
+        }
+    }
+
+    private static string ResolveSlotSetName(
+        IReadOnlyDictionary<string, SlotCardSetProfile> sets,
+        string requestedName)
+    {
+        ArgumentNullException.ThrowIfNull(sets);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestedName);
+
+        foreach (string setName in sets.Keys)
+        {
+            if (string.Equals(setName, requestedName, StringComparison.OrdinalIgnoreCase))
+            {
+                return setName;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"devices.slots.defaultSet '{requestedName}' does not match any configured set.");
+    }
+
+    private static void ValidateSlotSet(string setName, SlotCardSetProfile setProfile)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(setName);
+        ArgumentNullException.ThrowIfNull(setProfile);
+
+        var seenSlots = new HashSet<int>();
+        if (setProfile.Cards is null)
+        {
+            return;
+        }
+
+        foreach (var card in setProfile.Cards)
+        {
+            if (card.Slot < PeripheralSlots.Minimum || card.Slot > PeripheralSlots.Maximum)
+            {
+                throw new InvalidOperationException(
+                    $"Invalid slot number {card.Slot} in set '{setName}'. Slot must be between " +
+                    $"{PeripheralSlots.Minimum} and {PeripheralSlots.Maximum}.");
+            }
+
+            if (!seenSlots.Add(card.Slot))
+            {
+                throw new InvalidOperationException(
+                    $"Duplicate slot {card.Slot} in set '{setName}'. Each set may declare a slot at most once.");
+            }
+        }
+    }
+
+    private static SlotSetRuntimeDefinition BuildResolvedSet(
+        string setName,
+        SlotCardSetProfile setProfile,
+        IReadOnlyList<SlotCardProfile> baseCards)
+    {
+        var mergedCards = new Dictionary<int, SlotCardProfile>();
+        foreach (var baseCard in baseCards)
+        {
+            mergedCards[baseCard.Slot] = CloneSlotCard(baseCard);
+        }
+
+        if (setProfile.Cards is not null)
+        {
+            foreach (var card in setProfile.Cards)
+            {
+                if (string.IsNullOrWhiteSpace(card.Type))
+                {
+                    mergedCards.Remove(card.Slot);
+                    continue;
+                }
+
+                mergedCards[card.Slot] = new SlotCardProfile
+                {
+                    Slot = card.Slot,
+                    Type = card.Type,
+                    Preset = card.Preset,
+                    Config = card.Config.HasValue ? card.Config.Value.Clone() : null,
+                };
+            }
+        }
+
+        var cards = mergedCards.Values
+            .OrderBy(static card => card.Slot)
+            .Select(CloneSlotCard)
+            .ToList();
+
+        return new SlotSetRuntimeDefinition(setName, setProfile.Description, cards);
+    }
+
+    private static SlotCardProfile CloneSlotCard(SlotCardProfile card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+
+        return new SlotCardProfile
+        {
+            Slot = card.Slot,
+            Type = card.Type,
+            Preset = card.Preset,
+            Config = card.Config.HasValue ? card.Config.Value.Clone() : null,
+        };
     }
 
     private static Dictionary<string, RomImageInfo> BuildRomImageLookup(
@@ -799,6 +952,11 @@ public sealed partial class MachineBuilder
 
     private void ConfigureSlotCard(SlotCardProfile cardEntry, Dictionary<string, RomImageInfo> romImages)
     {
+        if (string.IsNullOrWhiteSpace(cardEntry.Type))
+        {
+            return;
+        }
+
         // Validate slot number
         if (cardEntry.Slot < 1 || cardEntry.Slot > 7)
         {
@@ -812,6 +970,10 @@ public sealed partial class MachineBuilder
         {
             // No factory registered - silently skip
             // This allows profiles to declare cards that may not be supported by all hosts
+            logger?.Warning(
+                "Skipped slot card type {CardType} in slot {Slot}: no factory is registered.",
+                cardEntry.Type,
+                cardEntry.Slot);
             return;
         }
 

@@ -9,6 +9,7 @@ using System.Text.Json;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Core.Configuration;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Emulation.Cpu;
 
@@ -65,6 +66,36 @@ public partial class DebugCommandsTests
     }
 
     /// <summary>
+    /// Verifies that <c>slot list</c> shows active slot-set status and modified marker.
+    /// </summary>
+    [Test]
+    public void SlotCommand_List_ShowsActiveSetStatus()
+    {
+        var command = new SlotCommand();
+        var machine = new Mock<IMachine>();
+        var slotManager = new Mock<ISlotManager>();
+        var runtimeState = new SlotSetRuntimeState(
+            new Dictionary<string, SlotSetRuntimeDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["game"] = new("game", null, []),
+            },
+            "game");
+        runtimeState.MarkModified();
+        machine.Setup(m => m.GetComponent<ISlotManager>()).Returns(slotManager.Object);
+        machine.Setup(m => m.GetComponent<SlotSetRuntimeState>()).Returns(runtimeState);
+        debugContext.AttachMachine(machine.Object);
+
+        var result = command.Execute(debugContext, ["list"]);
+        var output = outputWriter.ToString();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(output, Does.Contain("Active slot set: (modified)"));
+        });
+    }
+
+    /// <summary>
     /// Verifies that <c>slot types</c> reuses the same slot-card catalog as <see cref="DeviceTypesCommand"/>.
     /// </summary>
     [Test]
@@ -85,6 +116,198 @@ public partial class DebugCommandsTests
             Assert.That(output, Does.Contain(expected[0]));
             Assert.That(output, Does.Contain("pocketwatch"));
             Assert.That(output, Does.Contain("disk-ii-compatible"));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <c>slot sets</c> lists named sets and marks the active one.
+    /// </summary>
+    [Test]
+    public void SlotCommand_Sets_ListsNamedSetsAndActiveSet()
+    {
+        var machine = new Mock<IMachine>();
+        machine.Setup(m => m.GetComponent<SlotSetRuntimeState>()).Returns(
+            new SlotSetRuntimeState(
+                new Dictionary<string, SlotSetRuntimeDefinition>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["game"] = new("game", "Mockingboard setup", []),
+                    ["workstation"] = new("workstation", "Clock setup", []),
+                },
+                "game"));
+        debugContext.AttachMachine(machine.Object);
+
+        var result = new SlotCommand().Execute(debugContext, ["sets"]);
+        var output = outputWriter.ToString();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(output, Does.Contain("Slot sets:"));
+            Assert.That(output, Does.Contain("game (active)"));
+            Assert.That(output, Does.Contain("workstation"));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <c>slot use</c> switches to the target set and preserves unchanged slot instances.
+    /// </summary>
+    [Test]
+    public void SlotCommand_Use_OffStateSwitchesSetsAndKeepsUnchangedCardInstances()
+    {
+        using var baseFactory = RegisterTemporarySlotCardFactory("set-base-card", (_, _) => new TestConfigSlotCard { TypeId = "set-base-card" });
+        using var gameFactory = RegisterTemporarySlotCardFactory("set-game-card", (_, _) => new TestConfigSlotCard { TypeId = "set-game-card" });
+        using var workFactory = RegisterTemporarySlotCardFactory("set-work-card", (_, _) => new TestConfigSlotCard { TypeId = "set-work-card" });
+        var slotManager = new SlotManager(new IOPageDispatcher());
+        var runtimeState = new SlotSetRuntimeState(
+            new Dictionary<string, SlotSetRuntimeDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["game"] = new(
+                    "game",
+                    "game set",
+                    [
+                        new SlotCardProfile { Slot = 4, Type = "set-game-card" },
+                        new SlotCardProfile { Slot = 6, Type = "set-base-card" },
+                    ]),
+                ["workstation"] = new(
+                    "workstation",
+                    "work set",
+                    [
+                        new SlotCardProfile { Slot = 2, Type = "set-work-card" },
+                        new SlotCardProfile { Slot = 6, Type = "set-base-card" },
+                    ]),
+            },
+            "game");
+        IMachine machine = new MachineBuilder()
+            .WithAddressSpace(16)
+            .WithCpuFactory(static ctx => new Cpu65C02(ctx))
+            .AddComponent(slotManager)
+            .AddComponent(runtimeState)
+            .Build();
+        machine.InsertSlotCard(4, new TestConfigSlotCard { TypeId = "set-game-card" });
+        machine.InsertSlotCard(6, new TestConfigSlotCard { TypeId = "set-base-card" });
+        var slot6Before = slotManager.GetCard(6);
+        debugContext.AttachMachine(machine);
+
+        var result = new SlotCommand().Execute(debugContext, ["use", "workstation"]);
+        var slot6After = slotManager.GetCard(6);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(slotManager.GetCard(2)?.DeviceType, Is.EqualTo("set-work-card"));
+            Assert.That(slotManager.GetCard(4), Is.Null);
+            Assert.That(slot6After, Is.SameAs(slot6Before));
+            Assert.That(runtimeState.ActiveSetName, Is.EqualTo("workstation"));
+            Assert.That(runtimeState.IsModified, Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <c>slot use</c> rebuilds a card when the active and target sets share a type
+    /// but differ in config or preset, and keeps the instance when type and config both match.
+    /// </summary>
+    [Test]
+    public void SlotCommand_Use_ConfigOrPresetChange_ReplacesCardAndKeepsUnchangedInstance()
+    {
+        JsonElement sharedConfig = CloneJson("{\"mode\":\"shared\"}");
+        JsonElement gameConfig = CloneJson("{\"mode\":\"game\"}");
+        JsonElement workConfig = CloneJson("{\"mode\":\"work\"}");
+        using var factory = RegisterTemporarySlotCardFactory(
+            "set-config-card",
+            (_, config) => new TestConfigSlotCard
+            {
+                TypeId = "set-config-card",
+                AppliedConfig = config,
+            });
+        var slotManager = new SlotManager(new IOPageDispatcher());
+        var runtimeState = new SlotSetRuntimeState(
+            new Dictionary<string, SlotSetRuntimeDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["game"] = new(
+                    "game",
+                    "game set",
+                    [
+                        new SlotCardProfile { Slot = 4, Type = "set-config-card", Config = gameConfig },
+                        new SlotCardProfile { Slot = 5, Type = "set-config-card", Config = sharedConfig },
+                        new SlotCardProfile { Slot = 6, Type = "set-config-card", Preset = "alpha" },
+                    ]),
+                ["workstation"] = new(
+                    "workstation",
+                    "work set",
+                    [
+                        new SlotCardProfile { Slot = 4, Type = "set-config-card", Config = workConfig },
+                        new SlotCardProfile { Slot = 5, Type = "set-config-card", Config = sharedConfig },
+                        new SlotCardProfile { Slot = 6, Type = "set-config-card", Preset = "beta" },
+                    ]),
+            },
+            "game");
+        IMachine machine = new MachineBuilder()
+            .WithAddressSpace(16)
+            .WithCpuFactory(static ctx => new Cpu65C02(ctx))
+            .AddComponent(slotManager)
+            .AddComponent(runtimeState)
+            .Build();
+        var slot4Before = new TestConfigSlotCard { TypeId = "set-config-card" };
+        var slot5Before = new TestConfigSlotCard { TypeId = "set-config-card" };
+        var slot6Before = new TestConfigSlotCard { TypeId = "set-config-card" };
+        machine.InsertSlotCard(4, slot4Before);
+        machine.InsertSlotCard(5, slot5Before);
+        machine.InsertSlotCard(6, slot6Before);
+        debugContext.AttachMachine(machine);
+        Assume.That(machine.State, Is.EqualTo(MachineState.Off));
+        Assume.That(runtimeState.IsModified, Is.False);
+
+        var result = new SlotCommand().Execute(debugContext, ["use", "workstation"]);
+        var slot4After = slotManager.GetCard(4) as TestConfigSlotCard;
+        var slot5After = slotManager.GetCard(5);
+        var slot6After = slotManager.GetCard(6);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(slot4After, Is.Not.Null);
+            Assert.That(slot4After, Is.Not.SameAs(slot4Before));
+            Assert.That(slot4After!.AppliedConfig?.GetProperty("mode").GetString(), Is.EqualTo("work"));
+            Assert.That(slot5After, Is.SameAs(slot5Before));
+            Assert.That(slot6After, Is.Not.Null);
+            Assert.That(slot6After, Is.Not.SameAs(slot6Before));
+            Assert.That(slot6After!.DeviceType, Is.EqualTo("set-config-card"));
+            Assert.That(runtimeState.ActiveSetName, Is.EqualTo("workstation"));
+            Assert.That(runtimeState.IsModified, Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <c>slot use</c> rejects unknown set names and non-off machine states.
+    /// </summary>
+    [Test]
+    public void SlotCommand_Use_InvalidStateOrUnknownSet_ReturnsError()
+    {
+        var runtimeState = new SlotSetRuntimeState(
+            new Dictionary<string, SlotSetRuntimeDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["game"] = new("game", null, []),
+            },
+            "game");
+        var runningMachine = new Mock<IMachine>();
+        runningMachine.SetupGet(m => m.State).Returns(MachineState.Running);
+        runningMachine.Setup(m => m.GetComponent<SlotSetRuntimeState>()).Returns(runtimeState);
+        debugContext.AttachMachine(runningMachine.Object);
+        var command = new SlotCommand();
+        var runningResult = command.Execute(debugContext, ["use", "game"]);
+
+        var offMachine = new Mock<IMachine>();
+        offMachine.SetupGet(m => m.State).Returns(MachineState.Off);
+        offMachine.Setup(m => m.GetComponent<SlotSetRuntimeState>()).Returns(runtimeState);
+        debugContext.AttachMachine(offMachine.Object);
+        var unknownResult = command.Execute(debugContext, ["use", "missing"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(runningResult.Success, Is.False);
+            Assert.That(runningResult.Message, Is.EqualTo("Slot changes require the machine to be off. Use 'power --off' first."));
+            Assert.That(unknownResult.Success, Is.False);
+            Assert.That(unknownResult.Message, Is.EqualTo("Unknown slot set 'missing'."));
         });
     }
 
@@ -229,6 +452,12 @@ public partial class DebugCommandsTests
         }
     }
 
+    private static JsonElement CloneJson(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
     private static IDisposable RegisterTemporarySlotCardFactory(
         string typeId,
         Func<MachineBuilder, JsonElement?, ISlotCard> factory)
@@ -262,6 +491,10 @@ public partial class DebugCommandsTests
 
     private sealed class TestConfigSlotCard : ISlotCard
     {
+        public string TypeId { get; init; } = "test-config-slot-card";
+
+        public JsonElement? AppliedConfig { get; init; }
+
         public int SlotNumber { get; set; }
 
         public SlotIOHandlers? IOHandlers => null;
@@ -272,7 +505,7 @@ public partial class DebugCommandsTests
 
         public string Name => "Test Config Slot Card";
 
-        public string DeviceType => "test-config-slot-card";
+        public string DeviceType => TypeId;
 
         public PeripheralKind Kind => PeripheralKind.SlotCard;
 

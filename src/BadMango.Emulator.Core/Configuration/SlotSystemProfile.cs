@@ -75,4 +75,26 @@ public sealed class SlotSystemProfile
     /// </remarks>
     [JsonPropertyName("cards")]
     public List<SlotCardProfile>? Cards { get; set; }
+
+    /// <summary>
+    /// Gets or sets the default named slot set to apply at machine build time.
+    /// </summary>
+    /// <remarks>
+    /// When <see cref="Sets"/> is configured, this value must name one of those sets.
+    /// The name is matched ignoring case, and the active set keeps the casing stored
+    /// in <see cref="Sets"/>. Set names that differ only by case are rejected.
+    /// </remarks>
+    [JsonPropertyName("defaultSet")]
+    public string? DefaultSet { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional named slot sets that can be selected at runtime.
+    /// </summary>
+    /// <remarks>
+    /// Each set overlays <see cref="Cards"/>: set cards can add, replace, or remove
+    /// slots from the base list by setting a card entry's <c>type</c> to
+    /// <see langword="null"/>.
+    /// </remarks>
+    [JsonPropertyName("sets")]
+    public Dictionary<string, SlotCardSetProfile>? Sets { get; set; }
 }
