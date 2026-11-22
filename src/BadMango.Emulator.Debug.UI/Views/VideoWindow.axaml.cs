@@ -63,6 +63,8 @@ public partial class VideoWindow : Window
     private readonly PixelBuffer pixelBuffer;
     private readonly DispatcherTimer fpsTimer;
     private readonly Stopwatch fpsStopwatch;
+    private readonly HashSet<KeyboardKey> heldHostKeys = [];
+    private readonly HashSet<KeyboardKey> heldLegacyKeys = [];
 
     // Snapshot of display memory ($0400-$5FFF, main and aux) captured at VBlank start.
     // Rendering reads only from this snapshot, so the image never depends on the
@@ -74,6 +76,7 @@ public partial class VideoWindow : Window
     private IVideoDevice? videoDevice;
     private ICharacterDevice? characterDevice;
     private IExtended80ColumnDevice? extended80ColumnDevice;
+    private IKeyboardInput? keyboardInput;
     private EmulatorKeyboardDevice? keyboardDevice;
     private IMemoryBus? memoryBus;
     private ReadOnlyMemory<byte> mainRam;
@@ -99,6 +102,7 @@ public partial class VideoWindow : Window
     private bool leftAltPressed;
     private bool rightAltPressed;
     private bool capsLockActive;
+    private bool capsLockPressed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VideoWindow"/> class.
@@ -135,6 +139,10 @@ public partial class VideoWindow : Window
         // Subscribe to window events
         Opened += OnWindowOpened;
         Closed += OnWindowClosed;
+        Activated += OnWindowActivated;
+        Deactivated += OnWindowDeactivated;
+        GotFocus += OnWindowGotFocus;
+        LostFocus += OnWindowLostFocus;
     }
 
     /// <summary>
@@ -227,6 +235,7 @@ public partial class VideoWindow : Window
         this.machine = machine;
         this.memoryBus = machine.Bus;
         this.videoDevice = machine.GetComponent<IVideoDevice>();
+        this.keyboardInput = machine.GetComponent<IKeyboardInput>();
         this.keyboardDevice = machine.GetComponent<EmulatorKeyboardDevice>();
         this.extended80ColumnDevice = machine.GetComponent<IExtended80ColumnDevice>();
 
@@ -302,7 +311,10 @@ public partial class VideoWindow : Window
         videoDevice = null;
         characterDevice = null;
         extended80ColumnDevice = null;
+        keyboardInput = null;
         keyboardDevice = null;
+        heldHostKeys.Clear();
+        heldLegacyKeys.Clear();
         mainRam = ReadOnlyMemory<byte>.Empty;
         characterRom = Memory<byte>.Empty;
         snapshotValid = false;
@@ -360,68 +372,125 @@ public partial class VideoWindow : Window
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-
-        if (keyboardDevice is null)
-        {
-            return;
-        }
-
-        // Track Left/Right Alt separately for Open/Closed Apple
-        if (e.Key == Key.LeftAlt)
-        {
-            leftAltPressed = true;
-        }
-        else if (e.Key == Key.RightAlt)
-        {
-            rightAltPressed = true;
-        }
-        else if (e.Key == Key.CapsLock)
-        {
-            // Toggle Caps Lock state
-            capsLockActive = !capsLockActive;
-        }
-
-        // Handle modifier keys
-        UpdateModifiers(e);
-
-        // Map the Avalonia key to the shared KeyboardKey model, then let the machine's keyboard translate it.
-        byte? keyCode = TranslateKey(e.Key, e.KeyModifiers, capsLockActive);
-        if (keyCode.HasValue)
-        {
-            keyboardDevice.KeyDown(keyCode.Value);
-            e.Handled = true;
-        }
+        HandleHostKeyDown(e.Key, e.KeyModifiers, out bool handled);
+        e.Handled = handled;
     }
 
     /// <inheritdoc/>
     protected override void OnKeyUp(KeyEventArgs e)
     {
         base.OnKeyUp(e);
+        HandleHostKeyUp(e.Key, e.KeyModifiers, out bool handled);
+        e.Handled = handled;
+    }
 
-        if (keyboardDevice is null)
+    private void HandleHostKeyDown(Key key, KeyModifiers modifiers, out bool handled)
+    {
+        handled = false;
+
+        if (keyboardInput is null && keyboardDevice is null)
         {
+            logger.Debug("Dropped key-down {Key}: no keyboard device attached.", key);
             return;
         }
 
-        // Track Left/Right Alt separately for Open/Closed Apple
-        if (e.Key == Key.LeftAlt)
+        UpdateTrackedModifierState(key, modifiers, isKeyDown: true);
+
+        KeyboardKey keyboardKey = MapToKeyboardKey(key);
+        if (keyboardKey == KeyboardKey.None)
         {
-            leftAltPressed = false;
-        }
-        else if (e.Key == Key.RightAlt)
-        {
-            rightAltPressed = false;
+            logger.Debug("Dropped key-down {Key}: no keyboard mapping.", key);
+            return;
         }
 
-        // Update modifiers
-        UpdateModifiers(e);
+        KeyboardModifiers keyboardModifiers = BuildKeyboardModifiers(modifiers);
+        keyboardDevice?.SetModifiers(keyboardModifiers);
 
-        // Release key
-        keyboardDevice.KeyUp();
-        e.Handled = true;
+        if (keyboardInput is not null)
+        {
+            keyboardInput.KeyDown(keyboardKey, keyboardModifiers);
+            heldHostKeys.Add(keyboardKey);
+        }
+        else if (TranslateKey(key, modifiers, capsLockActive) is byte keyCode)
+        {
+            keyboardDevice?.KeyDown(keyCode);
+            heldLegacyKeys.Add(keyboardKey);
+        }
+
+        handled = true;
     }
 
-    private static bool IsCriticalException(Exception ex)
+    private void HandleHostKeyUp(Key key, KeyModifiers modifiers, out bool handled)
+    {
+        handled = false;
+
+        if (keyboardInput is null && keyboardDevice is null)
+        {
+            logger.Debug("Dropped key-up {Key}: no keyboard device attached.", key);
+            return;
+        }
+
+        UpdateTrackedModifierState(key, modifiers, isKeyDown: false);
+
+        KeyboardKey keyboardKey = MapToKeyboardKey(key);
+        if (keyboardKey == KeyboardKey.None)
+        {
+            logger.Debug("Dropped key-up {Key}: no keyboard mapping.", key);
+            return;
+        }
+
+        KeyboardModifiers keyboardModifiers = BuildKeyboardModifiers(modifiers);
+        keyboardDevice?.SetModifiers(keyboardModifiers);
+
+        if (keyboardInput is not null)
+        {
+            keyboardInput.KeyUp(keyboardKey, keyboardModifiers);
+            heldHostKeys.Remove(keyboardKey);
+        }
+        else
+        {
+            keyboardDevice?.KeyUp();
+            heldLegacyKeys.Remove(keyboardKey);
+        }
+
+        handled = true;
+    }
+
+    private void RefreshHostModifierState(KeyModifiers hostModifiers)
+    {
+        leftAltPressed = false;
+        rightAltPressed = false;
+        capsLockPressed = false;
+        capsLockActive = false;
+        UpdateTrackedModifierState(null, hostModifiers, isKeyDown: false);
+        keyboardDevice?.SetModifiers(BuildKeyboardModifiers(hostModifiers));
+    }
+
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        logger.Debug("Video window activated.");
+        RefreshHostModifierState(KeyModifiers.None);
+    }
+
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        logger.Debug("Video window deactivated.");
+        ClearLiveKeyboardState();
+    }
+
+    private void OnWindowGotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        logger.Debug("Video window got keyboard focus.");
+        RefreshHostModifierState(e.KeyModifiers);
+    }
+
+    private void OnWindowLostFocus(object? sender, object e)
+    {
+        logger.Debug("Video window lost keyboard focus.");
+        ClearLiveKeyboardState();
+    }
+
+    private bool IsCriticalException(Exception ex)
     {
         return ex is OutOfMemoryException
             or AccessViolationException
@@ -434,7 +503,7 @@ public partial class VideoWindow : Window
     /// </summary>
     /// <param name="key">The Avalonia key code.</param>
     /// <returns>The shared <see cref="KeyboardKey"/> value, or <see cref="KeyboardKey.None"/> if the key has no equivalent.</returns>
-    private static KeyboardKey MapToKeyboardKey(Key key)
+    private KeyboardKey MapToKeyboardKey(Key key)
     {
         if (key is >= Key.A and <= Key.Z)
         {
@@ -912,23 +981,56 @@ public partial class VideoWindow : Window
         VideoImage.Height = height;
     }
 
-    private void UpdateModifiers(KeyEventArgs e)
+    private void UpdateTrackedModifierState(Key? key, KeyModifiers modifiers, bool isKeyDown)
     {
-        if (keyboardDevice is null)
+        if (key == Key.LeftAlt)
         {
+            leftAltPressed = isKeyDown;
+            return;
+        }
+        else if (key == Key.RightAlt)
+        {
+            rightAltPressed = isKeyDown;
+            return;
+        }
+        else if (key == Key.CapsLock)
+        {
+            if (isKeyDown)
+            {
+                if (!capsLockPressed)
+                {
+                    capsLockActive = !capsLockActive;
+                }
+
+                capsLockPressed = true;
+            }
+            else
+            {
+                capsLockPressed = false;
+            }
+
             return;
         }
 
-        var modifiers = KeyboardModifiers.None;
-
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        if (!modifiers.HasFlag(KeyModifiers.Alt))
         {
-            modifiers |= KeyboardModifiers.Shift;
+            leftAltPressed = false;
+            rightAltPressed = false;
+        }
+    }
+
+    private KeyboardModifiers BuildKeyboardModifiers(KeyModifiers modifiers)
+    {
+        var keyboardModifiers = KeyboardModifiers.None;
+
+        if (modifiers.HasFlag(KeyModifiers.Shift))
+        {
+            keyboardModifiers |= KeyboardModifiers.Shift;
         }
 
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        if (modifiers.HasFlag(KeyModifiers.Control))
         {
-            modifiers |= KeyboardModifiers.Control;
+            keyboardModifiers |= KeyboardModifiers.Control;
         }
 
         // Left Alt → Open Apple (PB0)
@@ -936,21 +1038,47 @@ public partial class VideoWindow : Window
         // Use our tracked state since Avalonia's KeyModifiers.Alt doesn't distinguish left/right
         if (leftAltPressed)
         {
-            modifiers |= KeyboardModifiers.OpenApple;
+            keyboardModifiers |= KeyboardModifiers.OpenApple;
         }
 
         if (rightAltPressed)
         {
-            modifiers |= KeyboardModifiers.ClosedApple;
+            keyboardModifiers |= KeyboardModifiers.ClosedApple;
         }
 
         // Track Caps Lock state
         if (capsLockActive)
         {
-            modifiers |= KeyboardModifiers.CapsLock;
+            keyboardModifiers |= KeyboardModifiers.CapsLock;
         }
 
-        keyboardDevice.SetModifiers(modifiers);
+        return keyboardModifiers;
+    }
+
+    private void ClearLiveKeyboardState()
+    {
+        capsLockActive = false;
+        capsLockPressed = false;
+        leftAltPressed = false;
+        rightAltPressed = false;
+        keyboardDevice?.SetModifiers(KeyboardModifiers.None);
+
+        if (keyboardInput is not null)
+        {
+            foreach (KeyboardKey key in heldHostKeys)
+            {
+                keyboardInput.KeyUp(key, KeyboardModifiers.None);
+            }
+        }
+
+        heldHostKeys.Clear();
+
+        // KeyDown(ascii) is tracked here because that path does not fill heldHostKeys.
+        if (heldLegacyKeys.Count > 0)
+        {
+            keyboardDevice?.KeyUp();
+            heldLegacyKeys.Clear();
+        }
     }
 
     private string CreateAttachmentDiagnostic(IVideoDevice? previousDevice, IVideoDevice? currentDevice)
