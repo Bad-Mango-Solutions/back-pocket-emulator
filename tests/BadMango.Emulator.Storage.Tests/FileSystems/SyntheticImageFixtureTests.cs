@@ -98,7 +98,7 @@ public class SyntheticImageFixtureTests
         var gone = Entry(fixture, "GONE");
         Assert.That(image[CatalogOffset(gone)], Is.EqualTo(0xFF));
         Assert.That(image[CatalogOffset(gone) + 2], Is.EqualTo(Dos33Layout.FileTypeText));
-        Assert.That(image[CatalogOffset(gone) + Dos33Layout.EntryOriginalTrackOffset], Is.EqualTo((byte)(gone.TsTrack | 0x80)));
+        Assert.That(image[CatalogOffset(gone) + Dos33Layout.EntryOriginalTrackOffset], Is.EqualTo((byte)gone.TsTrack));
     }
 
     /// <summary>
@@ -347,17 +347,15 @@ public class SyntheticImageFixtureTests
     public void ProdosEof_MayExtendPastTheLastAllocatedBlock()
     {
         var builder = new ProdosImageBuilder(32, "EOF");
-        builder.AddSeedling("SEED", ProdosLayout.FileTypeText, 0, new byte[] { 1, 2 }, false, eof: 600);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            builder.AddSeedling("SEED", ProdosLayout.FileTypeText, 0, new byte[] { 1, 2 }, false, eof: 600));
         builder.AddSapling("SAP", ProdosLayout.FileTypeBinary, 0, new byte[]?[] { new byte[ProdosLayout.BlockSize] }, false, eof: ProdosLayout.BlockSize + 100);
         var fixture = builder.Build();
 
-        Assert.That(fixture.Entries[0].EofBytes, Is.EqualTo(600));
-        Assert.That(fixture.Entries[0].AllocatedUnits, Is.EqualTo(1));
-        Assert.That(fixture.Entries[0].RawBytes.Span[0], Is.EqualTo(1));
-        Assert.That(fixture.Entries[0].RawBytes.Span[599], Is.EqualTo(0));
-        Assert.That(fixture.Entries[1].EofBytes, Is.EqualTo(ProdosLayout.BlockSize + 100));
-        Assert.That(fixture.Entries[1].IndexPointers, Has.Count.EqualTo(1));
-        Assert.That(fixture.Entries[1].RawBytes.Span[ProdosLayout.BlockSize + 99], Is.EqualTo(0));
+        Assert.That(fixture.Entries, Has.Count.EqualTo(1));
+        Assert.That(fixture.Entries[0].EofBytes, Is.EqualTo(ProdosLayout.BlockSize + 100));
+        Assert.That(fixture.Entries[0].IndexPointers, Has.Count.EqualTo(1));
+        Assert.That(fixture.Entries[0].RawBytes.Span[ProdosLayout.BlockSize + 99], Is.EqualTo(0));
     }
 
     private static Dos33Fixture.Entry Entry(Dos33Fixture fixture, string name) =>

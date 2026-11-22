@@ -16,9 +16,11 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// Up to <see cref="MaxFiles"/> file entries follow. Words are little-endian.
 /// </para>
 /// <para>
-/// A Pascal reader constructor throws <see cref="ArgumentException"/> when
-/// <see cref="IsVolumeHeader"/> is false. The probe catches that exception and returns
-/// <see cref="FileSystemProbeAttempt.Reject"/>. The recorded block count must equal the
+/// The Pascal probe calls <see cref="IsVolumeHeader"/> and returns
+/// <see cref="FileSystemProbeAttempt.Reject"/> when it is false. The probe does not catch.
+/// The constructor throws <see cref="ArgumentException"/> only as a guard for a caller that
+/// skips the check. A block-read <see cref="ArgumentOutOfRangeException"/> is not a rejection.
+/// The recorded block count must equal the
 /// image size. A larger container is not a Pascal volume, unlike a ProDOS image whose
 /// <c>total_blocks</c> may be smaller than the file. The file kind is
 /// <see cref="KindMask"/> of the kind word. Bit 15 (<see cref="FilerWildcardBit"/>) is

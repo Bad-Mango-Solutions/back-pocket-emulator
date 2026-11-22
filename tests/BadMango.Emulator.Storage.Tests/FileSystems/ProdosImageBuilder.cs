@@ -51,10 +51,16 @@ public sealed class ProdosImageBuilder
     /// <param name="auxType">Auxiliary type.</param>
     /// <param name="data">EOF bytes.</param>
     /// <param name="locked">Whether the write bit is clear.</param>
-    /// <param name="eof">When set, the EOF field. It may extend past the one allocated block as trailing holes.</param>
+    /// <param name="eof">When set, the EOF field. At most 512. A larger file is a sapling.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">If <paramref name="eof"/> is greater than 512.</exception>
     public ProdosImageBuilder AddSeedling(string name, byte fileType, ushort auxType, ReadOnlyMemory<byte> data, bool locked, int? eof = null)
     {
+        if (eof is > ProdosLayout.BlockSize)
+        {
+            throw new ArgumentOutOfRangeException(nameof(eof), "A seedling EOF is at most 512 bytes. A larger file is a sapling.");
+        }
+
         var pending = this.CreateSeedling(name, fileType, auxType, data, locked, headerBlock: ProdosLayout.VolumeKeyBlock, directoryPath: string.Empty);
         pending.ExplicitEof = eof;
         return this.AddRoot(pending);
@@ -213,7 +219,7 @@ public sealed class ProdosImageBuilder
     {
         var dataBlock = Allocate(used, 0);
         pending.Seedling.CopyTo(image.AsSpan(dataBlock * ProdosLayout.BlockSize, pending.Seedling.Length));
-        var raw = PadToEof(pending.Seedling, ResolveEof(pending.Seedling.Length, pending.ExplicitEof));
+        var raw = PadToEof(pending.Seedling, ResolveEof(pending.Seedling.Length, pending.ExplicitEof, ProdosLayout.BlockSize));
         return ToEntry(pending, name, dataBlock, raw);
     }
 
@@ -483,16 +489,16 @@ public sealed class ProdosImageBuilder
         WriteU24(span[ProdosLayout.ExtendedMiniEofOffset..], eof);
     }
 
-    private int ResolveEof(int naturalLength, int? requested)
+    private int ResolveEof(int naturalLength, int? requested, int maximum = 0xFFFFFF)
     {
         if (requested is null)
         {
             return naturalLength;
         }
 
-        if (requested.Value < naturalLength || requested.Value > 0xFFFFFF)
+        if (requested.Value < naturalLength || requested.Value > maximum)
         {
-            throw new ArgumentOutOfRangeException(nameof(requested), "EOF must cover the allocated bytes and fit in 24 bits.");
+            throw new ArgumentOutOfRangeException(nameof(requested), "EOF must cover the allocated bytes and stay within the storage kind.");
         }
 
         return requested.Value;

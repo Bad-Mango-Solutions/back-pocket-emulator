@@ -45,10 +45,11 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <see cref="FileAccessStatus.UnsupportedStorage"/> and no bytes.
 /// </para>
 /// <para>
-/// A Pascal reader's constructor throws <see cref="ArgumentException"/> when
-/// <see cref="PascalLayout.IsVolumeHeader"/> is false. The Pascal probe catches that
-/// <see cref="ArgumentException"/> and returns <see cref="FileSystemProbeAttempt.Reject"/>.
-/// The mismatch does not propagate out of the probe. Directory records are
+/// The Pascal probe calls <see cref="PascalLayout.IsVolumeHeader"/> first and returns
+/// <see cref="FileSystemProbeAttempt.Reject"/> with no catch. The constructor throws
+/// <see cref="ArgumentException"/> only as a guard when that check was skipped.
+/// <see cref="ArgumentOutOfRangeException"/> from a block read propagates.
+/// Directory records are
 /// <see cref="PascalLayout.EntryLength"/> bytes packed across blocks 2–5.
 /// File length is <see cref="PascalLayout.FileLength"/>. The kind is
 /// <see cref="PascalLayout.KindMask"/> of the kind word.

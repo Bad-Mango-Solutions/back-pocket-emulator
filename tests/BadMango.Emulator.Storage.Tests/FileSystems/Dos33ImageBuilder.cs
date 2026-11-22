@@ -153,7 +153,7 @@ public sealed class Dos33ImageBuilder
                 WriteName(entry.Slice(Dos33Layout.EntryNameOffset, Dos33Layout.EntryNameLength), file.Spec.Name);
                 if (file.Spec.Deleted)
                 {
-                    entry[Dos33Layout.EntryOriginalTrackOffset] = (byte)(file.Ts.Track | 0x80);
+                    entry[Dos33Layout.EntryOriginalTrackOffset] = (byte)file.Ts.Track;
                 }
 
                 var allocated = 1 + file.Data.Count(item => item.Allocated);

@@ -25,8 +25,8 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// Those four bytes are one big-endian value, and a set bit means free. The highest
 /// sector is the high bit: sector 15 is byte 0 bit 7, sector 8 is byte 0 bit 0, sector 7
 /// is byte 1 bit 7, and sector 0 is byte 1 bit 0. <see cref="IsSectorFree"/> is that mapping.
-/// A deleted catalog entry keeps its track/sector-list track in the last name byte
-/// (<see cref="EntryOriginalTrackOffset"/>), with the high bit set.
+/// A deleted catalog entry stores its original track/sector-list track byte, unchanged,
+/// in the last name byte (<see cref="EntryOriginalTrackOffset"/>).
 /// </para>
 /// </remarks>
 public static class Dos33Layout
@@ -68,8 +68,8 @@ public static class Dos33Layout
     public const int EntryNameOffset = 3;
 
     /// <summary>
-    /// Entry offset of the last name byte. A deleted file stores its original track here,
-    /// with the high bit set.
+    /// Entry offset of the last name byte. A deleted file stores its original track byte
+    /// here, unchanged.
     /// </summary>
     public const int EntryOriginalTrackOffset = 0x20;
 
