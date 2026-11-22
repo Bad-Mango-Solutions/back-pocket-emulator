@@ -321,6 +321,17 @@ public static class ProdosLayout
     /// <summary>Entry-relative fields of a volume directory header.</summary>
     public static class VolumeHeader
     {
+        /// <summary>
+        /// Offset of the ProDOS 8 Tech Note #8 case-bit word.
+        /// </summary>
+        /// <remarks>
+        /// Tech Note #8 numbers this word <c>+$1A</c>/<c>+$1B</c> from the start of the key block.
+        /// The header entry begins after the 4-byte previous and next pointers, so the
+        /// entry-relative offset is <c>$16</c>. It sits in the reserved bytes <c>$10</c>–<c>$17</c>.
+        /// Entry <c>$1A</c> is the creation time. The high byte of that word is the hour, so bit 15 is clear.
+        /// </remarks>
+        public const int CaseBitsOffset = 0x16;
+
         /// <summary>Offset of the standard entry length.</summary>
         public const int EntryLengthOffset = 0x1F;
 

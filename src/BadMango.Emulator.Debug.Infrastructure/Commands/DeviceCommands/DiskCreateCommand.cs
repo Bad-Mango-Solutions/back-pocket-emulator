@@ -8,6 +8,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 
 using BadMango.Emulator.Devices;
+using BadMango.Emulator.Storage.FileSystems;
 using BadMango.Emulator.Storage.Formats;
 using BadMango.Emulator.Storage.Gcr;
 using BadMango.Emulator.Storage.Media;
@@ -34,9 +35,11 @@ using BadMango.Emulator.Storage.Media;
 /// </para>
 /// <para>
 /// ProDOS volume names are case-insensitive on disk; lowercase characters supplied
-/// via <c>--volume-name</c> are stored as uppercase plus a Tech Note 25 case-bit map
-/// at offset 0x1A of the volume directory header. Pass <c>--only-uppercase</c> to
-/// reject lowercase input and emit a zero (legacy) case-bit field.
+/// via <c>--volume-name</c> are stored as uppercase plus a ProDOS 8 Tech Note #8
+/// case-bit map at <see cref="ProdosLayout.VolumeHeader.CaseBitsOffset"/> of the volume
+/// directory header. That word is inside the reserved bytes. The creation date and time
+/// stay zero. Pass <c>--only-uppercase</c> to reject lowercase input and emit a zero
+/// (legacy) case-bit field.
 /// </para>
 /// </remarks>
 [DeviceDebugCommand]
@@ -94,7 +97,7 @@ public sealed class DiskCreateCommand : CommandHandlerBase, ICommandHelp
         "When '--bootable' is supplied, the boot blocks of the supplied source image are " +
         "copied into the new image; until a Disk II controller is implemented, --bootable " +
         "is the only way to produce a bootable output. ProDOS volume names accept lowercase " +
-        "input and are stored uppercase with a ProDOS Tech Note 25 case-bit map; pass " +
+        "input and are stored uppercase with a ProDOS 8 Tech Note #8 case-bit map; pass " +
         "--only-uppercase to reject lowercase characters and emit no case-bit map.";
 
     /// <inheritdoc/>
@@ -122,7 +125,7 @@ public sealed class DiskCreateCommand : CommandHandlerBase, ICommandHelp
             "--volume-name",
             null,
             "string",
-            "ProDOS volume name (1..15 chars, A-Z / a-z / 0-9 / '.'). Lowercase letters are preserved via the volume header case-bit map (ProDOS Tech Note 25). Ignored for 'raw' and 'dos33'.",
+            "ProDOS volume name (1..15 chars, A-Z / a-z / 0-9 / '.'). Lowercase letters are preserved via the volume header case-bit map (ProDOS 8 Tech Note #8). Ignored for 'raw' and 'dos33'.",
             "BLANK"),
         new CommandOption(
             "--volume-number",
@@ -134,7 +137,7 @@ public sealed class DiskCreateCommand : CommandHandlerBase, ICommandHelp
             "--only-uppercase",
             null,
             "flag",
-            "Reject lowercase letters in --volume-name and write no Tech Note 25 case-bit map. Use for compatibility with very old ProDOS tooling.",
+            "Reject lowercase letters in --volume-name and write no ProDOS 8 Tech Note #8 case-bit map. Use for compatibility with very old ProDOS tooling.",
             null),
     ];
 
@@ -682,11 +685,11 @@ public sealed class DiskCreateCommand : CommandHandlerBase, ICommandHelp
             }
         }
 
-        // Compute the Tech Note 25 case-bit field, then upper-case the on-disk bytes.
+        // Compute the ProDOS 8 Tech Note #8 case-bit field, then upper-case the on-disk bytes.
         // Bit 15 is the "case bits valid" flag; bits 14..0 select case for characters
         // 0..14 of the name, with a set bit meaning "display this character lowercase".
         // When --only-uppercase is set we leave the field as zero so that older ProDOS
-        // tooling that pre-dates Tech Note 25 sees a plain uppercase name.
+        // tooling that pre-dates Tech Note #8 sees a plain uppercase name.
         ushort caseBits = 0;
         if (!onlyUppercase)
         {
@@ -730,13 +733,13 @@ public sealed class DiskCreateCommand : CommandHandlerBase, ICommandHelp
             keyBlock[5 + i] = (byte)c;
         }
 
-        // 0x14..0x1B reserved (zeros)
-        // 0x1C..0x1F creation date+time (zeros). The 16-bit Tech Note 25 case-bit field
-        // overlays the time word at block-relative offset 0x1E..0x1F (entry-relative
-        // offset 0x1A..0x1B). It is left zero for purely uppercase names so the "no
-        // case data" sentinel from Tech Note 25 (high bit clear) is honoured.
-        keyBlock[0x1E] = (byte)(caseBits & 0xFF);
-        keyBlock[0x1F] = (byte)((caseBits >> 8) & 0xFF);
+        // ProDOS 8 Tech Note #8 counts the case-bit word from the start of the key block
+        // (+$1A/+$1B). The header entry starts at offset 4, so that is entry offset $16,
+        // inside the reserved bytes. Creation date and time stay at entry $18-$1B
+        // (key-block $1C-$1F) and remain zero; $1A of the entry is the time word.
+        var caseOffset = ProdosLayout.Directory.FirstEntryOffset + ProdosLayout.VolumeHeader.CaseBitsOffset;
+        keyBlock[caseOffset] = (byte)(caseBits & 0xFF);
+        keyBlock[caseOffset + 1] = (byte)((caseBits >> 8) & 0xFF);
         keyBlock[0x20] = 0; // ProDOS version
         keyBlock[0x21] = 0; // min ProDOS version
         keyBlock[0x22] = 0xC3; // access (read/write/destroy/rename)

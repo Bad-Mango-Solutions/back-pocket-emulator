@@ -407,17 +407,18 @@ public class ProdosFileSystemTests
     }
 
     /// <summary>
-    /// GS/OS Technical Note #8 case bits. The volume word is at entry $1A and a file word is at entry $1C.
-    /// Bit 15 set means bits 14..0 lowercase those characters. The published word $B9C0 is Desk.Accs.
+    /// ProDOS 8 Tech Note #8 case bits. The volume word is entry <c>$16</c> (key-block <c>+$1A</c>).
+    /// A decoy word with bit 15 set at entry <c>$1A</c> is the creation time and is ignored.
+    /// A file word is at entry <c>$1C</c>. The published word <c>$B9C0</c> is Desk.Accs.
     /// </summary>
     [Test]
-    public void Names_ApplyGsOsCaseBitsWhenTheFlagIsSet()
+    public void Names_ApplyProdos8CaseBitsWhenTheFlagIsSet()
     {
         var volume = ProdosFixture.CreateBlank(ProdosLayout.StandardFloppyBlocks, "SAMPLE");
         var volumeImage = volume.Image.ToArray();
         var header = (ProdosLayout.VolumeKeyBlock * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset;
-        WriteU16(volumeImage.AsSpan(header + 0x1A), 0xBE00);
-        WriteU16(volumeImage.AsSpan(header + 0x1C), 0xFE00);
+        WriteU16(volumeImage.AsSpan(header + ProdosLayout.VolumeHeader.CaseBitsOffset), 0xBE00);
+        WriteU16(volumeImage.AsSpan(header + 0x1A), 0xFE00);
         var volumeFs = Open(volumeImage, volume.BlockCount);
 
         var builder = new ProdosImageBuilder(ProdosLayout.StandardFloppyBlocks, "CASE");
@@ -438,6 +439,135 @@ public class ProdosFileSystemTests
         Assert.That(info.Path, Is.EqualTo("Desk.Accs"));
         Assert.That(fs.TryReadFile("DESK.ACCS", FileReadView.Raw).Data.ToArray(), Is.EqualTo(new byte[] { 1 }));
         Assert.That(fs.ListDirectory(null).Entries[0].Name, Is.EqualTo("Desk.Accs"));
+    }
+
+    /// <summary>
+    /// A subdirectory entry whose key block is file data is corrupt.
+    /// </summary>
+    [Test]
+    public void SubdirectoryKey_ThatIsNotAHeader_IsCorruptStructure()
+    {
+        var fixture = ProdosFixture.CreateCatalogSample();
+        var image = fixture.Image.ToArray();
+        var hello = fixture.Entries.Single(entry => entry.Name == "HELLO");
+        var sub = fixture.Entries.Single(entry => entry.Name == "SUB");
+        var entry = EntryOffset(image, "SUB");
+        var key = image[entry + ProdosLayout.Entry.KeyPointerOffset] | (image[entry + ProdosLayout.Entry.KeyPointerOffset + 1] << 8);
+        Assume.That(key, Is.EqualTo(sub.KeyBlock));
+        Assume.That(image[(hello.KeyBlock * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset] >> 4, Is.Not.EqualTo((byte)ProdosStorageType.SubdirectoryHeader));
+        WriteU16(image.AsSpan(entry + ProdosLayout.Entry.KeyPointerOffset), hello.KeyBlock);
+        var fs = Open(image, fixture.BlockCount);
+
+        var listing = fs.ListDirectory("SUB");
+        var read = fs.TryReadFile("SUB/NOTE", FileReadView.Raw);
+
+        Assert.That(listing.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(listing.Entries, Is.Empty);
+        Assert.That(read.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(read.Data.Length, Is.EqualTo(0));
+        Assert.That(fs.GetFileInfo("SUB")!.IsDirectory, Is.True);
+    }
+
+    /// <summary>
+    /// A seedling EOF past 512 bytes is corrupt.
+    /// </summary>
+    [Test]
+    public void SeedlingEof_PastOneBlock_IsCorruptStructure()
+    {
+        var fixture = ProdosFixture.CreateCatalogSample();
+        var image = fixture.Image.ToArray();
+        var entry = EntryOffset(image, "HELLO");
+        Assume.That(image[entry] >> 4, Is.EqualTo((byte)ProdosStorageType.Seedling));
+        var eof = image[entry + ProdosLayout.Entry.EofOffset]
+            | (image[entry + ProdosLayout.Entry.EofOffset + 1] << 8)
+            | (image[entry + ProdosLayout.Entry.EofOffset + 2] << 16);
+        Assume.That(eof, Is.LessThanOrEqualTo(ProdosLayout.BlockSize));
+        WriteU24(image.AsSpan(entry + ProdosLayout.Entry.EofOffset), ProdosLayout.BlockSize + 1);
+        var fs = Open(image, fixture.BlockCount);
+
+        var result = fs.TryReadFile("HELLO", FileReadView.Raw);
+
+        Assert.That(result.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(result.Data.Length, Is.EqualTo(0));
+        Assert.That(result.Reason, Does.Contain("512"));
+    }
+
+    /// <summary>
+    /// A sapling EOF past 131072 bytes is corrupt.
+    /// </summary>
+    [Test]
+    public void SaplingEof_PastIndexCapacity_IsCorruptStructure()
+    {
+        var fixture = ProdosFixture.CreateCatalogSample();
+        var image = fixture.Image.ToArray();
+        var entry = EntryOffset(image, "SAPLING");
+        Assume.That(image[entry] >> 4, Is.EqualTo((byte)ProdosStorageType.Sapling));
+        WriteU24(image.AsSpan(entry + ProdosLayout.Entry.EofOffset), (ProdosLayout.Index.PointerCount * ProdosLayout.BlockSize) + 1);
+        var fs = Open(image, fixture.BlockCount);
+
+        var result = fs.TryReadFile("SAPLING", FileReadView.Raw);
+
+        Assert.That(result.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(result.Data.Length, Is.EqualTo(0));
+        Assert.That(result.Reason, Does.Contain("131072"));
+    }
+
+    /// <summary>
+    /// A non-empty file whose key pointer is zero would read the boot block. That is corrupt.
+    /// </summary>
+    [Test]
+    public void KeyPointerZero_OnANonEmptyFile_IsCorruptStructure()
+    {
+        var fixture = ProdosFixture.CreateCatalogSample();
+        var image = fixture.Image.ToArray();
+        var entry = EntryOffset(image, "HELLO");
+        var key = image[entry + ProdosLayout.Entry.KeyPointerOffset] | (image[entry + ProdosLayout.Entry.KeyPointerOffset + 1] << 8);
+        var eof = image[entry + ProdosLayout.Entry.EofOffset];
+        Assume.That(key, Is.GreaterThan(0));
+        Assume.That(eof, Is.GreaterThan(0));
+        WriteU16(image.AsSpan(entry + ProdosLayout.Entry.KeyPointerOffset), 0);
+        var fs = Open(image, fixture.BlockCount);
+
+        var result = fs.TryReadFile("HELLO", FileReadView.Raw);
+
+        Assert.That(result.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(result.Data.Length, Is.EqualTo(0));
+        Assert.That(result.Reason, Does.Contain("boot"));
+    }
+
+    /// <summary>
+    /// A pointer equal to the volume's total_blocks is outside the volume even when the image is longer.
+    /// </summary>
+    [Test]
+    public void Pointers_AreBoundedByVolumeTotalBlocks()
+    {
+        var builder = new ProdosImageBuilder(32, "BOUND");
+        builder.AddSeedling("HELLO", ProdosFileType.Text, 0, new byte[] { 0x5A }, false);
+        var fixture = builder.Build();
+        var header = (ProdosLayout.VolumeKeyBlock * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset;
+        var total = fixture.Image.Span[header + ProdosLayout.VolumeHeader.TotalBlocksOffset]
+            | (fixture.Image.Span[header + ProdosLayout.VolumeHeader.TotalBlocksOffset + 1] << 8);
+        Assume.That(total, Is.EqualTo(fixture.BlockCount));
+        Assume.That(fixture.Image.Span[(ProdosLayout.VolumeKeyBlock * ProdosLayout.BlockSize) + 2], Is.EqualTo(0));
+
+        var fileImage = new byte[(fixture.BlockCount + 1) * ProdosLayout.BlockSize];
+        fixture.Image.Span.CopyTo(fileImage);
+        fileImage[fixture.BlockCount * ProdosLayout.BlockSize] = 0xAB;
+        var entry = EntryOffset(fileImage, "HELLO");
+        WriteU16(fileImage.AsSpan(entry + ProdosLayout.Entry.KeyPointerOffset), fixture.BlockCount);
+        var fileFs = Open(fileImage, fixture.BlockCount + 1);
+        var file = fileFs.TryReadFile("HELLO", FileReadView.Raw);
+
+        var directoryImage = new byte[(fixture.BlockCount + 1) * ProdosLayout.BlockSize];
+        fixture.Image.Span.CopyTo(directoryImage);
+        directoryImage[(ProdosLayout.VolumeKeyBlock * ProdosLayout.BlockSize) + 2] = (byte)fixture.BlockCount;
+        var directoryFs = Open(directoryImage, fixture.BlockCount + 1);
+        var listing = directoryFs.ListDirectory(null);
+
+        Assert.That(file.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(file.Data.Length, Is.EqualTo(0));
+        Assert.That(listing.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(listing.Entries, Is.Empty);
     }
 
     /// <summary>
@@ -674,6 +804,13 @@ public class ProdosFileSystemTests
     {
         destination[0] = (byte)value;
         destination[1] = (byte)(value >> 8);
+    }
+
+    private static void WriteU24(Span<byte> destination, int value)
+    {
+        destination[0] = (byte)value;
+        destination[1] = (byte)(value >> 8);
+        destination[2] = (byte)(value >> 16);
     }
 
     private sealed class ThrowingBlockReader : IBlockReader

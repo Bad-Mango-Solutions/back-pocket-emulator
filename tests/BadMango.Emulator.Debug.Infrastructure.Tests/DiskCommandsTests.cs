@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Tests;
 
 using BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
+using BadMango.Emulator.Storage.FileSystems;
 using BadMango.Emulator.Storage.Formats;
 using BadMango.Emulator.Storage.Gcr;
 using BadMango.Emulator.Storage.Media;
@@ -794,10 +795,9 @@ public sealed class DiskCommandsTests
     }
 
     /// <summary>
-    /// A lowercase ProDOS volume name is accepted, the on-disk bytes are stored as
-    /// uppercase, and the Tech Note 25 case-bit field at offset 0x1A of the volume
-    /// directory header (block-relative offset 0x1E..0x1F) is populated with the
-    /// validity flag (bit 15) plus per-character lowercase bits.
+    /// A lowercase ProDOS volume name is stored as uppercase bytes plus a ProDOS 8 Tech Note #8
+    /// case-bit word at entry offset <see cref="ProdosLayout.VolumeHeader.CaseBitsOffset"/>.
+    /// The creation time word at entry <c>$1A</c> stays zero.
     /// </summary>
     [Test]
     public void DiskCreate_LowercaseVolumeName_StoresUppercaseAndCaseBits()
@@ -809,9 +809,11 @@ public sealed class DiskCommandsTests
         var open = (Image525AndBlockResult)new DiskImageFactory().Open(path, forceReadOnly: true);
         var keyBlock = new byte[512];
         open.BlockMedia.ReadBlock(2, keyBlock);
+        Assume.That(keyBlock[4] >> 4, Is.EqualTo(0x0F));
 
         var name = System.Text.Encoding.ASCII.GetString(keyBlock, 5, 5);
-        var caseField = (ushort)(keyBlock[0x1E] | (keyBlock[0x1F] << 8));
+        var caseField = ReadCaseField(keyBlock);
+        var creationTime = ReadCreationTimeWord(keyBlock);
 
         // Expected bits: M=0, y=1 (bit 13), V=0, o=1 (bit 11), l=1 (bit 10) plus the
         // valid-flag bit 15. That is 0x8000 | (1 << 13) | (1 << 11) | (1 << 10) = 0xAC00.
@@ -822,11 +824,13 @@ public sealed class DiskCommandsTests
             Assert.That(name, Is.EqualTo("MYVOL"), "On-disk volume name bytes must be uppercase.");
             Assert.That(keyBlock[4] & 0x0F, Is.EqualTo(5));
             Assert.That(caseField, Is.EqualTo(expectedCaseField));
+            Assert.That(creationTime, Is.EqualTo(0));
+            Assert.That(creationTime, Is.Not.EqualTo(caseField));
         });
     }
 
     /// <summary>
-    /// An all-uppercase volume name leaves the Tech Note 25 case-bit field zero so older
+    /// An all-uppercase volume name leaves the ProDOS 8 Tech Note #8 case-bit field zero so older
     /// ProDOS tools that pre-date the case-bit convention continue to round-trip.
     /// </summary>
     [Test]
@@ -839,9 +843,10 @@ public sealed class DiskCommandsTests
         var open = (Image525AndBlockResult)new DiskImageFactory().Open(path, forceReadOnly: true);
         var keyBlock = new byte[512];
         open.BlockMedia.ReadBlock(2, keyBlock);
+        Assume.That(keyBlock[4] >> 4, Is.EqualTo(0x0F));
 
-        var caseField = (ushort)(keyBlock[0x1E] | (keyBlock[0x1F] << 8));
-        Assert.That(caseField, Is.EqualTo(0));
+        Assert.That(ReadCaseField(keyBlock), Is.EqualTo(0));
+        Assert.That(ReadCreationTimeWord(keyBlock), Is.EqualTo(0));
     }
 
     /// <summary>
@@ -876,13 +881,13 @@ public sealed class DiskCommandsTests
         var keyBlock = new byte[512];
         open.BlockMedia.ReadBlock(2, keyBlock);
 
-        var caseField = (ushort)(keyBlock[0x1E] | (keyBlock[0x1F] << 8));
-        Assert.That(caseField, Is.EqualTo(0));
+        Assert.That(ReadCaseField(keyBlock), Is.EqualTo(0));
+        Assert.That(ReadCreationTimeWord(keyBlock), Is.EqualTo(0));
     }
 
     /// <summary>
-    /// <c>disk-info</c> renders the original mixed-case volume name back from the on-disk
-    /// uppercase bytes plus the Tech Note 25 case-bit field.
+    /// <c>disk-info</c> restores the mixed-case volume name from the ProDOS 8 Tech Note #8
+    /// case-bit word. A creation-time word with bit 15 set does not change that name.
     /// </summary>
     [Test]
     public void DiskInfo_OnLowercaseVolumeName_RestoresMixedCase()
@@ -893,9 +898,27 @@ public sealed class DiskCommandsTests
 
         var info = new DiskInfoCommand().Execute(this.debugContext, [path]);
         Assert.That(info.Success, Is.True, info.Message);
+        Assert.That(this.outputWriter.ToString(), Does.Contain("Volume name:      MyVol"));
 
-        var output = this.outputWriter.ToString();
-        Assert.That(output, Does.Contain("Volume name:      MyVol"));
+        using (var open = (Image525AndBlockResult)new DiskImageFactory().Open(path))
+        {
+            var keyBlock = new byte[512];
+            open.BlockMedia.ReadBlock(2, keyBlock);
+            Assume.That(ReadCaseField(keyBlock), Is.EqualTo((ushort)(0x8000 | (1 << 13) | (1 << 11) | (1 << 10))));
+            Assume.That(ReadCreationTimeWord(keyBlock), Is.EqualTo(0));
+            var timeOffset = ProdosLayout.Directory.FirstEntryOffset + 0x1A;
+            keyBlock[timeOffset] = 0x00;
+            keyBlock[timeOffset + 1] = 0xFE;
+            open.BlockMedia.WriteBlock(2, keyBlock);
+            open.BlockMedia.Flush();
+        }
+
+        this.outputWriter.GetStringBuilder().Clear();
+        var again = new DiskInfoCommand().Execute(this.debugContext, [path]);
+
+        Assert.That(again.Success, Is.True, again.Message);
+        Assert.That(this.outputWriter.ToString(), Does.Contain("Volume name:      MyVol"));
+        Assert.That(this.outputWriter.ToString(), Does.Not.Contain("Volume name:      myvol"));
     }
 
     /// <summary>An invalid first character (digit) in the volume name is rejected.</summary>
@@ -909,6 +932,18 @@ public sealed class DiskCommandsTests
             Assert.That(result.Success, Is.False);
             Assert.That(result.Message, Does.Contain("must start with a letter"));
         });
+    }
+
+    private static ushort ReadCaseField(byte[] keyBlock)
+    {
+        var offset = ProdosLayout.Directory.FirstEntryOffset + ProdosLayout.VolumeHeader.CaseBitsOffset;
+        return (ushort)(keyBlock[offset] | (keyBlock[offset + 1] << 8));
+    }
+
+    private static ushort ReadCreationTimeWord(byte[] keyBlock)
+    {
+        var offset = ProdosLayout.Directory.FirstEntryOffset + 0x1A;
+        return (ushort)(keyBlock[offset] | (keyBlock[offset + 1] << 8));
     }
 
     private string TempPath(string ext)

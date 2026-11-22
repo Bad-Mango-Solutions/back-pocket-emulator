@@ -7,6 +7,7 @@ namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 using System.Globalization;
 
 using BadMango.Emulator.Devices;
+using BadMango.Emulator.Storage.FileSystems;
 using BadMango.Emulator.Storage.Formats;
 using BadMango.Emulator.Storage.Media;
 
@@ -418,9 +419,10 @@ public sealed class DiskInfoCommand : CommandHandlerBase, ICommandHelp
     /// <para>
     /// Per the ProDOS technical reference, a volume name is 1..15 characters, the first
     /// must be a letter, and remaining characters are letters, digits, or <c>'.'</c>.
-    /// On-disk bytes are always uppercase; if the case-bit map at offset 0x1A of the
-    /// volume header (ProDOS Tech Note 25) is present (bit 15 set), the corresponding
-    /// characters are reported back in lowercase.
+    /// On-disk bytes are always uppercase. ProDOS 8 Tech Note #8 stores the case-bit
+    /// word at key-block <c>+$1A</c>, which is <see cref="ProdosLayout.VolumeHeader.CaseBitsOffset"/>
+    /// of the volume header entry. When bit 15 is set, the corresponding characters are
+    /// reported in lowercase. The creation time at entry <c>$1A</c> is not that word.
     /// </para>
     /// </remarks>
     private static string? TryReadProDosVolumeName(IBlockMedia media, DiskImageFormat format, TextWriter errorLog)
@@ -471,12 +473,12 @@ public sealed class DiskInfoCommand : CommandHandlerBase, ICommandHelp
             return null;
         }
 
-        // Tech Note 25 case-bit field at block-relative offset 0x1E..0x1F (entry-relative
-        // 0x1A..0x1B). Bit 15 indicates the field is valid; bits 14..0 select case for
-        // characters 0..14, with a set bit meaning the corresponding character should be
-        // displayed in lowercase. When the high bit is clear we leave the on-disk bytes
-        // untouched (legacy/uppercase-only volumes).
-        var caseField = (ushort)(keyBlock[0x1E] | (keyBlock[0x1F] << 8));
+        // ProDOS 8 Tech Note #8. The note's +$1A/+$1B counts from the start of the key
+        // block. The header entry starts at offset 4, so the word is entry offset $16.
+        // Bit 15 set means bits 14..0 lowercase those characters. A clear high bit leaves
+        // the on-disk bytes unchanged. Entry $1A is the creation time, not this word.
+        var caseOffset = ProdosLayout.Directory.FirstEntryOffset + ProdosLayout.VolumeHeader.CaseBitsOffset;
+        var caseField = (ushort)(keyBlock[caseOffset] | (keyBlock[caseOffset + 1] << 8));
         var caseBitsValid = (caseField & 0x8000) != 0;
 
         var name = new char[nameLen];
@@ -504,7 +506,7 @@ public sealed class DiskInfoCommand : CommandHandlerBase, ICommandHelp
     /// ProDOS volume name. The first character must be an upper-case letter; subsequent
     /// characters may also be digits or <c>'.'</c>. Validation runs against the on-disk
     /// (uppercase) bytes; lowercase rendering is handled separately via the case-bit map
-    /// at offset 0x1A of the volume header.
+    /// at <see cref="ProdosLayout.VolumeHeader.CaseBitsOffset"/> of the volume header.
     /// </summary>
     private static bool IsValidProDosVolumeNameChar(char c, bool isFirst)
     {

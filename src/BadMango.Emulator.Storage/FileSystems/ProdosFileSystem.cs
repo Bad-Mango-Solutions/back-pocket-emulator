@@ -25,18 +25,22 @@ using Serilog;
 /// <see cref="FileAccessStatus.UnsupportedStorage"/> and no bytes.
 /// </para>
 /// <para>
-/// Names are the on-disk bytes unless the GS/OS case-bit word is valid (bit 15 set).
-/// The volume header stores that word at entry offset <c>$1A</c>. File and
-/// subdirectory entries store it at entry offset <c>$1C</c> (GS/OS Technical Note #8).
-/// Lookups ignore case. ProDOS logical reads are the same bytes as raw reads.
+/// Names are the on-disk bytes unless the ProDOS 8 Tech Note #8 case-bit word is valid
+/// (bit 15 set). Tech Note #8 numbers the volume word <c>+$1A</c>/<c>+$1B</c> from the
+/// start of the key block, so the entry-relative offset is
+/// <see cref="ProdosLayout.VolumeHeader.CaseBitsOffset"/> (<c>$16</c>), inside the reserved
+/// bytes. Entry <c>$18</c>–<c>$1B</c> is the creation date and time. File and subdirectory
+/// entries store case bits at entry offset <c>$1C</c>. Lookups ignore case. ProDOS logical
+/// reads are the same bytes as raw reads.
+/// </para>
+/// <para>
+/// One instance is not safe for concurrent calls. <see cref="ListDirectory"/> and
+/// <see cref="TryReadFile"/> share the block, index, and master-index buffers.
 /// </para>
 /// </remarks>
 public sealed class ProdosFileSystem : IAppleFileSystem
 {
-    /// <summary>Entry-relative case-bit word in a volume directory header.</summary>
-    private const int VolumeHeaderCaseBitsOffset = 0x1A;
-
-    /// <summary>Entry-relative case-bit word in a file or subdirectory entry.</summary>
+    /// <summary>Entry-relative case-bit word in a file or subdirectory entry. ProDOS 8 Tech Note #8.</summary>
     private const int FileEntryCaseBitsOffset = 0x1C;
 
     /// <summary>Bit 15 of the case-bit word. Clear means the on-disk bytes are the name.</summary>
@@ -44,6 +48,7 @@ public sealed class ProdosFileSystem : IAppleFileSystem
 
     private readonly ILogger logger;
     private readonly IBlockReader blocks;
+    private readonly int totalBlocks;
     private readonly byte[] blockBuffer;
     private readonly byte[] indexBuffer;
     private readonly byte[] masterBuffer;
@@ -81,7 +86,9 @@ public sealed class ProdosFileSystem : IAppleFileSystem
         }
 
         var header = this.blockBuffer.AsSpan(ProdosLayout.Directory.FirstEntryOffset, ProdosLayout.Entry.Length);
-        this.VolumeName = DecodeName(header, header[0] & 0x0F, VolumeHeaderCaseBitsOffset);
+        this.VolumeName = DecodeName(header, header[0] & 0x0F, ProdosLayout.VolumeHeader.CaseBitsOffset);
+        this.totalBlocks = header[ProdosLayout.VolumeHeader.TotalBlocksOffset]
+            | (header[ProdosLayout.VolumeHeader.TotalBlocksOffset + 1] << 8);
         this.logger.Debug(
             "Opened ProDOS volume {VolumeName} with {BlockCount} blocks.",
             this.VolumeName,
@@ -193,6 +200,18 @@ public sealed class ProdosFileSystem : IAppleFileSystem
         return item.Entry;
     }
 
+    private static bool IsSubdirectoryKeyBlock(ReadOnlySpan<byte> block)
+    {
+        var header = ProdosLayout.Directory.FirstEntryOffset;
+        if ((block[header] >> 4) != (byte)ProdosStorageType.SubdirectoryHeader)
+        {
+            return false;
+        }
+
+        return block[header + ProdosLayout.SubdirectoryHeader.EntryLengthOffset] == ProdosLayout.Entry.Length
+            && block[header + ProdosLayout.SubdirectoryHeader.EntriesPerBlockOffset] == ProdosLayout.Directory.EntriesPerBlock;
+    }
+
     private static string DecodeName(ReadOnlySpan<byte> entry, int nameLength, int caseBitsOffset)
     {
         var caseField = entry[caseBitsOffset] | (entry[caseBitsOffset + 1] << 8);
@@ -296,7 +315,7 @@ public sealed class ProdosFileSystem : IAppleFileSystem
     {
         entries = new List<CatalogItem>();
         reason = string.Empty;
-        if ((uint)keyBlock >= (uint)this.blocks.BlockCount || keyBlock == 0)
+        if ((uint)keyBlock >= (uint)this.totalBlocks || keyBlock == 0)
         {
             reason = "A directory key block is outside the volume.";
             this.logger.Warning("ProDOS directory key block {Block} is outside the volume.", keyBlock);
@@ -315,7 +334,7 @@ public sealed class ProdosFileSystem : IAppleFileSystem
                 return false;
             }
 
-            if ((uint)block >= (uint)this.blocks.BlockCount)
+            if ((uint)block >= (uint)this.totalBlocks)
             {
                 reason = "A directory block is outside the volume.";
                 this.logger.Warning("ProDOS directory block {Block} is outside the volume.", block);
@@ -323,6 +342,13 @@ public sealed class ProdosFileSystem : IAppleFileSystem
             }
 
             this.blocks.ReadBlock(block, this.blockBuffer);
+            if (first && keyBlock != ProdosLayout.VolumeKeyBlock && !IsSubdirectoryKeyBlock(this.blockBuffer))
+            {
+                reason = "A subdirectory key block does not start with a subdirectory header.";
+                this.logger.Warning("ProDOS block {Block} is not a subdirectory header.", block);
+                return false;
+            }
+
             var next = this.blockBuffer[2] | (this.blockBuffer[3] << 8);
             var start = first ? 1 : 0;
             for (var slot = start; slot < ProdosLayout.Directory.EntriesPerBlock; slot++)
@@ -385,12 +411,17 @@ public sealed class ProdosFileSystem : IAppleFileSystem
             return FileReadResult.Success(ReadOnlyMemory<byte>.Empty);
         }
 
-        var data = new byte[eof];
-        if (keyBlock == 0)
+        if (eof > ProdosLayout.BlockSize)
         {
-            return FileReadResult.Success(data);
+            return this.Corrupt("A seedling EOF is at most 512 bytes.");
         }
 
+        if (keyBlock == 0)
+        {
+            return this.Corrupt("A file key pointer of zero is the boot block.");
+        }
+
+        var data = new byte[eof];
         var invalid = this.PointerOutOfRange(keyBlock);
         if (invalid is not null)
         {
@@ -410,12 +441,17 @@ public sealed class ProdosFileSystem : IAppleFileSystem
             return FileReadResult.Success(ReadOnlyMemory<byte>.Empty);
         }
 
-        var data = new byte[eof];
-        if (keyBlock == 0)
+        if (eof > ProdosLayout.Index.PointerCount * ProdosLayout.BlockSize)
         {
-            return FileReadResult.Success(data);
+            return this.Corrupt("A sapling EOF is at most 131072 bytes.");
         }
 
+        if (keyBlock == 0)
+        {
+            return this.Corrupt("A file key pointer of zero is the boot block.");
+        }
+
+        var data = new byte[eof];
         var invalid = this.PointerOutOfRange(keyBlock);
         if (invalid is not null)
         {
@@ -433,12 +469,12 @@ public sealed class ProdosFileSystem : IAppleFileSystem
             return FileReadResult.Success(ReadOnlyMemory<byte>.Empty);
         }
 
-        var data = new byte[eof];
         if (keyBlock == 0)
         {
-            return FileReadResult.Success(data);
+            return this.Corrupt("A file key pointer of zero is the boot block.");
         }
 
+        var data = new byte[eof];
         var invalid = this.PointerOutOfRange(keyBlock);
         if (invalid is not null)
         {
@@ -507,7 +543,7 @@ public sealed class ProdosFileSystem : IAppleFileSystem
 
     private FileReadResult? PointerOutOfRange(int block)
     {
-        if ((uint)block >= (uint)this.blocks.BlockCount)
+        if ((uint)block >= (uint)this.totalBlocks)
         {
             return this.Corrupt("A block pointer is outside the volume.");
         }
