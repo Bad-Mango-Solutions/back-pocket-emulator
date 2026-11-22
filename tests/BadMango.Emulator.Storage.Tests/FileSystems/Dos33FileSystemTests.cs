@@ -321,21 +321,35 @@ public class Dos33FileSystemTests
         Assert.That(listRead.Reason, Is.EqualTo("The track/sector list leaves the disk."));
         Assert.That(listFs.TryReadFile("GOOD", FileReadView.Raw).Data.Span[0], Is.EqualTo(0x11));
 
-        var catalog = TwoFiles();
-        var catalogSector = Sector(catalog.Image, catalog.Good.CatalogTrack, catalog.Good.CatalogSector);
+        var catalogBuilder = new Dos33ImageBuilder();
+        for (var i = 0; i < Dos33Layout.Catalog.EntriesPerSector; i++)
+        {
+            catalogBuilder.AddFile(
+                "C" + i.ToString(CultureInfo.InvariantCulture),
+                Dos33FileType.Text,
+                false,
+                false,
+                new byte[]?[] { new byte[] { (byte)i } });
+        }
+
+        var catalogFixture = catalogBuilder.Build();
+        var catalogImage = MutableImage(catalogFixture);
+        var catalogEntry = catalogFixture.Entries[0];
+        Assume.That(catalogFixture.Entries, Has.Count.EqualTo(Dos33Layout.Catalog.EntriesPerSector));
+        Assume.That(catalogFixture.Entries[6].CatalogSector, Is.EqualTo(catalogEntry.CatalogSector));
+        var catalogSector = Sector(catalogImage, catalogEntry.CatalogTrack, catalogEntry.CatalogSector);
         Assume.That(catalogSector[Dos33Layout.Catalog.NextTrackOffset], Is.EqualTo(0));
         catalogSector[Dos33Layout.Catalog.NextTrackOffset] = Dos33Layout.VtocTrack;
         catalogSector[Dos33Layout.Catalog.NextSectorOffset] = 99;
-        var catalogFs = Open(catalog.Fixture);
+        var catalogFs = Open(catalogFixture);
         var catalogList = catalogFs.ListDirectory(null);
-        var catalogRead = catalogFs.TryReadFile("GOOD", FileReadView.Raw);
+        var catalogRead = catalogFs.TryReadFile("C0", FileReadView.Raw);
 
         Assert.That(catalogList.Succeeded, Is.False);
         Assert.That(catalogList.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
         Assert.That(catalogList.Reason, Is.EqualTo("The DOS catalog chain leaves the disk."));
         Assert.That(catalogList.Entries, Is.Empty);
-        Assert.That(catalogFs.GetFileInfo("GOOD"), Is.Null);
-        Assert.That(catalogFs.GetFileInfo("BAD"), Is.Null);
+        Assert.That(catalogFs.GetFileInfo("C0"), Is.Null);
         Assert.That(catalogRead.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
         Assert.That(catalogRead.Data.Length, Is.EqualTo(0));
     }
@@ -481,10 +495,21 @@ public class Dos33FileSystemTests
     public void List_WhenTheCatalogChainLoops_ReturnsCorruptStructure()
     {
         var builder = new Dos33ImageBuilder();
-        builder.AddFile("KEEP", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x42 } });
+        for (var i = 0; i < Dos33Layout.Catalog.EntriesPerSector; i++)
+        {
+            builder.AddFile(
+                "F" + i.ToString(CultureInfo.InvariantCulture),
+                Dos33FileType.Text,
+                false,
+                false,
+                new byte[]?[] { new byte[] { (byte)i } });
+        }
+
         var fixture = builder.Build();
         var image = MutableImage(fixture);
         var entry = fixture.Entries[0];
+        Assume.That(fixture.Entries, Has.Count.EqualTo(Dos33Layout.Catalog.EntriesPerSector));
+        Assume.That(fixture.Entries[6].CatalogSector, Is.EqualTo(entry.CatalogSector));
         var catalog = Sector(image, entry.CatalogTrack, entry.CatalogSector);
         Assume.That(entry.CatalogSector, Is.EqualTo(Dos33Layout.DefaultFirstCatalogSector));
         Assume.That(catalog[Dos33Layout.Catalog.NextTrackOffset], Is.EqualTo(0));
@@ -493,13 +518,13 @@ public class Dos33FileSystemTests
 
         var fs = Open(fixture);
         var listing = fs.ListDirectory(null);
-        var read = fs.TryReadFile("KEEP", FileReadView.Raw);
+        var read = fs.TryReadFile("F0", FileReadView.Raw);
 
         Assert.That(listing.Succeeded, Is.False);
         Assert.That(listing.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
         Assert.That(listing.Reason, Is.EqualTo("The DOS catalog chain repeats a sector."));
         Assert.That(listing.Entries, Is.Empty);
-        Assert.That(fs.GetFileInfo("KEEP"), Is.Null);
+        Assert.That(fs.GetFileInfo("F0"), Is.Null);
         Assert.That(read.Succeeded, Is.False);
         Assert.That(read.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
         Assert.That(read.Data.Length, Is.EqualTo(0));
