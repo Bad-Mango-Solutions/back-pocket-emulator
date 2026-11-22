@@ -277,6 +277,69 @@ public class Dos33FileSystemTests
     }
 
     /// <summary>
+    /// A catalog link, list sector, or data pair past the disk is corrupt and does not throw.
+    /// One bad file stays listed and the other file still reads.
+    /// </summary>
+    [Test]
+    public void Read_WhenAPointerIsOutOfRange_ReturnsCorruptStructure()
+    {
+        var data = TwoFiles();
+        var badList = Sector(data.Image, data.Bad.TsTrack, data.Bad.TsSector);
+        var pair = Dos33Layout.TrackSectorList.PairOffset;
+        Assume.That(badList[pair], Is.EqualTo((byte)data.Bad.DataSectors[0].Track));
+        Assume.That(data.Fixture.TrackCount, Is.LessThan(99));
+        badList[pair] = 99;
+
+        var dataFs = Open(data.Fixture);
+        var dataList = dataFs.ListDirectory(null);
+        var badRead = dataFs.TryReadFile("BAD", FileReadView.Raw);
+        var goodRead = dataFs.TryReadFile("GOOD", FileReadView.Raw);
+
+        Assert.That(dataList.Succeeded, Is.True);
+        Assert.That(dataList.Entries.Select(entry => entry.Name).ToArray(), Is.EqualTo(new[] { "GOOD", "BAD" }));
+        Assert.That(dataFs.GetFileInfo("GOOD")!.EofBytes, Is.EqualTo(Dos33Layout.SectorSize));
+        Assert.That(dataFs.GetFileInfo("BAD")!.EofBytes, Is.EqualTo(0));
+        Assert.That(badRead.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(badRead.Reason, Is.EqualTo("The track/sector list leaves the disk."));
+        Assert.That(badRead.Data.Length, Is.EqualTo(0));
+        Assert.That(goodRead.Succeeded, Is.True);
+        Assert.That(goodRead.Data.Span[0], Is.EqualTo(0x11));
+
+        var list = TwoFiles();
+        var listSector = Sector(list.Image, list.Bad.TsTrack, list.Bad.TsSector);
+        listSector[Dos33Layout.TrackSectorList.NextTrackOffset] = 1;
+        listSector[Dos33Layout.TrackSectorList.NextSectorOffset] = 99;
+        var listFs = Open(list.Fixture);
+        var listResult = listFs.ListDirectory("/");
+        var listRead = listFs.TryReadFile("BAD", FileReadView.Raw);
+
+        Assert.That(listResult.Succeeded, Is.True);
+        Assert.That(listFs.GetFileInfo("GOOD")!.EofBytes, Is.EqualTo(Dos33Layout.SectorSize));
+        Assert.That(listFs.GetFileInfo("BAD")!.EofBytes, Is.EqualTo(0));
+        Assert.That(listRead.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(listRead.Reason, Is.EqualTo("The track/sector list leaves the disk."));
+        Assert.That(listFs.TryReadFile("GOOD", FileReadView.Raw).Data.Span[0], Is.EqualTo(0x11));
+
+        var catalog = TwoFiles();
+        var catalogSector = Sector(catalog.Image, catalog.Good.CatalogTrack, catalog.Good.CatalogSector);
+        Assume.That(catalogSector[Dos33Layout.Catalog.NextTrackOffset], Is.EqualTo(0));
+        catalogSector[Dos33Layout.Catalog.NextTrackOffset] = Dos33Layout.VtocTrack;
+        catalogSector[Dos33Layout.Catalog.NextSectorOffset] = 99;
+        var catalogFs = Open(catalog.Fixture);
+        var catalogList = catalogFs.ListDirectory(null);
+        var catalogRead = catalogFs.TryReadFile("GOOD", FileReadView.Raw);
+
+        Assert.That(catalogList.Succeeded, Is.False);
+        Assert.That(catalogList.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(catalogList.Reason, Is.EqualTo("The DOS catalog chain leaves the disk."));
+        Assert.That(catalogList.Entries, Is.Empty);
+        Assert.That(catalogFs.GetFileInfo("GOOD"), Is.Null);
+        Assert.That(catalogFs.GetFileInfo("BAD"), Is.Null);
+        Assert.That(catalogRead.Status, Is.EqualTo(FileAccessStatus.CorruptStructure));
+        Assert.That(catalogRead.Data.Length, Is.EqualTo(0));
+    }
+
+    /// <summary>
     /// A catalog sector that points at itself is not an empty volume and not a partial list.
     /// </summary>
     [Test]
@@ -552,6 +615,20 @@ public class Dos33FileSystemTests
 
     private static Dos33FileSystem Open(Dos33Fixture fixture) =>
         new(fixture.CreateSectorReader(), Logger());
+
+    private static (Dos33Fixture Fixture, byte[] Image, Dos33Fixture.Entry Good, Dos33Fixture.Entry Bad) TwoFiles()
+    {
+        var builder = new Dos33ImageBuilder();
+        builder.AddFile("GOOD", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x11 } });
+        builder.AddFile("BAD", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x22 } });
+        var fixture = builder.Build();
+        var good = fixture.Entries[0];
+        var bad = fixture.Entries[1];
+        Assume.That(good.TsTrack, Is.Not.Zero);
+        Assume.That(bad.TsTrack, Is.Not.Zero);
+        Assume.That(bad.DataSectors[0].Allocated, Is.True);
+        return (fixture, MutableImage(fixture), good, bad);
+    }
 
     private static ILogger Logger() => Generator.Log().Object;
 

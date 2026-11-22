@@ -182,6 +182,9 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     private static LocatedFile? Find(CatalogSnapshot catalog, string name) =>
         catalog.Files.FirstOrDefault(file => file.Entry.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
+    private static TrackSectorWalk FailedList(string reason) =>
+        new(reason, new List<TrackSectorPair>(), -1);
+
     private DirectoryListing List(string? path)
     {
         if (!this.TryParse(path, out var segments, out var reason))
@@ -278,6 +281,15 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         var sector = this.firstCatalogSector;
         while (track != 0)
         {
+            if (!this.InRange(track, sector))
+            {
+                this.logger.Warning(
+                    "DOS catalog chain left the disk at track {Track} sector {Sector}.",
+                    track,
+                    sector);
+                return this.Remember(CatalogSnapshot.Failed("The DOS catalog chain leaves the disk."));
+            }
+
             if (!visited.Add((track, sector)))
             {
                 this.logger.Warning(
@@ -382,13 +394,22 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         var sector = (int)startSector;
         while (track != 0)
         {
+            if (!this.InRange(track, sector))
+            {
+                this.logger.Warning(
+                    "DOS track/sector list left the disk at track {Track} sector {Sector}.",
+                    track,
+                    sector);
+                return FailedList("The track/sector list leaves the disk.");
+            }
+
             if (!visited.Add((track, sector)))
             {
                 this.logger.Warning(
                     "DOS track/sector list repeated track {Track} sector {Sector}.",
                     track,
                     sector);
-                return new TrackSectorWalk("The track/sector list repeats a sector.", new List<TrackSectorPair>(), -1);
+                return FailedList("The track/sector list repeats a sector.");
             }
 
             this.ReadIntoBuffer(track, sector);
@@ -406,6 +427,15 @@ public sealed class Dos33FileSystem : IAppleFileSystem
                     continue;
                 }
 
+                if (!this.InRange(dataTrack, dataSector))
+                {
+                    this.logger.Warning(
+                        "DOS track/sector list named track {Track} sector {Sector}, which is off the disk.",
+                        dataTrack,
+                        dataSector);
+                    return FailedList("The track/sector list leaves the disk.");
+                }
+
                 var index = origin + pair;
                 pairs.Add(new TrackSectorPair(index, dataTrack, dataSector));
                 if (index > lastIndex)
@@ -421,11 +451,14 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         if (lastIndex >= 0 && ((long)lastIndex + 1) * Dos33Layout.SectorSize > int.MaxValue)
         {
             this.logger.Warning("DOS track/sector list length does not fit in a byte array.");
-            return new TrackSectorWalk("The track/sector list does not fit in memory.", new List<TrackSectorPair>(), -1);
+            return FailedList("The track/sector list does not fit in memory.");
         }
 
         return new TrackSectorWalk(null, pairs, lastIndex);
     }
+
+    private bool InRange(int track, int sector) =>
+        (uint)track < (uint)this.sectors.TrackCount && (uint)sector < (uint)this.sectors.SectorsPerTrack;
 
     private FileReadResult ReadLocated(LocatedFile file, FileReadView view)
     {
