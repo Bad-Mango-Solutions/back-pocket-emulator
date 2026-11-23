@@ -39,6 +39,10 @@ public class DebugConsoleModule : Module
             .As<IDebugOutputRenderer>()
             .SingleInstance();
 
+        builder.Register(ctx => new DebugExportRoot(ctx.ResolveOptional<EmudbgOptions>()?.ExportRoot))
+            .As<IDebugExportRoot>()
+            .SingleInstance();
+
         builder.RegisterType<CommandDispatcher>()
             .As<ICommandDispatcher>()
             .SingleInstance();

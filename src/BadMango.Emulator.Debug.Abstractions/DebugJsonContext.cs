@@ -64,6 +64,16 @@ using System.Text.Json.Serialization;
 [JsonSerializable(typeof(DebugEnvelope<TypeKeysReceipt>))]
 [JsonSerializable(typeof(DebugEnvelope<DiskControllerSnapshot>))]
 [JsonSerializable(typeof(DebugEnvelope<IReadOnlyList<DiskControllerSnapshot>>))]
+[JsonSerializable(typeof(DiskFileSystemInfoPayload))]
+[JsonSerializable(typeof(DiskFileSystemProbePayload))]
+[JsonSerializable(typeof(IReadOnlyList<DiskFileSystemProbePayload>))]
+[JsonSerializable(typeof(DiskCatalogPayload))]
+[JsonSerializable(typeof(DiskCatalogEntryPayload))]
+[JsonSerializable(typeof(IReadOnlyList<DiskCatalogEntryPayload>))]
+[JsonSerializable(typeof(DiskFilePayload))]
+[JsonSerializable(typeof(DebugEnvelope<DiskFileSystemInfoPayload>))]
+[JsonSerializable(typeof(DebugEnvelope<DiskCatalogPayload>))]
+[JsonSerializable(typeof(DebugEnvelope<DiskFilePayload>))]
 public partial class DebugSessionJsonContext : JsonSerializerContext
 {
 }

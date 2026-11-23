@@ -29,7 +29,19 @@ public sealed class EmudbgOptionsTests
             Assert.That(options.AgentMode, Is.False);
             Assert.That(options.MaxCycles, Is.Null);
             Assert.That(options.Seed, Is.Null);
+            Assert.That(options.ExportRoot, Is.Null);
         });
+    }
+
+    /// <summary>
+    /// Verifies that <c>--export-root</c> is the directory <c>disk read --to</c> may use.
+    /// </summary>
+    [Test]
+    public void Parse_ExportRoot_IsStored()
+    {
+        EmudbgOptions options = EmudbgOptions.Parse(["--export-root", "out/files"]);
+
+        Assert.That(options.ExportRoot, Is.EqualTo("out/files"));
     }
 
     /// <summary>

@@ -408,6 +408,51 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
     }
 
     /// <inheritdoc/>
+    public void WriteDiskFileSystemInfo(TextWriter output, DiskFileSystemInfoPayload payload, string text, bool forceJson = false)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(payload);
+        ArgumentNullException.ThrowIfNull(text);
+        if (forceJson || this.JsonOutput)
+        {
+            this.WriteEnvelope(output, payload, DebugSessionJsonContext.Default.DebugEnvelopeDiskFileSystemInfoPayload);
+            return;
+        }
+
+        output.Write(text);
+    }
+
+    /// <inheritdoc/>
+    public void WriteDiskCatalog(TextWriter output, DiskCatalogPayload payload, string text, bool forceJson = false)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(payload);
+        ArgumentNullException.ThrowIfNull(text);
+        if (forceJson || this.JsonOutput)
+        {
+            this.WriteEnvelope(output, payload, DebugSessionJsonContext.Default.DebugEnvelopeDiskCatalogPayload);
+            return;
+        }
+
+        output.Write(text);
+    }
+
+    /// <inheritdoc/>
+    public void WriteDiskFile(TextWriter output, DiskFilePayload payload, string text, bool forceJson = false)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(payload);
+        ArgumentNullException.ThrowIfNull(text);
+        if (forceJson || this.JsonOutput)
+        {
+            this.WriteEnvelope(output, payload, DebugSessionJsonContext.Default.DebugEnvelopeDiskFilePayload);
+            return;
+        }
+
+        output.Write(text);
+    }
+
+    /// <inheritdoc/>
     public void WriteMapTrace(TextWriter output, MapTraceReceipt receipt, string text)
     {
         ArgumentNullException.ThrowIfNull(output);

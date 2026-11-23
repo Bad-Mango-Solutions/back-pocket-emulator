@@ -168,6 +168,7 @@ static void PrintUsage()
           --agent                   Agent mode (headless + json + non-interactive)
           --headless                Disable interactive UI loading
           --max-cycles <n>          Default cycle budget for run, run-until, and step
+          --export-root <dir>       Directory disk read --to may write into
           --seed <n>                Rejected: the machine has no seeded random-number source
           -h, --help                Show this help and exit
 
