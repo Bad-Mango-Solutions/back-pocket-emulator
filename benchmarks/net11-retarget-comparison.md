@@ -80,7 +80,7 @@ The machine is a 4-vCPU KVM guest (`Intel Xeon Processor`, model 207, x86-64-v4)
 Most dispatch rows have a coefficient of variation under 2%, and their 99.9% error bars are a few tenths of a nanosecond. Treat movement inside about 3% as VM noise. These stand out from that band:
 
 - Device-page loop: 135.92 ns to 120.08 ns (ratio 0.883). The net11 error bar is 0.86 ns and the net10 error bar is 2.64 ns, so the intervals do not overlap. The earlier 0.15.8 net10 mean was 130.58 ns, in the same direction.
-- `SelectSwapVariant`: 63.68 ns to 74.28 ns (ratio 1.166). Both net10 harnesses agreed (63.13 ns on 0.15.8). Allocations stayed 0 B. This is the clearest regression in the set.
+- `SelectSwapVariant` looked like the clearest regression in the single-launch table (63.68 ns to 74.28 ns). A five-launch rerun did not hold that up: net10 stayed at 63.35 ns (SD 0.58) and net11's median was 61.78 ns, with one launch at about 77 ns. The follow-up section below is the current measurement.
 - `LinqPipeline`: 94.88 ns to 62.12 ns on this pair, but the 0.15.8 net10 run measured 60.69 ns with the same 48 B allocation. The matched net10 sample is the outlier. Do not read this as a LINQ speedup.
 - `LDY zp,X` (22.50 ns to 17.36 ns) and `LDX abs,Y` (23.12 ns to 19.85 ns) moved more than neighboring addressing modes. The net10 samples were stable inside the run, and the gaps are larger than the error bars, but they are two opcodes out of 37.
 - Flag and transfer opcodes are mostly 4% to 11% slower per opcode. The mixed flags-transfer workload that actually loops those opcodes is flat (12.82 ns vs 12.73 ns).
@@ -88,3 +88,23 @@ Most dispatch rows have a coefficient of variation under 2%, and their 99.9% err
 - `SEC` on net11 has SD 0.51 ns on an 11.80 ns mean.
 
 Workload MHz for the four CPU loops stays inside a few percent: mix 259.3 to 253.6, RAM 196.5 to 189.4, flags-transfer 156.7 to 157.9, load-store 206.2 to 203.5. RAM's error bars do not overlap; mix's barely do not; flags-transfer and load-store do.
+
+## SelectSwapVariant
+
+The `PageRemap` row in the table above is the original single-launch pair (63.68 ns to 74.28 ns). The source of `SelectSwapVariant` was identical on both sides of that pair. A five-launch rerun on BenchmarkDotNet 0.16.0-preview.2 did not reproduce a stable 17% gap.
+
+| Runtime | Launches | Mean | SD | Median | Min | Max |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| net10.0, before | 5 | 63.35 ns | 0.58 ns | 63.23 ns | 62.45 ns | 64.57 ns |
+| net11.0, before | 5 | 65.26 ns | 6.70 ns | 61.78 ns | 61.33 ns | 78.46 ns |
+| net11.0, `DOTNET_TieredPGO=0` | 5 | 83.77 ns | 2.78 ns | 83.00 ns | 80.45 ns | 92.26 ns |
+| net10.0, after | 5 | 35.83 ns | 0.63 ns | 35.97 ns | 34.71 ns | 37.65 ns |
+| net11.0, after | 5 | 35.40 ns | 0.57 ns | 35.38 ns | 34.53 ns | 37.26 ns |
+
+Four of the five pre-fix net11 launches sat at 61.5–62.3 ns. One launch sat at about 77.6 ns for every iteration, which is the neighborhood of the original 74.28 ns sample. A later six-launch run with the same harness, all tier-1, stayed at 61.4–62.9 ns. Turning Tiered PGO off made net11 stably slower (83.8 ns), so the fast samples are the PGO code, not a reason to disable it.
+
+`DOTNET_JitDisasm` with tiering and PGO off shows the same shape on both runtimes: one outer `Lock.EnterAndGetCurrentThreadId`, calls to `GetVariant` and `SetActiveVariant` (each of those takes `SwapGroup`'s own lock), and `WithFastPath` left as a call. `WithFastPath` itself is 301 bytes on both. The one hot-path difference is the store of the returned `PageEntry`. net10 copies it with two `CORINFO_HELP_ASSIGN_BYREF` helpers and three `movsq`s. net11 uses two `CORINFO_HELP_ASSIGN_REF` helpers, a `vmovdqu`, and a qword store. That is the .NET 11 struct-copy write-barrier work ([runtime#128238](https://github.com/dotnet/runtime/pull/128238), [runtime#128542](https://github.com/dotnet/runtime/pull/128542), described in the [.NET 11 performance post](https://devblogs.microsoft.com/dotnet/performance-improvements-in-net-11/)). With PGO on, tier-1 inlines `WithFastPath` and the method grows to about 2649 bytes. Those steady launches are the ~62 ns samples, a bit ahead of net10's 63.3 ns. The 74 ns figure was a slow tier, not the usual one.
+
+What both runtimes did pay for on every call was three uncontended locks: `MainBus.swapGroupLock`, then `GetVariant`'s lock, then `SetActiveVariant`'s lock. The group's dictionary is only mutated by `MainBus`, and every bus caller already holds `swapGroupLock`. `SelectSwapVariant` now calls `GetVariantNoLock` and `SetActiveVariantNoLock`. The public methods still take the group lock for direct callers. No unsafe code.
+
+After that change the five-launch means are 35.83 ns on net10 (SD 0.63) and 35.40 ns on net11 (SD 0.57), ratio 0.988. The slow cluster is gone. `DevicePageLoop` does not call this method. Three launches after the change: net10 135.74 ns (SD 2.46), net11 121.90 ns (SD 2.80), ratio 0.898, in line with the original 135.92 ns and 120.08 ns. The full suite was not rerun. Bus tests: 1041 passed.
