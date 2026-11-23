@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Storage.Tests.FileSystems;
 
+using BadMango.Emulator.Storage.FileSystems;
+
 /// <summary>
 /// Builds a ProDOS volume in memory. Boot blocks stay zero. Names are uppercase.
 /// </summary>

@@ -36,6 +36,7 @@ public static class EmudbgOptionTable
         "-f",
         "--max-cycles",
         "--seed",
+        "--export-root",
     ];
 
     private static readonly string[] FlagNames =

@@ -18,7 +18,10 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <see cref="VolumeName"/> is the ProDOS or Pascal display name, or the DOS 3.3 volume
 /// number formatted as an invariant decimal with no prefix and no leading zeros
 /// (<c>254</c>, not <c>V254</c>). DOS has no text volume name. Names are the on-disk
-/// bytes when the ProDOS lowercase bit field is clear. Lookups ignore case.
+/// bytes when the ProDOS lowercase bit field is clear. ProDOS and Pascal lookups ignore
+/// case. DOS 3.3 keeps the stored case: an exact match wins, and a case-insensitive
+/// match is used only when one catalog entry folds to the name. Several matches are
+/// <see cref="FileAccessStatus.Ambiguous"/>.
 /// </para>
 /// <para>
 /// Paths follow <see cref="AppleFileSystemPaths"/>. ProDOS is hierarchical.

@@ -6,6 +6,8 @@ namespace BadMango.Emulator.Storage.Tests.FileSystems;
 
 using System.Globalization;
 
+using BadMango.Emulator.Storage.FileSystems;
+
 /// <summary>
 /// A DOS 3.3 sector image built in the test process. No bytes are read from <c>disks/</c>.
 /// </summary>

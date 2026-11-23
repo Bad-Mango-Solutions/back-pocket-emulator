@@ -8,17 +8,20 @@ using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Devices;
 
 /// <summary>
-/// Top-level <c>disk</c> command that delegates to the offline (<c>create</c>, <c>info</c>)
-/// and runtime (<c>drives</c>, <c>insert</c>, <c>eject</c>, <c>flush</c>, <c>dump-track</c>,
-/// <c>read-sector</c>) subcommand handlers.
+/// Top-level <c>disk</c> command that delegates to the offline (<c>create</c>, <c>info</c>),
+/// runtime (<c>drives</c>, <c>insert</c>, <c>eject</c>, <c>flush</c>, <c>dump-track</c>,
+/// <c>read-sector</c>), and file-system (<c>fsinfo</c>, <c>cat</c>, <c>read</c>) subcommand handlers.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Each subcommand is also auto-registered as a standalone command handler
 /// (<c>disk-create</c>, <c>disk-info</c>, <c>disk-drives</c>, <c>disk-insert</c>,
-/// <c>disk-eject</c>, <c>disk-flush</c>, <c>disk-dump-track</c>, <c>disk-read-sector</c>)
+/// <c>disk-eject</c>, <c>disk-flush</c>, <c>disk-dump-track</c>, <c>disk-read-sector</c>,
+/// <c>disk-fsinfo</c>, <c>disk-cat</c>, <c>disk-read</c>)
 /// by the <c>DeviceDebugCommandsModule</c>. This parent exists so that the documented
 /// <c>disk &lt;subcommand&gt; ...</c> CLI syntax works out of the box.
+/// <c>fsinfo</c>, <c>cat</c> / <c>catalog</c>, and <c>read</c> are resolved from that
+/// registry. This class does not construct them.
 /// </para>
 /// <para>
 /// <c>create</c> and <c>info</c> do not require a running machine and resolve only the
@@ -55,13 +58,13 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
     /// </summary>
     /// <param name="session">The session used by <c>disk drives</c>, or <see langword="null"/> to open one from the command context.</param>
     public DiskCommand(IMachineIoSession? session)
-        : base("disk", "Author, inspect, and live-mount disk images (create / info / drives / insert / eject / flush / dump-track / read-sector)")
+        : base("disk", "Author, inspect, mount, and read disk images (create / info / drives / insert / eject / flush / dump-track / read-sector / fsinfo / cat / read)")
     {
         this.drivesCommand = new DiskDrivesCommand(session);
     }
 
     /// <inheritdoc/>
-    public override string Usage => "disk <create|info|drives|insert|eject|flush|dump-track|read-sector> [args]";
+    public override string Usage => "disk <create|info|drives|insert|eject|flush|dump-track|read-sector|fsinfo|cat|read> [args]";
 
     /// <inheritdoc/>
     public string Synopsis => this.Usage;
@@ -75,7 +78,10 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
         "'disk drives' to print every installed controller and per-drive mount state, " +
         "'disk insert' / 'disk eject' / 'disk flush' to swap removable media at runtime, " +
         "and 'disk dump-track' / 'disk read-sector' to inspect the raw nibble stream and " +
-        "decoded sector contents of a mounted drive for diagnostic purposes.";
+        "decoded sector contents of a mounted drive for diagnostic purposes. " +
+        "'disk fsinfo', 'disk cat' (alias 'disk catalog'), and 'disk read' list and read " +
+        "DOS 3.3, ProDOS, and Pascal files on a mounted drive or an offline --image. " +
+        "'disk read' does not replace the memory 'read' command.";
 
     /// <inheritdoc/>
     public IReadOnlyList<CommandOption> Options { get; } = [];
@@ -95,18 +101,26 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
         "disk flush 6:2",
         "disk dump-track 6:1 --track 0",
         "disk read-sector 6:1 0 0",
+        "disk fsinfo 6:1",
+        "disk fsinfo --image game.dsk",
+        "disk cat 6:1",
+        "disk catalog --image volume.hdv SUB",
+        "disk read 6:1 HELLO",
+        "disk read --image game.dsk NOTE --hex --raw",
     ];
 
     /// <inheritdoc/>
     public string? SideEffects =>
         "'disk create' writes a new file at the supplied path (or refuses to overwrite an " +
         "existing file). 'disk info', 'disk drives', 'disk dump-track', and 'disk read-sector' " +
-        "are read-only. 'disk insert' opens an image and mounts it on the targeted controller. " +
+        "are read-only. 'disk fsinfo' and 'disk cat' are read-only. 'disk read' is read-only " +
+        "except for --to, which writes inside the configured output root. " +
+        "'disk insert' opens an image and mounts it on the targeted controller. " +
         "'disk eject' and 'disk flush' write any dirty cached tracks back to the underlying file.";
 
     /// <inheritdoc/>
     public IReadOnlyList<string> SeeAlso { get; } =
-        ["disk-create", "disk-info", "disk-drives", "disk-insert", "disk-eject", "disk-flush", "disk-dump-track", "disk-read-sector"];
+        ["disk-create", "disk-info", "disk-drives", "disk-insert", "disk-eject", "disk-flush", "disk-dump-track", "disk-read-sector", "disk-fsinfo", "disk-cat", "disk-read"];
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
@@ -117,7 +131,7 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
         if (args.Length == 0)
         {
             return CommandResult.Error(
-                "Usage: disk <create|info|drives|insert|eject|flush|dump-track|read-sector> [args]. " +
+                "Usage: disk <create|info|drives|insert|eject|flush|dump-track|read-sector|fsinfo|cat|read> [args]. " +
                 "Try 'help disk' for details.");
         }
 
@@ -134,9 +148,23 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
             "flush" => this.flushCommand.Execute(context, subArgs),
             "dump-track" or "dumptrack" => this.dumpTrackCommand.Execute(context, subArgs),
             "read-sector" or "readsector" => this.readSectorCommand.Execute(context, subArgs),
+            "fsinfo" => ExecuteRegistered(context, "disk-fsinfo", subArgs),
+            "cat" or "catalog" => ExecuteRegistered(context, "disk-cat", subArgs),
+            "read" => ExecuteRegistered(context, "disk-read", subArgs),
             _ => CommandResult.Error(
                 $"Unknown 'disk' subcommand: '{subcommand}'. " +
-                "Use 'create', 'info', 'drives', 'insert', 'eject', 'flush', 'dump-track', or 'read-sector'."),
+                "Use 'create', 'info', 'drives', 'insert', 'eject', 'flush', 'dump-track', 'read-sector', 'fsinfo', 'cat', or 'read'."),
         };
+    }
+
+    private static CommandResult ExecuteRegistered(ICommandContext context, string name, string[] args)
+    {
+        if (!context.Dispatcher.TryGetHandler(name, out var handler) || handler is null)
+        {
+            return CommandResult.Error(
+                $"'{name}' is not registered. File-system disk commands are resolved from dependency injection.");
+        }
+
+        return handler.Execute(context, args);
     }
 }

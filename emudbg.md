@@ -20,6 +20,7 @@ Option names are case-insensitive (`--JSON` and `--json` are the same flag).
 | `--headless` | Do not load the Avalonia debug UI |
 | `--agent` | Headless, JSON, and non-interactive |
 | `--max-cycles <n>` | Default cycle budget for `run`, `run-until`, and `step` |
+| `--export-root <dir>` | Directory `disk read --to` may write into |
 | `--seed <n>` | Rejected. The machine has no seeded random-number source |
 | `-h, --help` | Show usage and exit 0 |
 
@@ -35,7 +36,19 @@ emudbg --headless --max-cycles 100000 --exec "run-until --until-cycles=1000;exit
 
 ## Commands that use the session
 
-`regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, `reset`, `abort`, and `maptrace` call the process-wide `IDebugSession`. `disk-drives --json` uses the same envelope. `run-until` accepts a PC (`$0801`), `bp`, `watch`, `mem <addr> <byte>`, and `--until-cycles=<n>`. A bad `run-until` argument is exit code 2.
+`regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, `reset`, `abort`, and `maptrace` call the process-wide `IDebugSession`. `disk drives`, `disk fsinfo`, `disk cat`, and `disk read` use the same envelope when `--json` is set or the process was started with `--json`. `run-until` accepts a PC (`$0801`), `bp`, `watch`, `mem <addr> <byte>`, and `--until-cycles=<n>`. A bad `run-until` argument is exit code 2.
+
+## Disk files
+
+`disk fsinfo`, `disk cat`, and `disk read` recognize a DOS 3.3, ProDOS, or Pascal volume. The source is a mounted `slot:drive` (`disk fsinfo 6:1`) or an offline image (`disk fsinfo --image game.dsk`) with no machine. `disk catalog` is `disk cat`. A missing path lists the volume root. A ProDOS path such as `SUB` lists that directory. DOS 3.3 and Pascal are flat.
+
+`disk read 6:1 HELLO` prints the logical file: a DOS A/I/B header is removed and the payload is trimmed to the header length. `--raw` keeps the on-disk bytes. `--hex` prints a hex dump. `--` ends options, so `disk read --image game.dsk -- -HELLO` reads a name that starts with `-`. This command does not replace the memory `read` command.
+
+Inverse catalog characters display as `\i{A}`, flashing characters as `\f{B}`, and high-bit controls (`$80`–`$9F`) as `\c{G}`. The lookup name stays the visible glyph, so lowercase DOS text such as `Hello` is read with `disk read Hello`.
+
+`--to name` writes the selected view under `--export-root`. The path must stay inside that directory. A rooted path, a `..` segment, or a symlink that leaves the root is refused. Without `--export-root`, `--to` fails.
+
+A mounted drive with unflushed track data is flushed before the catalog or file is read. If that flush fails, the command stops and names the drive. A nibble image has no file system view; the command reports that and leaves the mounted file open.
 
 `abort` shows or sets how a 65C02 treats `SignalLine.Abort`. With no argument it prints the current reaction. `abort noop` selects `NoOp` (the default: the line is ignored and an unmapped fetch still stops with STP). `abort hostbreak` selects `HostBreak` (the next instruction boundary requests a host stop and does not set STP). The command does not pulse the line. A machine reset does not clear the setting. `HostBreak` is rejected when the attached CPU is not a 65C02. With `--json`, the result is one `emudbg/v1` envelope whose payload is `{ "reaction": "NoOp" }` or `{ "reaction": "HostBreak" }`.
 

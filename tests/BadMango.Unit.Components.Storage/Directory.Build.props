@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    This support library lives under tests/ but is not a test assembly.
+    Import the repository Directory.Build.props directly so tests/Directory.Build.props
+    does not add Microsoft.NET.Test.Sdk, which would make dotnet test discover this project.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../../'))" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+</Project>

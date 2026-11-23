@@ -19,6 +19,7 @@ using System.Globalization;
 /// <param name="AgentMode">When true, implies headless + JSON + non-interactive behavior.</param>
 /// <param name="MaxCycles">Optional maximum cycle budget used by run, run-until, and step.</param>
 /// <param name="Seed">Reserved for a future seeded RNG. Parsing rejects <c>--seed</c> today.</param>
+/// <param name="ExportRoot">Directory <c>disk read --to</c> may write into, or <see langword="null"/>.</param>
 /// <remarks>
 /// Names are matched by <see cref="EmudbgOptionTable"/> using case-insensitive comparison.
 /// </remarks>
@@ -32,7 +33,8 @@ public sealed record EmudbgOptions(
     bool Headless = false,
     bool AgentMode = false,
     ulong? MaxCycles = null,
-    int? Seed = null)
+    int? Seed = null,
+    string? ExportRoot = null)
 {
     /// <summary>
     /// Gets a value indicating whether the options represent non-interactive execution.
@@ -80,6 +82,7 @@ public sealed record EmudbgOptions(
         bool headless = false;
         bool agentMode = false;
         ulong? maxCycles = null;
+        string? exportRoot = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -112,6 +115,10 @@ public sealed record EmudbgOptions(
                     }
 
                     maxCycles = parsed;
+                }
+                else if (IsName(name, "--export-root"))
+                {
+                    exportRoot = value;
                 }
                 else if (IsName(name, "--seed"))
                 {
@@ -164,7 +171,7 @@ public sealed record EmudbgOptions(
             }
         }
 
-        options = new EmudbgOptions(profile, exec, file, noBanner, showHelp, jsonOutput, headless, agentMode, maxCycles, null);
+        options = new EmudbgOptions(profile, exec, file, noBanner, showHelp, jsonOutput, headless, agentMode, maxCycles, null, exportRoot);
         return true;
     }
 

@@ -117,6 +117,42 @@ public interface IDebugOutputRenderer
     void WriteAbort(TextWriter output, AbortReceipt receipt, string text);
 
     /// <summary>
+    /// Writes file-system detection details.
+    /// </summary>
+    /// <param name="output">The writer that receives the result.</param>
+    /// <param name="payload">The detection payload.</param>
+    /// <param name="text">The human-readable listing used when JSON is off.</param>
+    /// <param name="forceJson">
+    /// When <see langword="true"/>, write the envelope even if <see cref="JsonOutput"/> is false.
+    /// <c>disk fsinfo --json</c> uses this.
+    /// </param>
+    void WriteDiskFileSystemInfo(TextWriter output, DiskFileSystemInfoPayload payload, string text, bool forceJson = false);
+
+    /// <summary>
+    /// Writes a catalog listing.
+    /// </summary>
+    /// <param name="output">The writer that receives the result.</param>
+    /// <param name="payload">The catalog payload.</param>
+    /// <param name="text">The human-readable listing used when JSON is off.</param>
+    /// <param name="forceJson">
+    /// When <see langword="true"/>, write the envelope even if <see cref="JsonOutput"/> is false.
+    /// <c>disk cat --json</c> uses this.
+    /// </param>
+    void WriteDiskCatalog(TextWriter output, DiskCatalogPayload payload, string text, bool forceJson = false);
+
+    /// <summary>
+    /// Writes one file read.
+    /// </summary>
+    /// <param name="output">The writer that receives the result.</param>
+    /// <param name="payload">The file payload.</param>
+    /// <param name="text">The human-readable rendering used when JSON is off.</param>
+    /// <param name="forceJson">
+    /// When <see langword="true"/>, write the envelope even if <see cref="JsonOutput"/> is false.
+    /// <c>disk read --json</c> uses this.
+    /// </param>
+    void WriteDiskFile(TextWriter output, DiskFilePayload payload, string text, bool forceJson = false);
+
+    /// <summary>
     /// Writes the mapping-trace state and ring.
     /// </summary>
     /// <param name="output">The writer that receives the result.</param>
