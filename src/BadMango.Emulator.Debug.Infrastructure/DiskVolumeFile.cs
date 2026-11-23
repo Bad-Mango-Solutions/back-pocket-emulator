@@ -19,10 +19,11 @@ public sealed class DiskVolumeFile
     /// <param name="location">The image path or <c>slot:drive</c>.</param>
     /// <param name="kind">The file-system kind name.</param>
     /// <param name="volumeName">The volume name, with controls escaped.</param>
-    /// <param name="path">The file that was read.</param>
+    /// <param name="path">The catalog path, with the stored case.</param>
     /// <param name="view"><c>raw</c> or <c>logical</c>.</param>
     /// <param name="data">The selected view. The constructor copies it.</param>
-    public DiskVolumeFile(string source, string location, string kind, string volumeName, string path, string view, ReadOnlyMemory<byte> data)
+    /// <param name="logicalText">Whether the logical view of this file is host text.</param>
+    public DiskVolumeFile(string source, string location, string kind, string volumeName, string path, string view, ReadOnlyMemory<byte> data, bool logicalText)
     {
         ArgumentException.ThrowIfNullOrEmpty(source);
         ArgumentException.ThrowIfNullOrEmpty(location);
@@ -37,6 +38,7 @@ public sealed class DiskVolumeFile
         this.Path = path;
         this.View = view;
         this.Data = data.ToArray();
+        this.LogicalText = logicalText;
     }
 
     /// <summary>Gets the source kind.</summary>
@@ -55,9 +57,15 @@ public sealed class DiskVolumeFile
     /// <value>The name with inverse, flashing, and control characters escaped.</value>
     public string VolumeName { get; }
 
-    /// <summary>Gets the file that was read.</summary>
-    /// <value>The path the caller requested.</value>
+    /// <summary>Gets the catalog path that matched the request.</summary>
+    /// <value>The stored path, including case chosen by an exact match or a unique case-insensitive match.</value>
     public string Path { get; }
+
+    /// <summary>Gets a value indicating whether the logical view is host text.</summary>
+    /// <value>
+    /// <see langword="true"/> for a DOS text file, a ProDOS TXT file, or a Pascal text file.
+    /// </value>
+    public bool LogicalText { get; }
 
     /// <summary>Gets the selected view.</summary>
     /// <value><c>raw</c> or <c>logical</c>.</value>

@@ -10,11 +10,26 @@ using Microsoft.Extensions.Options;
 /// Decides whether a filesystem path is inside a configured sandbox root.
 /// </summary>
 /// <remarks>
-/// Part 3 calls <see cref="EnsureAllowed"/> before mounting a disk or reading a file out of an image.
-/// An empty root list allows nothing. Symbolic links are resolved before the prefix check, including
-/// links in every existing segment, so a link inside a root cannot point at a file outside it.
-/// Resolution uses <see cref="FileSystemInfo.ResolveLinkTarget(bool)"/>. A link that cannot be
-/// resolved is denied.
+/// <para>
+/// An empty root list allows nothing. A relative path is joined to the first configured root and
+/// then checked the same way as an absolute path. It is not resolved against the process working
+/// directory.
+/// </para>
+/// <para>
+/// <c>..</c> is collapsed lexically by <see cref="Path.GetFullPath(string)"/> before any symbolic
+/// link is resolved. That is the same order .NET uses when it opens a path.
+/// </para>
+/// <para>
+/// Symbolic links are resolved with <see cref="FileSystemInfo.ResolveLinkTarget(bool)"/>, including
+/// a link in every existing segment, so a link inside a root cannot point at a file outside it.
+/// A link that cannot be resolved is denied. A hard link whose path stays inside a root is allowed.
+/// The guard cannot tell that another hard link names the same file outside the root.
+/// </para>
+/// <para>
+/// The check and the later open are separate. <c>MachineDebugSession.MountDisk</c>,
+/// <c>DiskFileSystemSupport</c> when it opens an image, and <c>DebugMcpProfileLoader</c> each open
+/// the path again after this guard returns. A link can change between the check and that open.
+/// </para>
 /// </remarks>
 public sealed class SandboxPathGuard
 {
@@ -82,7 +97,13 @@ public sealed class SandboxPathGuard
         string full;
         try
         {
-            full = Canonicalize(path);
+            string candidate = path;
+            if (!Path.IsPathRooted(candidate))
+            {
+                candidate = Path.Join(this.roots[0], candidate);
+            }
+
+            full = Canonicalize(candidate);
         }
         catch (Exception ex) when (ex is ArgumentException
             or NotSupportedException
@@ -175,9 +196,17 @@ public sealed class SandboxPathGuard
         }
 
         FileSystemInfo? final = info.ResolveLinkTarget(returnFinalTarget: true);
-        target = final?.FullName;
+        if (final is null || !PathExists(final.FullName))
+        {
+            target = null;
+            return true;
+        }
+
+        target = final.FullName;
         return true;
     }
+
+    private static bool PathExists(string path) => File.Exists(path) || Directory.Exists(path);
 
     private static string TrimTrailingSeparator(string full)
     {

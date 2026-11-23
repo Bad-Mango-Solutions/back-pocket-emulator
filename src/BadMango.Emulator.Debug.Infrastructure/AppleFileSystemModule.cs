@@ -35,6 +35,9 @@ public sealed class AppleFileSystemModule : Module
         builder.Register(static ctx => new AppleFileSystemDetector(Logger(ctx), Order(ctx.Resolve<IEnumerable<IAppleFileSystemProbe>>())))
             .As<IAppleFileSystemDetector>()
             .SingleInstance();
+        builder.Register(static ctx => new DiskFileSystemReader(ctx.Resolve<IAppleFileSystemDetector>(), Logger(ctx)))
+            .AsSelf()
+            .SingleInstance();
     }
 
     private static ILogger Logger(IComponentContext context) =>

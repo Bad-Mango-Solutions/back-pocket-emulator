@@ -16,9 +16,10 @@ using Serilog;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The open, flush, and dispose path is <see cref="DiskFileSystemSupport"/>. A mounted drive with
-/// unflushed tracks is flushed before the catalog or file is read. An offline image is disposed
-/// when the call returns. A drive's mounted image is not disposed.
+/// The open, flush, and dispose path is <see cref="DiskFileSystemSupport"/>. A read-write mounted
+/// drive with unflushed tracks is flushed before the catalog or file is read. A write-protected
+/// drive is not flushed. An offline image is disposed when the call returns. A drive's mounted
+/// image is not disposed.
 /// </para>
 /// <para>
 /// Name lookup is the file-system reader's rule: an exact match wins, and a case-insensitive match
@@ -169,9 +170,14 @@ public sealed class DiskFileSystemReader
             }
 
             FileReadResult read;
+            FileEntry? info = null;
             try
             {
                 read = fileSystem.TryReadFile(fileName, request.View);
+                if (read.Succeeded)
+                {
+                    info = fileSystem.GetFileInfo(fileName);
+                }
             }
             catch (Exception ex) when (ex is ArgumentException
                                        or InvalidOperationException
@@ -196,9 +202,10 @@ public sealed class DiskFileSystemReader
                 session.Location,
                 fileSystem.Kind.ToString(),
                 AppleCatalogName.EscapePlain(fileSystem.VolumeName),
-                fileName,
+                info?.Path ?? fileName,
                 raw ? "raw" : "logical",
-                read.Data);
+                read.Data,
+                IsLogicalText(fileSystem.Kind, info));
             error = null;
             return true;
         }
@@ -222,5 +229,21 @@ public sealed class DiskFileSystemReader
 
         error = null;
         return true;
+    }
+
+    private static bool IsLogicalText(AppleFileSystemKind kind, FileEntry? info)
+    {
+        if (info is null)
+        {
+            return false;
+        }
+
+        return kind switch
+        {
+            AppleFileSystemKind.Dos33 => info.FileType == (byte)Dos33FileType.Text,
+            AppleFileSystemKind.Prodos => info.FileType == (byte)ProdosFileType.Text,
+            AppleFileSystemKind.Pascal => info.FileType == (byte)PascalFileKind.Text,
+            _ => false,
+        };
     }
 }

@@ -12,6 +12,8 @@ using BadMango.Emulator.Debug.Infrastructure;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
 using BadMango.Emulator.Storage.FileSystems;
 
+using Microsoft.Extensions.Options;
+
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -27,6 +29,7 @@ public sealed class IoTools
     private readonly IDebugContext context;
     private readonly SandboxPathGuard sandbox;
     private readonly DiskFileSystemReader files;
+    private readonly IOptions<DebugMcpOptions> options;
     private readonly ILogger logger;
 
     /// <summary>
@@ -35,25 +38,29 @@ public sealed class IoTools
     /// <param name="io">The machine I/O session.</param>
     /// <param name="context">The debug context that owns mounted images.</param>
     /// <param name="sandbox">The sandbox that confines host paths.</param>
-    /// <param name="detector">The shared file-system detector.</param>
+    /// <param name="files">The shared disk file-system reader.</param>
+    /// <param name="options">The host options, including the file-size cap.</param>
     /// <param name="logger">The host logger.</param>
     public IoTools(
         IMachineIoSession io,
         IDebugContext context,
         SandboxPathGuard sandbox,
-        IAppleFileSystemDetector detector,
+        DiskFileSystemReader files,
+        IOptions<DebugMcpOptions> options,
         ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(io);
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(sandbox);
-        ArgumentNullException.ThrowIfNull(detector);
+        ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
         this.io = io;
         this.context = context;
         this.sandbox = sandbox;
+        this.files = files;
+        this.options = options;
         this.logger = logger.ForContext<IoTools>();
-        this.files = new DiskFileSystemReader(detector, this.logger);
     }
 
     /// <summary>
@@ -106,15 +113,15 @@ public sealed class IoTools
     /// <param name="path">The image path. <c>..</c>, a path outside the roots, and a symlink that leaves the roots are rejected.</param>
     /// <param name="slot">The peripheral slot. Defaults to 6.</param>
     /// <param name="drive">The 1-based drive. Defaults to 1.</param>
-    /// <param name="writeProtect">Whether to open the image read-only.</param>
+    /// <param name="writeProtect">Whether to open the image read-only. Defaults to <see langword="true"/>.</param>
     /// <returns>An emudbg envelope whose payload is the mount receipt, or an error envelope.</returns>
     [McpServerTool(Name = "mount_disk", UseStructuredContent = true)]
-    [Description("Mount a disk image on a drive. The path must stay inside a configured sandbox root. Slot defaults to 6 and drive defaults to 1.")]
+    [Description("Mount a disk image on a drive. writeProtect defaults to true, so a caller must set it false to allow writes. Slot defaults to 6 and drive defaults to 1. A relative path is resolved against the first configured sandbox root.")]
     public object MountDisk(
-        [Description("Disk image path inside a configured sandbox root.")] string path,
+        [Description("Disk image path. A relative path is resolved against the first configured sandbox root.")] string path,
         [Description("Peripheral slot, 1 through 7. Defaults to 6.")] int slot = 6,
         [Description("Drive number, starting at 1. Defaults to 1.")] int drive = 1,
-        [Description("Open the image read-only when true.")] bool writeProtect = false)
+        [Description("Open the image read-only when true. Defaults to true.")] bool writeProtect = true)
     {
         if (!this.sandbox.TryGetAllowedPath(path, out string allowed))
         {
@@ -129,7 +136,6 @@ public sealed class IoTools
         }
         catch (Exception ex) when (ex is InvalidOperationException
             or ArgumentException
-            or ArgumentOutOfRangeException
             or IOException
             or UnauthorizedAccessException
             or NotSupportedException)
@@ -147,9 +153,9 @@ public sealed class IoTools
     /// <param name="path">The directory to list. Omit it to list the volume root.</param>
     /// <returns>An emudbg envelope whose payload is the catalog, or an error envelope.</returns>
     [McpServerTool(Name = "disk_list_files", UseStructuredContent = true)]
-    [Description("List files on a mounted drive or a sandboxed disk image. Display names use the same \\c{X}, \\i{X}, and \\f{X} escaping as disk cat.")]
+    [Description("List files on a mounted drive or a sandboxed disk image. A relative image path is resolved against the first configured sandbox root. Display names use the same \\c{X}, \\i{X}, and \\f{X} escaping as disk cat. Reading a dirty read-write drive flushes it to the host image. A write-protected drive is not flushed.")]
     public object DiskListFiles(
-        [Description("Offline image path inside a configured sandbox root. Omit to use a mounted drive.")] string? image = null,
+        [Description("Offline image path. A relative path is resolved against the first configured sandbox root. Omit to use a mounted drive.")] string? image = null,
         [Description("Peripheral slot of a mounted drive. Required with drive when image is omitted.")] int? slot = null,
         [Description("1-based drive of a mounted drive. Required with slot when image is omitted.")] int? drive = null,
         [Description("Directory to list. Omit, or pass / , to list the volume root.")] string? path = null)
@@ -173,19 +179,22 @@ public sealed class IoTools
     }
 
     /// <summary>
-    /// Reads one file and returns its text and base64 bytes.
+    /// Reads one file and returns either host text or base64.
     /// </summary>
     /// <param name="filename">The volume-relative file name.</param>
     /// <param name="image">An offline image inside a sandbox root. Omit it to use a mounted drive.</param>
     /// <param name="slot">The peripheral slot of a mounted drive.</param>
     /// <param name="drive">The 1-based drive of a mounted drive.</param>
     /// <param name="raw">Whether to return on-disk bytes. The default is the logical view.</param>
-    /// <returns>An emudbg envelope whose payload contains text and base64, or an error envelope. The tool does not write a host file.</returns>
+    /// <returns>
+    /// An emudbg envelope whose payload has one encoding, or an error envelope when the file is missing
+    /// or larger than <see cref="DebugMcpOptions.MaxDiskFileBytes"/>. The tool does not write a host file.
+    /// </returns>
     [McpServerTool(Name = "disk_read_file", UseStructuredContent = true)]
-    [Description("Read one file from a mounted drive or a sandboxed disk image. Returns host text and base64 of the selected view. Does not write a host file.")]
+    [Description("Read one file from a mounted drive or a sandboxed disk image. A DOS text, ProDOS TXT, or Pascal text file in the logical view returns text; DOS text stops at the first $00. Every other file, and raw=true, returns base64. The encoding field is \"text\" or \"base64\". A file larger than DebugMcp:MaxDiskFileBytes (default 1 MiB) returns an error. A relative image path is resolved against the first configured sandbox root. Reading a dirty read-write drive flushes it to the host image. A write-protected drive is not flushed. Does not write a new host file.")]
     public object DiskReadFile(
         [Description("Volume-relative file name. DOS lookup is exact, then a unique case-insensitive match.")] string filename,
-        [Description("Offline image path inside a configured sandbox root. Omit to use a mounted drive.")] string? image = null,
+        [Description("Offline image path. A relative path is resolved against the first configured sandbox root. Omit to use a mounted drive.")] string? image = null,
         [Description("Peripheral slot of a mounted drive. Required with drive when image is omitted.")] int? slot = null,
         [Description("1-based drive of a mounted drive. Required with slot when image is omitted.")] int? drive = null,
         [Description("Return on-disk bytes, including a DOS A/I/B header, when true. The default is the logical view.")] bool raw = false)
@@ -212,6 +221,14 @@ public sealed class IoTools
                 return this.Fail("disk_read_file", error ?? "Cannot read the file system.");
             }
 
+            ReadOnlyMemory<byte> bytes = PresentedBytes(file, raw);
+            int cap = this.options.Value.MaxDiskFileBytes;
+            if (bytes.Length > cap)
+            {
+                return this.Fail("disk_read_file", $"File is {bytes.Length} bytes, which exceeds the {cap} byte limit.");
+            }
+
+            bool asText = !raw && file.LogicalText;
             var receipt = new DiskReadFileReceipt(
                 file.Source,
                 file.Location,
@@ -219,15 +236,27 @@ public sealed class IoTools
                 file.VolumeName,
                 file.Path,
                 file.View,
-                file.Data.Length,
-                DiskFileSystemReader.ToHostText(file.Data.Span),
-                Convert.ToBase64String(file.Data.Span));
+                bytes.Length,
+                asText ? "text" : "base64",
+                asText ? DiskFileSystemReader.ToHostText(bytes.Span) : null,
+                asText ? null : Convert.ToBase64String(bytes.Span));
             return DebugEnvelope<DiskReadFileReceipt>.Create(receipt);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException)
         {
             return this.Fail("disk_read_file", ex.Message, ex);
         }
+    }
+
+    private static ReadOnlyMemory<byte> PresentedBytes(DiskVolumeFile file, bool raw)
+    {
+        if (raw || !file.LogicalText || file.Kind != nameof(AppleFileSystemKind.Dos33))
+        {
+            return file.Data;
+        }
+
+        int zero = file.Data.Span.IndexOf((byte)0);
+        return zero < 0 ? file.Data : file.Data[..zero];
     }
 
     private static bool TrySlotDrive(int? slot, int? drive, out string? slotDrive, out string? error)
