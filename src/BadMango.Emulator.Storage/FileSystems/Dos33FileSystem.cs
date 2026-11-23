@@ -44,6 +44,9 @@ using Serilog;
 /// The catalog and the file bytes are cached for the lifetime of the reader. Reopen the
 /// volume after the image changes. Name lookup uses
 /// <see cref="StringComparison.OrdinalIgnoreCase"/>, which DOS itself does not.
+/// Catalog bytes normally have the high bit set. A clear high bit is inverse or flashing.
+/// <see cref="FileEntry.Name"/> is the visible glyph and <see cref="FileEntry.DisplayName"/>
+/// escapes those characters (<see cref="AppleCatalogName"/>).
 /// Media exceptions are not caught.
 /// </para>
 /// </remarks>
@@ -167,27 +170,8 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         }
     }
 
-    private static string? DecodeName(ReadOnlySpan<byte> bytes)
-    {
-        Span<char> chars = stackalloc char[bytes.Length];
-        var length = bytes.Length;
-        for (var i = 0; i < bytes.Length; i++)
-        {
-            chars[i] = (char)(bytes[i] & 0x7F);
-        }
-
-        while (length > 0 && chars[length - 1] == ' ')
-        {
-            length--;
-        }
-
-        if (length == 0)
-        {
-            return null;
-        }
-
-        return new string(chars[..length]);
-    }
+    private static bool TryDecodeName(ReadOnlySpan<byte> bytes, out string name, out string displayName) =>
+        AppleCatalogName.TryDecodeDos(bytes, out name, out displayName);
 
     private static LocatedFile? Find(CatalogSnapshot catalog, string name) =>
         catalog.Files.FirstOrDefault(file => file.Entry.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
@@ -357,8 +341,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
                 continue;
             }
 
-            var name = DecodeName(entry.Slice(Dos33Layout.CatalogEntry.NameOffset, Dos33Layout.CatalogEntry.NameLength));
-            if (name is null)
+            if (!TryDecodeName(entry.Slice(Dos33Layout.CatalogEntry.NameOffset, Dos33Layout.CatalogEntry.NameLength), out var name, out var displayName))
             {
                 continue;
             }
@@ -371,7 +354,8 @@ public sealed class Dos33FileSystem : IAppleFileSystem
                 entry[Dos33Layout.CatalogEntry.SectorOffset],
                 typeByte,
                 allocated,
-                name));
+                name,
+                displayName));
         }
     }
 
@@ -394,7 +378,8 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             Dos33Layout.SectorSize,
             (pending.TypeByte & Dos33Layout.LockedMask) != 0,
             false,
-            FileStorageKind.DosTrackSectorList);
+            FileStorageKind.DosTrackSectorList,
+            pending.DisplayName);
         return new LocatedFile(entry, walk.Pairs, walk.LastIndex, walk.Failure);
     }
 
@@ -538,7 +523,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     private void ReadIntoBuffer(int track, int sector) =>
         this.sectors.ReadSector(track, sector, this.sectorBuffer);
 
-    private readonly record struct PendingEntry(byte TsTrack, byte TsSector, byte TypeByte, ushort AllocatedUnits, string Name);
+    private readonly record struct PendingEntry(byte TsTrack, byte TsSector, byte TypeByte, ushort AllocatedUnits, string Name, string DisplayName);
 
     private readonly record struct TrackSectorPair(int Index, byte Track, byte Sector);
 

@@ -59,7 +59,36 @@ public sealed class Dos33ImageBuilder
     /// <exception cref="ArgumentException">If the name or sector list is not usable.</exception>
     public Dos33ImageBuilder AddFile(string name, Dos33FileType fileType, bool locked, bool deleted, IReadOnlyList<byte[]?> dataSectors)
     {
-        this.files.Add(new FileSpec(NormalizeName(name), fileType, locked, deleted, CopySectors(dataSectors)));
+        this.files.Add(new FileSpec(NormalizeName(name), fileType, locked, deleted, CopySectors(dataSectors), null));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a catalog entry whose name bytes are written as given, including a clear high bit.
+    /// </summary>
+    /// <param name="catalogName">One to 30 on-disk name bytes. Trailing <c>$A0</c> padding is added.</param>
+    /// <param name="fileType">Type without the lock bit.</param>
+    /// <param name="locked">Whether to set the lock bit at entry offset 2.</param>
+    /// <param name="deleted">Whether the track byte is <c>$FF</c>. The list and data are still written.</param>
+    /// <param name="dataSectors">
+    /// On-disk sector bodies in list order. A <see langword="null"/> entry is a sparse hole.
+    /// </param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="ArgumentException">If the name bytes are empty, longer than 30, or only padding.</exception>
+    public Dos33ImageBuilder AddCatalogName(ReadOnlySpan<byte> catalogName, Dos33FileType fileType, bool locked, bool deleted, IReadOnlyList<byte[]?> dataSectors)
+    {
+        var copy = catalogName.ToArray();
+        if (copy.Length is < 1 or > Dos33Layout.CatalogEntry.NameLength)
+        {
+            throw new ArgumentException("A DOS catalog name is 1 to 30 bytes.", nameof(catalogName));
+        }
+
+        if (!AppleCatalogName.TryDecodeDos(copy, out var name, out _))
+        {
+            throw new ArgumentException("The catalog name is empty after padding is removed.", nameof(catalogName));
+        }
+
+        this.files.Add(new FileSpec(name, fileType, locked, deleted, CopySectors(dataSectors), copy));
         return this;
     }
 
@@ -152,7 +181,7 @@ public sealed class Dos33ImageBuilder
                 entry[Dos33Layout.CatalogEntry.TrackOffset] = file.Spec.Deleted ? Dos33Layout.DeletedTrack : (byte)file.Ts.Track;
                 entry[Dos33Layout.CatalogEntry.SectorOffset] = (byte)file.Ts.Sector;
                 entry[Dos33Layout.CatalogEntry.TypeOffset] = (byte)((byte)file.Spec.FileType | (file.Spec.Locked ? Dos33Layout.LockedMask : 0));
-                WriteName(entry.Slice(Dos33Layout.CatalogEntry.NameOffset, Dos33Layout.CatalogEntry.NameLength), file.Spec.Name);
+                WriteName(entry.Slice(Dos33Layout.CatalogEntry.NameOffset, Dos33Layout.CatalogEntry.NameLength), file.Spec);
                 if (file.Spec.Deleted)
                 {
                     entry[Dos33Layout.CatalogEntry.OriginalTrackOffset] = (byte)file.Ts.Track;
@@ -281,9 +310,16 @@ public sealed class Dos33ImageBuilder
         padded.CopyTo(image.AsSpan(offset));
     }
 
-    private void WriteName(Span<byte> destination, string name)
+    private void WriteName(Span<byte> destination, FileSpec file)
     {
         destination.Fill(Dos33Layout.CatalogEntry.HighBitSpace);
+        if (file.CatalogName is byte[] raw)
+        {
+            raw.CopyTo(destination);
+            return;
+        }
+
+        var name = file.Name;
         for (var i = 0; i < name.Length; i++)
         {
             destination[i] = (byte)(name[i] | 0x80);
@@ -351,16 +387,19 @@ public sealed class Dos33ImageBuilder
 
     private sealed class FileSpec
     {
-        public FileSpec(string name, Dos33FileType fileType, bool locked, bool deleted, byte[]?[] sectors)
+        public FileSpec(string name, Dos33FileType fileType, bool locked, bool deleted, byte[]?[] sectors, byte[]? catalogName)
         {
             this.Name = name;
             this.FileType = fileType;
             this.Locked = locked;
             this.Deleted = deleted;
             this.Sectors = sectors;
+            this.CatalogName = catalogName;
         }
 
         public string Name { get; }
+
+        public byte[]? CatalogName { get; }
 
         public Dos33FileType FileType { get; }
 

@@ -20,6 +20,11 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <see cref="AppleFileSystemPaths"/>.
 /// </para>
 /// <para>
+/// <see cref="DisplayName"/> is the host form of <see cref="Name"/>. DOS 3.3 inverse and
+/// flashing catalog bytes are escaped there (<see cref="AppleCatalogName"/>). ProDOS and
+/// Pascal names are already printable, so <see cref="DisplayName"/> matches <see cref="Name"/>.
+/// </para>
+/// <para>
 /// <see cref="FileType"/> is the catalog type with the DOS lock bit removed
 /// (<see cref="Dos33Layout.FileTypeMask"/>, <see cref="Dos33FileType"/>). ProDOS file types
 /// are <see cref="ProdosFileType"/>, not the <see cref="ProdosStorageType"/> nibble.
@@ -58,6 +63,10 @@ public sealed record FileEntry
     /// <param name="isLocked">Whether the catalog marks the file locked.</param>
     /// <param name="isDirectory">Whether the entry is a ProDOS subdirectory.</param>
     /// <param name="storageKind">How the bytes are stored.</param>
+    /// <param name="displayName">
+    /// Host form of <paramref name="name"/>. <see langword="null"/> or empty uses <paramref name="name"/>.
+    /// DOS inverse and flashing names pass the escaped form from <see cref="AppleCatalogName"/>.
+    /// </param>
     /// <exception cref="ArgumentException">If <paramref name="path"/> or <paramref name="name"/> is empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException">If a size is negative or <paramref name="unitSize"/> is not positive.</exception>
     public FileEntry(
@@ -70,7 +79,8 @@ public sealed record FileEntry
         int unitSize,
         bool isLocked,
         bool isDirectory,
-        FileStorageKind storageKind)
+        FileStorageKind storageKind,
+        string? displayName = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentException.ThrowIfNullOrEmpty(name);
@@ -80,6 +90,7 @@ public sealed record FileEntry
 
         this.Path = path;
         this.Name = name;
+        this.DisplayName = string.IsNullOrEmpty(displayName) ? name : displayName;
         this.FileType = fileType;
         this.AuxType = auxType;
         this.EofBytes = eofBytes;
@@ -97,6 +108,13 @@ public sealed record FileEntry
     /// <summary>Gets the file or directory name.</summary>
     /// <value>The last segment of <see cref="Path"/>.</value>
     public string Name { get; }
+
+    /// <summary>Gets the host form of <see cref="Name"/>.</summary>
+    /// <value>
+    /// The name with DOS inverse and flashing characters escaped, or <see cref="Name"/> when
+    /// the catalog has no such characters.
+    /// </value>
+    public string DisplayName { get; }
 
     /// <summary>Gets the catalog file-type byte.</summary>
     /// <value>The type. The DOS lock bit is reported by <see cref="IsLocked"/> instead.</value>

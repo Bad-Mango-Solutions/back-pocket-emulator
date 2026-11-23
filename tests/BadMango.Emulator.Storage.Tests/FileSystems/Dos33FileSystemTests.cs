@@ -59,6 +59,7 @@ public class Dos33FileSystemTests
             Assert.That(actual.IsDirectory, Is.False, expected.Name);
             Assert.That(actual.StorageKind, Is.EqualTo(FileStorageKind.DosTrackSectorList), expected.Name);
             Assert.That(actual.Path, Is.EqualTo(expected.Name), expected.Name);
+            Assert.That(actual.DisplayName, Is.EqualTo(expected.Name), expected.Name);
         }
 
         var again = fs.ListDirectory("/");
@@ -813,6 +814,29 @@ public class Dos33FileSystemTests
         Assert.That(fs.ListDirectory(null).Succeeded, Is.True);
         var error = Assert.Throws<IOException>(() => fs.TryReadFile("HELLO", FileReadView.Raw));
         Assert.That(error!.Message, Is.EqualTo("failed data sector"));
+    }
+
+    /// <summary>
+    /// A clear high bit in a catalog name is inverse or flashing, and the host name escapes it.
+    /// </summary>
+    [Test]
+    public void Catalog_EscapesInverseAndFlashingNames()
+    {
+        byte[] rawName = [0x01, 0x42, 0xC3];
+        var builder = new Dos33ImageBuilder();
+        builder.AddCatalogName(rawName, Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0xC8 } });
+        var fixture = builder.Build();
+        Assume.That(AppleCatalogName.TryDecodeDos(rawName, out var glyph, out var display), Is.True);
+        Assume.That(glyph, Is.EqualTo("ABC"));
+        Assume.That(display, Is.EqualTo("\\i{A}\\f{B}C"));
+
+        var listing = Open(fixture).ListDirectory(null);
+
+        Assert.That(listing.Succeeded, Is.True);
+        Assert.That(listing.Entries, Has.Count.EqualTo(1));
+        Assert.That(listing.Entries[0].Name, Is.EqualTo("ABC"));
+        Assert.That(listing.Entries[0].DisplayName, Is.EqualTo("\\i{A}\\f{B}C"));
+        Assert.That(listing.Entries[0].Path, Is.EqualTo("ABC"));
     }
 
     private static void AssertLogical(Dos33FileSystem fs, Dos33Fixture fixture, string name, byte[] expected)
