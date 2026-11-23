@@ -11,7 +11,7 @@ namespace BadMango.Emulator.Storage.Media;
 /// Mirrors the per-drive debug surface required by PRD §6.2 FR-D10:
 /// <c>motor</c>, <c>phase</c>, <c>quarterTrack</c>, <c>selected</c>, <c>writeProtect</c>,
 /// <c>mountedImagePath</c>, plus the inserted medium's <see cref="DiskGeometry"/> so the
-/// debug-console <c>disk list</c> command (PRD §6.5 FR-DC3) can surface track / sector
+/// debug-console <c>disk drives</c> command (PRD §6.5 FR-DC3) can surface track / sector
 /// counts and on-disk sector ordering without re-opening the image.
 /// </remarks>
 /// <param name="Selected">Whether this drive is the currently selected drive on the controller.</param>

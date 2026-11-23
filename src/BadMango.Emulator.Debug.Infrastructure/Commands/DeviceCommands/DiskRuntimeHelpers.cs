@@ -13,7 +13,7 @@ using BadMango.Emulator.Storage.Media;
 
 /// <summary>
 /// Helpers shared by the runtime <c>disk</c> subcommands
-/// (<see cref="DiskListCommand"/>, <see cref="DiskInsertCommand"/>,
+/// (<see cref="DiskDrivesCommand"/>, <see cref="DiskInsertCommand"/>,
 /// <see cref="DiskEjectCommand"/>, <see cref="DiskFlushCommand"/>)
 /// and by <see cref="BadMango.Emulator.Debug.Infrastructure.Commands.SlotCommand"/> for slot-manager lookup.
 /// </summary>

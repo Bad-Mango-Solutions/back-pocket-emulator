@@ -9,13 +9,13 @@ using BadMango.Emulator.Devices;
 
 /// <summary>
 /// Top-level <c>disk</c> command that delegates to the offline (<c>create</c>, <c>info</c>)
-/// and runtime (<c>list</c>, <c>insert</c>, <c>eject</c>, <c>flush</c>, <c>dump-track</c>,
+/// and runtime (<c>drives</c>, <c>insert</c>, <c>eject</c>, <c>flush</c>, <c>dump-track</c>,
 /// <c>read-sector</c>) subcommand handlers.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Each subcommand is also auto-registered as a standalone command handler
-/// (<c>disk-create</c>, <c>disk-info</c>, <c>disk-list</c>, <c>disk-insert</c>,
+/// (<c>disk-create</c>, <c>disk-info</c>, <c>disk-drives</c>, <c>disk-insert</c>,
 /// <c>disk-eject</c>, <c>disk-flush</c>, <c>disk-dump-track</c>, <c>disk-read-sector</c>)
 /// by the <c>DeviceDebugCommandsModule</c>. This parent exists so that the documented
 /// <c>disk &lt;subcommand&gt; ...</c> CLI syntax works out of the box.
@@ -23,7 +23,7 @@ using BadMango.Emulator.Devices;
 /// <para>
 /// <c>create</c> and <c>info</c> do not require a running machine and resolve only the
 /// <see cref="Storage.Formats.DiskImageFactory"/> and <see cref="IDebugPathResolver"/>
-/// from the supplied context. <c>list</c>, <c>insert</c>, <c>eject</c>, <c>flush</c>,
+/// from the supplied context. <c>drives</c>, <c>insert</c>, <c>eject</c>, <c>flush</c>,
 /// <c>dump-track</c>, and <c>read-sector</c> operate on the live
 /// <see cref="Bus.Interfaces.ISlotManager"/> exposed via
 /// <see cref="IDebugContext.Machine"/> and therefore require a running machine.
@@ -34,7 +34,7 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
 {
     private readonly DiskCreateCommand createCommand = new();
     private readonly DiskInfoCommand infoCommand = new();
-    private readonly DiskListCommand listCommand;
+    private readonly DiskDrivesCommand drivesCommand;
     private readonly DiskInsertCommand insertCommand = new();
     private readonly DiskEjectCommand ejectCommand = new();
     private readonly DiskFlushCommand flushCommand = new();
@@ -53,15 +53,15 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
     /// Initializes a new instance of the <see cref="DiskCommand"/> class that lists disks
     /// through an existing session.
     /// </summary>
-    /// <param name="session">The session used by <c>disk list</c>, or <see langword="null"/> to open one from the command context.</param>
+    /// <param name="session">The session used by <c>disk drives</c>, or <see langword="null"/> to open one from the command context.</param>
     public DiskCommand(IMachineIoSession? session)
-        : base("disk", "Author, inspect, and live-mount disk images (create / info / list / insert / eject / flush / dump-track / read-sector)")
+        : base("disk", "Author, inspect, and live-mount disk images (create / info / drives / insert / eject / flush / dump-track / read-sector)")
     {
-        this.listCommand = new DiskListCommand(session);
+        this.drivesCommand = new DiskDrivesCommand(session);
     }
 
     /// <inheritdoc/>
-    public override string Usage => "disk <create|info|list|insert|eject|flush|dump-track|read-sector> [args]";
+    public override string Usage => "disk <create|info|drives|insert|eject|flush|dump-track|read-sector> [args]";
 
     /// <inheritdoc/>
     public string Synopsis => this.Usage;
@@ -72,7 +72,7 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
         "that runtime controllers use, so authored images round-trip through the same code " +
         "path. Use 'disk create' to write a new fixture image, 'disk info' to report the " +
         "format/geometry/container metadata of an existing image without mounting it, " +
-        "'disk list' to print every installed controller and per-drive mount state, " +
+        "'disk drives' to print every installed controller and per-drive mount state, " +
         "'disk insert' / 'disk eject' / 'disk flush' to swap removable media at runtime, " +
         "and 'disk dump-track' / 'disk read-sector' to inspect the raw nibble stream and " +
         "decoded sector contents of a mounted drive for diagnostic purposes.";
@@ -88,7 +88,7 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
         "disk create boot.dsk --format dos33 --bootable master.dsk",
         "disk create huge.hdv --size 32M --format prodos --volume-name BIG",
         "disk info game.2mg",
-        "disk list",
+        "disk drives",
         "disk insert 6:1 game.dsk",
         "disk insert 6:2 library://disks/utilities.dsk --write-protect",
         "disk eject 6:1",
@@ -100,13 +100,13 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
     /// <inheritdoc/>
     public string? SideEffects =>
         "'disk create' writes a new file at the supplied path (or refuses to overwrite an " +
-        "existing file). 'disk info', 'disk list', 'disk dump-track', and 'disk read-sector' " +
+        "existing file). 'disk info', 'disk drives', 'disk dump-track', and 'disk read-sector' " +
         "are read-only. 'disk insert' opens an image and mounts it on the targeted controller. " +
         "'disk eject' and 'disk flush' write any dirty cached tracks back to the underlying file.";
 
     /// <inheritdoc/>
     public IReadOnlyList<string> SeeAlso { get; } =
-        ["disk-create", "disk-info", "disk-list", "disk-insert", "disk-eject", "disk-flush", "disk-dump-track", "disk-read-sector"];
+        ["disk-create", "disk-info", "disk-drives", "disk-insert", "disk-eject", "disk-flush", "disk-dump-track", "disk-read-sector"];
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
@@ -117,7 +117,7 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
         if (args.Length == 0)
         {
             return CommandResult.Error(
-                "Usage: disk <create|info|list|insert|eject|flush|dump-track|read-sector> [args]. " +
+                "Usage: disk <create|info|drives|insert|eject|flush|dump-track|read-sector> [args]. " +
                 "Try 'help disk' for details.");
         }
 
@@ -128,7 +128,7 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
         {
             "create" => this.createCommand.Execute(context, subArgs),
             "info" => this.infoCommand.Execute(context, subArgs),
-            "list" => this.listCommand.Execute(context, subArgs),
+            "drives" => this.drivesCommand.Execute(context, subArgs),
             "insert" => this.insertCommand.Execute(context, subArgs),
             "eject" => this.ejectCommand.Execute(context, subArgs),
             "flush" => this.flushCommand.Execute(context, subArgs),
@@ -136,7 +136,7 @@ public sealed class DiskCommand : CommandHandlerBase, ICommandHelp
             "read-sector" or "readsector" => this.readSectorCommand.Execute(context, subArgs),
             _ => CommandResult.Error(
                 $"Unknown 'disk' subcommand: '{subcommand}'. " +
-                "Use 'create', 'info', 'list', 'insert', 'eject', 'flush', 'dump-track', or 'read-sector'."),
+                "Use 'create', 'info', 'drives', 'insert', 'eject', 'flush', 'dump-track', or 'read-sector'."),
         };
     }
 }
