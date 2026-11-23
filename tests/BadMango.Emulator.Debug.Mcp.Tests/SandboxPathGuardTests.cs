@@ -105,6 +105,35 @@ public sealed class SandboxPathGuardTests
     }
 
     /// <summary>
+    /// A relative path is joined to the first root. It is not resolved from the process directory.
+    /// </summary>
+    [Test]
+    public void TryGetAllowedPath_RelativePath_UsesTheFirstRoot()
+    {
+        string root = Directory.CreateTempSubdirectory("mcp-sandbox-").FullName;
+        string other = Directory.CreateTempSubdirectory("mcp-other-root-").FullName;
+        try
+        {
+            var guard = new SandboxPathGuard(Options.Create(new DebugMcpOptions
+            {
+                SandboxRoots = [root, other],
+            }));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(guard.TryGetAllowedPath("note.do", out string allowed), Is.True);
+                Assert.That(allowed, Is.EqualTo(Path.GetFullPath(Path.Join(root, "note.do"))));
+                Assert.That(guard.IsAllowed("../outside.do"), Is.False);
+            });
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(other, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// A symbolic link that sits inside a root and points outside it is denied.
     /// </summary>
     [Test]

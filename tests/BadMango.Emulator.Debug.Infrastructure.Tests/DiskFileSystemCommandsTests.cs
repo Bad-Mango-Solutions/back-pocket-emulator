@@ -525,6 +525,37 @@ public sealed class DiskFileSystemCommandsTests
         controller.Verify(item => item.Flush(0), Times.Once);
     }
 
+    /// <summary>A write-protected drive is not flushed, even when the snapshot reports dirty tracks.</summary>
+    [Test]
+    public void Cat_WriteProtectedDrive_DoesNotFlush()
+    {
+        var path = this.Write(this.DosVolume().Image, "protected.do");
+        this.context.MountedDisks.Track(6, 0, new DiskImageFactory().Open(path, forceReadOnly: true));
+        var card = new Mock<ISlotCard>();
+        var controller = card.As<IDiskController>();
+        card.SetupGet(item => item.Name).Returns("Disk II Controller");
+        controller.SetupGet(item => item.DriveCount).Returns(1);
+        controller.Setup(item => item.GetDriveSnapshot(0)).Returns(new DriveSnapshot(
+            Selected: true,
+            MotorOn: false,
+            PhaseLatch: 0,
+            QuarterTrack: 0,
+            WriteProtect: true,
+            HasMedia: true,
+            MountedImagePath: path,
+            UnflushedChanges: true));
+        var slots = new Mock<ISlotManager>();
+        slots.Setup(item => item.GetCard(6)).Returns(card.Object);
+        var machine = new Mock<IMachine>();
+        machine.Setup(item => item.GetComponent<ISlotManager>()).Returns(slots.Object);
+        this.context.AttachMachine(machine.Object);
+
+        var result = this.catalog.Execute(this.context, ["6:1"]);
+
+        Assert.That(result.Success, Is.True, result.Message);
+        controller.Verify(item => item.Flush(It.IsAny<int>()), Times.Never);
+    }
+
     /// <summary>
     /// DOS keeps stored case. <c>disk read</c> hits an exact lowercase name, falls back
     /// when the fold is unique, and reports both candidates when it is not.
@@ -547,8 +578,10 @@ public sealed class DiskFileSystemCommandsTests
         {
             Assert.That(exact.Success, Is.True, exact.Message);
             Assert.That(exactOutput, Does.Contain("22"));
+            Assert.That(exactOutput, Does.Contain("hello"));
             Assert.That(fallback.Success, Is.True, fallback.Message);
             Assert.That(fallbackOutput, Does.Contain("11"));
+            Assert.That(fallbackOutput, Does.Contain("HELLO"));
             Assert.That(ambiguous.Success, Is.False);
             Assert.That(ambiguous.Message, Does.Contain("HELLO"));
             Assert.That(ambiguous.Message, Does.Contain("hello"));

@@ -4,8 +4,10 @@
 
 namespace BadMango.Emulator.Debug.Mcp.Tests;
 
+using System.Globalization;
 using System.IO.Pipelines;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 using BadMango.Emulator.Debug.Mcp;
@@ -72,7 +74,7 @@ public sealed class IoMcpClientTests
     }
 
     /// <summary>
-    /// A DOS image can be mounted and read, and the same file can be read from the image path.
+    /// A DOS image mounts write-protected by default, list and read leave its bytes unchanged, and a relative image path resolves against the sandbox root.
     /// </summary>
     /// <returns>A task that completes when the assertions finish.</returns>
     [Test]
@@ -86,13 +88,12 @@ public sealed class IoMcpClientTests
             await using McpSession session = await McpSession.StartAsync(sandbox);
             await session.CallAsync("load_profile", new Dictionary<string, object?> { ["name"] = "mcp-disk" });
 
-            string[] before = Directory.GetFiles(sandbox);
+            string hashBefore = Hash(image);
             JsonElement mounted = await session.CallAsync("mount_disk", new Dictionary<string, object?>
             {
                 ["path"] = image,
                 ["slot"] = 6,
                 ["drive"] = 1,
-                ["writeProtect"] = true,
             });
             JsonElement catalog = await session.CallAsync("disk_list_files", new Dictionary<string, object?>
             {
@@ -107,8 +108,19 @@ public sealed class IoMcpClientTests
             });
             JsonElement fromImage = await session.CallAsync("disk_read_file", new Dictionary<string, object?>
             {
+                ["image"] = "note.do",
+                ["filename"] = "NOTE",
+            });
+            JsonElement binary = await session.CallAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = image,
+                ["filename"] = "CODE",
+            });
+            JsonElement raw = await session.CallAsync("disk_read_file", new Dictionary<string, object?>
+            {
                 ["image"] = image,
                 ["filename"] = "NOTE",
+                ["raw"] = true,
             });
 
             Assert.Multiple(() =>
@@ -116,19 +128,26 @@ public sealed class IoMcpClientTests
                 Assert.That(mounted.GetProperty("slot").GetInt32(), Is.EqualTo(6));
                 Assert.That(mounted.GetProperty("drive").GetInt32(), Is.EqualTo(1));
                 Assert.That(mounted.GetProperty("writeProtect").GetBoolean(), Is.True);
+                Assert.That(session.IsDriveWriteProtected(6, 0), Is.True);
                 Assert.That(mounted.GetProperty("path").GetString(), Is.EqualTo(Path.GetFullPath(image)));
                 Assert.That(catalog.GetProperty("kind").GetString(), Is.EqualTo("Dos33"));
                 Assert.That(catalog.GetProperty("source").GetString(), Is.EqualTo("drive"));
                 Assert.That(catalog.GetProperty("volumeName").GetString(), Is.EqualTo("254"));
                 Assert.That(Names(catalog), Does.Contain("NOTE"));
                 Assert.That(string.Join('\n', DisplayNames(catalog)), Does.Contain("\\i{"));
-                Assert.That(fromDrive.GetProperty("text").GetString(), Does.StartWith("HI\n"));
-                Assert.That(Decode(fromDrive)[..3], Is.EqualTo(new byte[] { 0xC8, 0xC9, 0x8D }));
+                Assert.That(fromDrive.GetProperty("encoding").GetString(), Is.EqualTo("text"));
+                Assert.That(fromDrive.GetProperty("text").GetString(), Is.EqualTo("HI\n"));
+                Assert.That(fromDrive.GetProperty("length").GetInt32(), Is.EqualTo(3));
+                Assert.That(fromDrive.TryGetProperty("base64", out _), Is.False);
                 Assert.That(fromDrive.GetProperty("view").GetString(), Is.EqualTo("logical"));
-                Assert.That(fromDrive.GetProperty("length").GetInt32(), Is.EqualTo(Decode(fromDrive).Length));
                 Assert.That(fromImage.GetProperty("source").GetString(), Is.EqualTo("image"));
-                Assert.That(fromImage.GetProperty("text").GetString(), Is.EqualTo(fromDrive.GetProperty("text").GetString()));
-                Assert.That(Directory.GetFiles(sandbox), Is.EquivalentTo(before));
+                Assert.That(fromImage.GetProperty("text").GetString(), Is.EqualTo("HI\n"));
+                Assert.That(binary.GetProperty("encoding").GetString(), Is.EqualTo("base64"));
+                Assert.That(Decode(binary), Is.EqualTo(new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55 }));
+                Assert.That(binary.TryGetProperty("text", out _), Is.False);
+                Assert.That(raw.GetProperty("encoding").GetString(), Is.EqualTo("base64"));
+                Assert.That(raw.GetProperty("length").GetInt32(), Is.GreaterThan(3));
+                Assert.That(Hash(image), Is.EqualTo(hashBefore));
             });
         }
         finally
@@ -179,9 +198,12 @@ public sealed class IoMcpClientTests
             {
                 Assert.That(prodosList.GetProperty("kind").GetString(), Is.EqualTo("Prodos"));
                 Assert.That(Names(prodosList), Does.Contain("NOTE"));
+                Assert.That(prodosFile.GetProperty("encoding").GetString(), Is.EqualTo("text"));
                 Assert.That(prodosFile.GetProperty("text").GetString(), Is.EqualTo("Hi"));
+                Assert.That(prodosFile.TryGetProperty("base64", out _), Is.False);
                 Assert.That(pascalList.GetProperty("kind").GetString(), Is.EqualTo("Pascal"));
                 Assert.That(Names(pascalList), Does.Contain("NOTE.TEXT"));
+                Assert.That(pascalFile.GetProperty("encoding").GetString(), Is.EqualTo("text"));
                 Assert.That(pascalFile.GetProperty("text").GetString(), Is.EqualTo("Hi"));
             });
         }
@@ -224,8 +246,12 @@ public sealed class IoMcpClientTests
 
             Assert.Multiple(() =>
             {
-                Assert.That(Decode(exact)[0], Is.EqualTo(0x22));
-                Assert.That(Decode(fallback)[0], Is.EqualTo(0x11));
+                Assert.That(exact.GetProperty("encoding").GetString(), Is.EqualTo("text"));
+                Assert.That(exact.GetProperty("path").GetString(), Is.EqualTo("hello"));
+                Assert.That(exact.GetProperty("text").GetString(), Is.EqualTo("\""));
+                Assert.That(fallback.GetProperty("encoding").GetString(), Is.EqualTo("text"));
+                Assert.That(fallback.GetProperty("path").GetString(), Is.EqualTo("HELLO"));
+                Assert.That(fallback.GetProperty("text").GetString(), Is.EqualTo("\\x11"));
                 Assert.That(ambiguous.GetProperty("message").GetString(), Does.Contain("HELLO"));
                 Assert.That(ambiguous.GetProperty("message").GetString(), Does.Contain("hello"));
             });
@@ -297,7 +323,8 @@ public sealed class IoMcpClientTests
                 Assert.That(linkList.GetProperty("message").GetString(), Does.Contain("sandbox"));
                 Assert.That(parentRead.GetProperty("message").GetString(), Does.Not.Contain("SECRET-OUTSIDE"));
                 Assert.That(linkRead.GetProperty("message").GetString(), Does.Not.Contain("SECRET-OUTSIDE"));
-                Assert.That(allowed.GetProperty("text").GetString(), Does.StartWith("HI\n"));
+                Assert.That(allowed.GetProperty("encoding").GetString(), Is.EqualTo("text"));
+                Assert.That(allowed.GetProperty("text").GetString(), Is.EqualTo("HI\n"));
                 Assert.That(Directory.GetFiles(outside), Is.EqualTo(new[] { outsideFile }));
                 Assert.That(File.ReadAllBytes(outsideFile), Is.EqualTo("SECRET-OUTSIDE"u8.ToArray()));
             });
@@ -309,9 +336,207 @@ public sealed class IoMcpClientTests
         }
     }
 
+    /// <summary>
+    /// A file over the configured cap returns an error. A shorter text file is returned.
+    /// </summary>
+    /// <returns>A task that completes when the assertions finish.</returns>
+    [Test]
+    public async Task ReadFile_OverCap_IsAnError()
+    {
+        string sandbox = Directory.CreateTempSubdirectory("mcp-cap-").FullName;
+        try
+        {
+            string note = WriteDosVolume(sandbox, "note.do");
+            string tiny = WriteBytes(sandbox, "tiny.do", CaseVolume(upper: false, lower: true));
+            await using McpSession session = await McpSession.StartAsync(sandbox, maxDiskFileBytes: 2);
+            JsonElement over = await session.CallErrorAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = note,
+                ["filename"] = "NOTE",
+            });
+            JsonElement under = await session.CallAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = tiny,
+                ["filename"] = "hello",
+            });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(over.GetProperty("message").GetString(), Does.Contain("exceeds"));
+                Assert.That(over.GetProperty("message").GetString(), Does.Contain("2"));
+                Assert.That(under.GetProperty("encoding").GetString(), Is.EqualTo("text"));
+                Assert.That(under.GetProperty("length").GetInt32(), Is.EqualTo(1));
+            });
+        }
+        finally
+        {
+            DeleteDirectory(sandbox);
+        }
+    }
+
+    /// <summary>
+    /// Link shapes that leave a root are rejected, and a root that is itself a link still allows files inside it.
+    /// </summary>
+    /// <returns>A task that completes when the assertions finish.</returns>
+    [Test]
+    public async Task Sandbox_RejectsLinkShapesAndAllowsALinkedRoot()
+    {
+        string parent = Directory.CreateTempSubdirectory("mcp-links-").FullName;
+        try
+        {
+            string sandbox = Path.Join(parent, "root");
+            string outside = Path.Join(parent, "outside");
+            Directory.CreateDirectory(sandbox);
+            Directory.CreateDirectory(outside);
+            string outsideImage = WriteDosVolume(outside, "secret.do");
+            string mid = Path.Join(sandbox, "mid");
+            CreateLinkOrIgnore(() => Directory.CreateSymbolicLink(mid, outside));
+            string ab = Path.Join(parent, "ab");
+            Directory.CreateDirectory(ab);
+            WriteDosVolume(ab, "z");
+            string relativeLink = Path.Join(sandbox, "escape.do");
+            CreateLinkOrIgnore(() => File.CreateSymbolicLink(relativeLink, "../ab/z"));
+            string dangling = Path.Join(sandbox, "gone.do");
+            CreateLinkOrIgnore(() => File.CreateSymbolicLink(dangling, "missing.do"));
+            string inside = WriteDosVolume(sandbox, "inside.do");
+
+            string shortRoot = Path.Join(parent, "a");
+            string sibling = Path.Join(parent, "ab");
+            Directory.CreateDirectory(shortRoot);
+            Directory.CreateDirectory(sibling);
+            string siblingImage = WriteDosVolume(sibling, "x.do");
+            string prefixLink = Path.Join(shortRoot, "x.do");
+            CreateLinkOrIgnore(() => File.CreateSymbolicLink(prefixLink, siblingImage));
+            WriteDosVolume(shortRoot, "kept.do");
+
+            string real = Path.Join(parent, "real");
+            Directory.CreateDirectory(real);
+            WriteDosVolume(real, "note.do");
+            string linkedRoot = Path.Join(parent, "via");
+            CreateLinkOrIgnore(() => Directory.CreateSymbolicLink(linkedRoot, real));
+
+            await using McpSession session = await McpSession.StartAsync(sandbox);
+            JsonElement throughDirectory = await session.CallErrorAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = Path.Join(mid, "secret.do"),
+                ["filename"] = "NOTE",
+            });
+            JsonElement throughRelative = await session.CallErrorAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = relativeLink,
+                ["filename"] = "NOTE",
+            });
+            JsonElement throughDangling = await session.CallErrorAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = dangling,
+                ["filename"] = "NOTE",
+            });
+            JsonElement bothSources = await session.CallErrorAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = inside,
+                ["slot"] = 6,
+                ["drive"] = 1,
+                ["filename"] = "NOTE",
+            });
+            JsonElement slotOnly = await session.CallErrorAsync("disk_list_files", new Dictionary<string, object?>
+            {
+                ["slot"] = 6,
+            });
+            JsonElement driveOnly = await session.CallErrorAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["drive"] = 1,
+                ["filename"] = "NOTE",
+            });
+
+            await using McpSession prefix = await McpSession.StartAsync(shortRoot);
+            JsonElement siblingRead = await prefix.CallErrorAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = prefixLink,
+                ["filename"] = "NOTE",
+            });
+            JsonElement kept = await prefix.CallAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = "kept.do",
+                ["filename"] = "NOTE",
+            });
+
+            await using McpSession linked = await McpSession.StartAsync(linkedRoot);
+            JsonElement viaLink = await linked.CallAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = Path.Join(linkedRoot, "note.do"),
+                ["filename"] = "NOTE",
+            });
+            JsonElement viaRelative = await linked.CallAsync("disk_read_file", new Dictionary<string, object?>
+            {
+                ["image"] = "note.do",
+                ["filename"] = "NOTE",
+            });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(throughDirectory.GetProperty("message").GetString(), Does.Contain("sandbox"));
+                Assert.That(throughRelative.GetProperty("message").GetString(), Does.Contain("sandbox"));
+                Assert.That(throughDangling.GetProperty("message").GetString(), Does.Contain("sandbox"));
+                Assert.That(bothSources.GetProperty("message").GetString(), Does.Contain("not both"));
+                Assert.That(slotOnly.GetProperty("message").GetString(), Does.Contain("both required"));
+                Assert.That(driveOnly.GetProperty("message").GetString(), Does.Contain("both required"));
+                Assert.That(siblingRead.GetProperty("message").GetString(), Does.Contain("sandbox"));
+                Assert.That(kept.GetProperty("text").GetString(), Is.EqualTo("HI\n"));
+                Assert.That(viaLink.GetProperty("text").GetString(), Is.EqualTo("HI\n"));
+                Assert.That(viaRelative.GetProperty("text").GetString(), Is.EqualTo("HI\n"));
+                Assert.That(File.ReadAllBytes(outsideImage), Is.EqualTo(File.ReadAllBytes(inside)));
+                Assert.That(File.ReadAllBytes(siblingImage), Is.EqualTo(File.ReadAllBytes(inside)));
+            });
+        }
+        finally
+        {
+            DeleteDirectory(parent);
+        }
+    }
+
+    /// <summary>
+    /// Screen and keyboard tools return an error envelope when no machine is attached, and empty text is rejected.
+    /// </summary>
+    /// <returns>A task that completes when the assertions finish.</returns>
+    [Test]
+    public async Task ScreenAndKeys_ReportMissingMachineAndEmptyText()
+    {
+        string sandbox = Directory.CreateTempSubdirectory("mcp-io-miss-").FullName;
+        try
+        {
+            await using McpSession session = await McpSession.StartAsync(sandbox);
+            JsonElement empty = await session.CallErrorAsync("type_keys", new Dictionary<string, object?>
+            {
+                ["text"] = string.Empty,
+            });
+            session.DetachMachine();
+            JsonElement screen = await session.CallErrorAsync("get_screen_text");
+            JsonElement typed = await session.CallErrorAsync("type_keys", new Dictionary<string, object?>
+            {
+                ["text"] = "Hi",
+            });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(empty.GetProperty("message").GetString(), Does.Contain("Text is required"));
+                Assert.That(screen.GetProperty("message").GetString(), Does.Contain("No machine"));
+                Assert.That(typed.GetProperty("message").GetString(), Does.Contain("No machine"));
+            });
+        }
+        finally
+        {
+            DeleteDirectory(sandbox);
+        }
+    }
+
     private static byte[] Decode(JsonElement file)
     {
         return Convert.FromBase64String(file.GetProperty("base64").GetString() ?? string.Empty);
+    }
+
+    private static string Hash(string path)
+    {
+        return Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
     }
 
     private static IEnumerable<string> Names(JsonElement catalog)
@@ -334,6 +559,7 @@ public sealed class IoMcpClientTests
     {
         var builder = new Dos33ImageBuilder(35, 254);
         builder.AddFile("NOTE", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0xC8, 0xC9, 0x8D } });
+        builder.AddFile("CODE", Dos33FileType.Binary, false, false, new byte[]?[] { new byte[] { 0x00, 0x08, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 } });
         builder.AddCatalogName(new byte[] { 0x01, 0xC2 }, Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0xC1 } });
         return WriteBytes(directory, name, builder.Build().Image);
     }
@@ -480,7 +706,12 @@ public sealed class IoMcpClientTests
 
         public McpClient Client { get; }
 
-        public static async Task<McpSession> StartAsync(string sandbox)
+        public static Task<McpSession> StartAsync(string sandbox)
+        {
+            return StartAsync(sandbox, null);
+        }
+
+        public static async Task<McpSession> StartAsync(string sandbox, int? maxDiskFileBytes)
         {
             Pipe clientToServer = new();
             Pipe serverToClient = new();
@@ -494,10 +725,16 @@ public sealed class IoMcpClientTests
                     ContentRootPath = sandbox,
                 });
                 DebugMcpHost.Configure(builder);
-                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                var settings = new Dictionary<string, string?>
                 {
                     [$"{DebugMcpOptions.SectionName}:SandboxRoots:0"] = sandbox,
-                });
+                };
+                if (maxDiskFileBytes is int cap)
+                {
+                    settings[$"{DebugMcpOptions.SectionName}:MaxDiskFileBytes"] = cap.ToString(CultureInfo.InvariantCulture);
+                }
+
+                builder.Configuration.AddInMemoryCollection(settings);
                 builder.Services
                     .AddMcpServer()
                     .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
@@ -516,6 +753,39 @@ public sealed class IoMcpClientTests
                 Restore(previous);
                 throw;
             }
+        }
+
+        public void DetachMachine()
+        {
+            object context = this.RequireContext();
+            MethodInfo detach = context.GetType().GetMethod("DetachSystem")
+                ?? throw new InvalidOperationException("DetachSystem was not found.");
+            detach.Invoke(context, null);
+        }
+
+        public bool IsDriveWriteProtected(int slot, int driveIndex)
+        {
+            object context = this.RequireContext();
+            Type contextType = context.GetType();
+            object machine = contextType.GetProperty("Machine")?.GetValue(context)
+                ?? throw new InvalidOperationException("No machine is attached.");
+            Type? slotManagerType = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType("BadMango.Emulator.Bus.Interfaces.ISlotManager"))
+                .FirstOrDefault(type => type is not null);
+            if (slotManagerType is null)
+            {
+                throw new InvalidOperationException("ISlotManager was not loaded.");
+            }
+
+            MethodInfo getComponent = machine.GetType().GetMethods()
+                .First(method => method.Name == "GetComponent" && method.IsGenericMethodDefinition && method.GetParameters().Length == 0);
+            object slotManager = getComponent.MakeGenericMethod(slotManagerType).Invoke(machine, null)
+                ?? throw new InvalidOperationException("The machine has no slot manager.");
+            object card = slotManagerType.GetMethod("GetCard")?.Invoke(slotManager, [slot])
+                ?? throw new InvalidOperationException($"Slot {slot} is empty.");
+            object snapshot = card.GetType().GetMethod("GetDriveSnapshot")?.Invoke(card, [driveIndex])
+                ?? throw new InvalidOperationException("The drive snapshot was not returned.");
+            return snapshot.GetType().GetProperty("WriteProtect")?.GetValue(snapshot) is true;
         }
 
         public Task<JsonElement> CallAsync(string name, Dictionary<string, object?>? arguments = null)
@@ -618,6 +888,20 @@ public sealed class IoMcpClientTests
             Assert.That(root.TryGetProperty("payload", out JsonElement payload), Is.True, Describe(result));
             Assert.That(root.TryGetProperty("timestamp", out _), Is.True, Describe(result));
             return payload;
+        }
+
+        private object RequireContext()
+        {
+            Type? contextType = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType("BadMango.Emulator.Debug.Infrastructure.Commands.IDebugContext"))
+                .FirstOrDefault(type => type is not null);
+            if (contextType is null)
+            {
+                throw new InvalidOperationException("IDebugContext was not loaded.");
+            }
+
+            return this.host.Services.GetService(contextType)
+                ?? throw new InvalidOperationException("Debug context is not registered.");
         }
     }
 }
