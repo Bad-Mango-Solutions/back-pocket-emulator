@@ -51,12 +51,12 @@ public sealed class DebugOutputRenderer : IDebugOutputRenderer
     /// Initializes a new instance of the <see cref="DebugOutputRenderer"/> class.
     /// </summary>
     /// <param name="options">Startup options. <see langword="null"/> selects text output.</param>
-    /// <param name="envelopeClock">Clock used to stamp envelopes. <see langword="null"/> uses UTC now.</param>
-    public DebugOutputRenderer(EmudbgOptions? options = null, Func<DateTimeOffset>? envelopeClock = null)
+    /// <param name="clock">Clock used to stamp envelopes. <see langword="null"/> uses UTC now.</param>
+    public DebugOutputRenderer(EmudbgOptions? options = null, Func<DateTimeOffset>? clock = null)
     {
         this.JsonOutput = options?.JsonOutput == true;
         this.DefaultMaxCycles = options?.MaxCycles;
-        this.clock = envelopeClock ?? (() => DateTimeOffset.UtcNow);
+        this.clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     /// <summary>

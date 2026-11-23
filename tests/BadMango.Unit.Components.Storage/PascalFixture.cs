@@ -57,7 +57,7 @@ public sealed class PascalFixture
     /// <returns>The sample image.</returns>
     public static PascalFixture CreateCatalogSample()
     {
-        var builder = new PascalImageBuilder(blocks: 9, name: "SAMPLE");
+        var builder = new PascalImageBuilder(blockCount: 9, volumeName: "SAMPLE");
         builder.AddFile("NOTE.TEXT", PascalFileKind.Text, "Pascal"u8.ToArray());
         var code = new byte[600];
         code.AsSpan().Fill(0xAB);

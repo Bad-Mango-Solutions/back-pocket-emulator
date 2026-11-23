@@ -1050,11 +1050,11 @@ public class Dos33FileSystemTests
         private readonly int failTrack;
         private readonly int failSector;
 
-        public FailSectorReader(ISectorReader sectorReader, int unreadableTrack, int unreadableSector)
+        public FailSectorReader(ISectorReader inner, int failTrack, int failSector)
         {
-            this.inner = sectorReader;
-            this.failTrack = unreadableTrack;
-            this.failSector = unreadableSector;
+            this.inner = inner;
+            this.failTrack = failTrack;
+            this.failSector = failSector;
         }
 
         public int BytesPerSector => this.inner.BytesPerSector;

@@ -27,23 +27,23 @@ public sealed class Dos33ImageBuilder
     /// <summary>
     /// Initializes a new instance of the <see cref="Dos33ImageBuilder"/> class.
     /// </summary>
-    /// <param name="tracks">Tracks. Must be greater than 17 so the VTOC exists. At most 80.</param>
-    /// <param name="volumeNumber">Volume number, 1–254.</param>
+    /// <param name="trackCount">Tracks. Must be greater than 17 so the VTOC exists. At most 80.</param>
+    /// <param name="volume">Volume number, 1–254.</param>
     /// <exception cref="ArgumentOutOfRangeException">If the geometry or volume is outside those bounds.</exception>
-    public Dos33ImageBuilder(int tracks = 18, byte volumeNumber = 254)
+    public Dos33ImageBuilder(int trackCount = 18, byte volume = 254)
     {
-        if (tracks <= Dos33Layout.VtocTrack || tracks > 80)
+        if (trackCount <= Dos33Layout.VtocTrack || trackCount > 80)
         {
-            throw new ArgumentOutOfRangeException(nameof(tracks), "Track count must be 18 through 80 so track 17 exists.");
+            throw new ArgumentOutOfRangeException(nameof(trackCount), "Track count must be 18 through 80 so track 17 exists.");
         }
 
-        if (volumeNumber is < 1 or > 254)
+        if (volume is < 1 or > 254)
         {
-            throw new ArgumentOutOfRangeException(nameof(volumeNumber), "DOS 3.3 volume numbers are 1 through 254.");
+            throw new ArgumentOutOfRangeException(nameof(volume), "DOS 3.3 volume numbers are 1 through 254.");
         }
 
-        this.trackCount = tracks;
-        this.volume = volumeNumber;
+        this.trackCount = trackCount;
+        this.volume = volume;
     }
 
     /// <summary>
