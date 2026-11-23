@@ -94,7 +94,7 @@ The child architecture pages are tracked by issue until files land; planned path
 
 | Issue | Planned page path | Status |
 | --- | --- | --- |
-| [#539](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/539) | `specs/architecture/cpu.md` | pending |
+| [#539](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/539) | [`specs/architecture/cpu.md`](specs/architecture/cpu.md) | landed |
 | [#540](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/540) | `specs/architecture/cpu-65816.md` | pending |
 | [#541](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/541) | `specs/architecture/cpu-65832.md` | pending |
 | [#542](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/542) | `specs/architecture/bus-mmu.md` | pending |
