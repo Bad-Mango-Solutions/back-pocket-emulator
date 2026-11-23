@@ -8,8 +8,10 @@ namespace BadMango.Emulator.Storage.Tests.FileSystems;
 /// Builds a tiny DOS 3.3 image in memory. The VTOC stays on track 17.
 /// </summary>
 /// <remarks>
-/// File data is not placed on the catalog track. Names are uppercase letters, digits, and
-/// periods. The image contains no DOS boot code and no commercial software.
+/// File data is not placed on track 0 or the catalog track. A catalog track byte of zero
+/// means the slot has never been used, so a live track/sector list cannot be on track 0.
+/// Names are uppercase letters, digits, and periods. The image contains no DOS boot code
+/// and no commercial software.
 /// </remarks>
 public sealed class Dos33ImageBuilder
 {
@@ -103,7 +105,7 @@ public sealed class Dos33ImageBuilder
     {
         for (var track = 0; track < this.trackCount; track++)
         {
-            if (track == Dos33Layout.VtocTrack)
+            if (track == 0 || track == Dos33Layout.VtocTrack)
             {
                 continue;
             }
@@ -137,8 +139,8 @@ public sealed class Dos33ImageBuilder
             var last = chunk == chunkCount - 1;
             if (!last)
             {
-                catalog[1] = Dos33Layout.VtocTrack;
-                catalog[2] = (byte)(sector - 1);
+                catalog[Dos33Layout.Catalog.NextTrackOffset] = Dos33Layout.VtocTrack;
+                catalog[Dos33Layout.Catalog.NextSectorOffset] = (byte)(sector - 1);
             }
 
             var start = chunk * Dos33Layout.Catalog.EntriesPerSector;

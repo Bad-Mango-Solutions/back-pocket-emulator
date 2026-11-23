@@ -15,8 +15,11 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// used, and <see cref="DeletedTrack"/> is a deleted file. Neither is a live file.
 /// </para>
 /// <para>
-/// Track/sector pairs start at <see cref="TrackSectorList.PairOffset"/>. A <c>$00 $00</c> pair
-/// that still has an occupied pair after it is a sparse hole, not the end of the list.
+/// Track/sector pairs start at <see cref="TrackSectorList.PairOffset"/>. The next catalog
+/// sector is <see cref="Catalog.NextTrackOffset"/>, and the next list sector is
+/// <see cref="TrackSectorList.NextTrackOffset"/>. Pair 0 describes the file sector numbered
+/// by the little-endian word at <see cref="TrackSectorList.SectorBaseOffset"/>. A <c>$00 $00</c>
+/// pair that still has an occupied pair after it is a sparse hole, not the end of the list.
 /// Readers follow the catalog chain and that file's list. They do not rescan track 17 for
 /// file data. A repeated next pointer is a corrupt loop.
 /// </para>
@@ -234,6 +237,12 @@ public static class Dos33Layout
 
         /// <summary>Catalog entries in one sector.</summary>
         public const int EntriesPerSector = 7;
+
+        /// <summary>Offset of the next catalog track. Zero means this is the last sector.</summary>
+        public const int NextTrackOffset = 1;
+
+        /// <summary>Offset of the next catalog sector.</summary>
+        public const int NextSectorOffset = 2;
     }
 
     /// <summary>One 35-byte catalog entry.</summary>
@@ -272,6 +281,15 @@ public static class Dos33Layout
     /// <summary>One track/sector-list sector.</summary>
     public static class TrackSectorList
     {
+        /// <summary>Offset of the next list track. Zero means this is the last sector.</summary>
+        public const int NextTrackOffset = 1;
+
+        /// <summary>Offset of the next list sector.</summary>
+        public const int NextSectorOffset = 2;
+
+        /// <summary>Offset of the little-endian file-sector number described by pair 0.</summary>
+        public const int SectorBaseOffset = 5;
+
         /// <summary>Offset of the first track/sector pair.</summary>
         public const int PairOffset = 0x0C;
 
