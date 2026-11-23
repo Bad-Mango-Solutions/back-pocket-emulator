@@ -8,10 +8,15 @@ using System.Text.Json;
 
 using Autofac;
 
+using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 using BadMango.Emulator.Storage.FileSystems;
 using BadMango.Emulator.Storage.Formats;
+using BadMango.Emulator.Storage.Gcr;
+using BadMango.Emulator.Storage.Media;
 using BadMango.Emulator.Storage.Tests.FileSystems;
+
+using Moq;
 
 using Serilog;
 
@@ -405,7 +410,7 @@ public sealed class DiskFileSystemCommandsTests
         var missing = this.read.Execute(this.context, ["--image", path, "NOPE"]);
         var both = this.read.Execute(this.context, ["--image", path, "NOTE", "--raw", "--logical"]);
         var ls = new DiskCommand().Execute(this.context, ["ls"]);
-        var memory = new ReadCommand().Execute(this.context, []);
+        var memory = new ReadCommand();
 
         Assert.Multiple(() =>
         {
@@ -416,9 +421,8 @@ public sealed class DiskFileSystemCommandsTests
             Assert.That(ls.Success, Is.False);
             Assert.That(ls.Message, Does.Contain("Unknown"));
             Assert.That(ls.Message, Does.Not.Contain("disk-ls"));
-            Assert.That(memory.Success, Is.False);
-            Assert.That(memory.Message, Does.Contain("bus"));
-            Assert.That(memory.Message, Does.Not.Contain("disk-read"));
+            Assert.That(memory.Name, Is.EqualTo("read"));
+            Assert.That(memory.Name, Is.Not.EqualTo(this.read.Name));
             Assert.That(this.read.Name, Is.EqualTo("disk-read"));
         });
     }
@@ -445,6 +449,187 @@ public sealed class DiskFileSystemCommandsTests
         });
     }
 
+    /// <summary>A mounted nibble image is not a catalog, and the drive file stays open.</summary>
+    [Test]
+    public void Cat_MountedNib_LeavesTheDriveReadable()
+    {
+        var path = Path.Join(this.tempRoot, "blank.nib");
+        File.WriteAllBytes(path, new byte[35 * GcrEncoder.StandardTrackLength]);
+        var open = new DiskImageFactory().Open(path, forceReadOnly: true);
+        Assume.That(open, Is.InstanceOf<Image525Result>());
+        this.context.MountedDisks.Track(6, 0, open);
+        var result = this.catalog.Execute(this.context, ["6:1"]);
+        var track = new byte[((Image525Result)open).Media.OptimalTrackLength];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("no sector or block view"));
+            Assert.DoesNotThrow(() => ((Image525Result)open).Media.ReadTrack(0, track));
+        });
+    }
+
+    /// <summary>ProDOS and Pascal volumes can be catalogued from a mounted drive.</summary>
+    [Test]
+    public void CatAndRead_MountedProdosAndPascal()
+    {
+        var prodos = this.Write(this.ProdosVolume().Image, "mounted-pro.hdv");
+        var pascal = this.Write(this.PascalVolume().Image, "mounted-pas.hdv");
+        this.context.MountedDisks.Track(6, 0, new DiskImageFactory().Open(prodos, forceReadOnly: true));
+        this.context.MountedDisks.Track(6, 1, new DiskImageFactory().Open(pascal, forceReadOnly: true));
+
+        var prodosCat = new DiskCommand().Execute(this.context, ["cat", "6:1", "SUB"]);
+        var prodosOutput = this.output.ToString();
+        this.ClearOutput();
+        var pascalRead = new DiskCommand().Execute(this.context, ["read", "6:2", "NOTE.TEXT"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(prodosCat.Success, Is.True, prodosCat.Message);
+            Assert.That(prodosOutput, Does.Contain("NOTE"));
+            Assert.That(prodosOutput, Does.Contain("ProDOS"));
+            Assert.That(pascalRead.Success, Is.True, pascalRead.Message);
+            Assert.That(this.output.ToString(), Does.Contain("Hi"));
+            Assert.That(this.output.ToString(), Does.Contain("Pascal"));
+        });
+    }
+
+    /// <summary>A dirty mounted drive is flushed before the catalog is read.</summary>
+    [Test]
+    public void Cat_MountedDrive_FlushesDirtyTracksFirst()
+    {
+        var path = this.Write(this.DosVolume().Image, "dirty.do");
+        this.context.MountedDisks.Track(6, 0, new DiskImageFactory().Open(path, forceReadOnly: true));
+        var card = new Mock<ISlotCard>();
+        var controller = card.As<IDiskController>();
+        card.SetupGet(item => item.Name).Returns("Disk II Controller");
+        controller.SetupGet(item => item.DriveCount).Returns(1);
+        controller.Setup(item => item.GetDriveSnapshot(0)).Returns(new DriveSnapshot(
+            Selected: true,
+            MotorOn: false,
+            PhaseLatch: 0,
+            QuarterTrack: 0,
+            WriteProtect: false,
+            HasMedia: true,
+            MountedImagePath: path,
+            UnflushedChanges: true));
+        var slots = new Mock<ISlotManager>();
+        slots.Setup(item => item.GetCard(6)).Returns(card.Object);
+        var machine = new Mock<IMachine>();
+        machine.Setup(item => item.GetComponent<ISlotManager>()).Returns(slots.Object);
+        this.context.AttachMachine(machine.Object);
+
+        var result = this.catalog.Execute(this.context, ["6:1"]);
+
+        Assert.That(result.Success, Is.True, result.Message);
+        controller.Verify(item => item.Flush(0), Times.Once);
+    }
+
+    /// <summary>
+    /// DOS keeps stored case. <c>disk read</c> hits an exact lowercase name, falls back
+    /// when the fold is unique, and reports both candidates when it is not.
+    /// </summary>
+    [Test]
+    public void Read_DosCase_ExactFallbackAndAmbiguous()
+    {
+        var lowerOnly = this.Write(this.CaseVolume(upper: false, lower: true).Image, "lower.do");
+        var upperOnly = this.Write(this.CaseVolume(upper: true, lower: false).Image, "upper.do");
+        var bothPath = this.Write(this.CaseVolume(upper: true, lower: true).Image, "both.do");
+        var exact = this.read.Execute(this.context, ["--image", lowerOnly, "hello", "--hex"]);
+        var exactOutput = this.output.ToString();
+        this.ClearOutput();
+        var fallback = this.read.Execute(this.context, ["--image", upperOnly, "Hello", "--hex"]);
+        var fallbackOutput = this.output.ToString();
+        this.ClearOutput();
+        var ambiguous = this.read.Execute(this.context, ["--image", bothPath, "Hello"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(exact.Success, Is.True, exact.Message);
+            Assert.That(exactOutput, Does.Contain("22"));
+            Assert.That(fallback.Success, Is.True, fallback.Message);
+            Assert.That(fallbackOutput, Does.Contain("11"));
+            Assert.That(ambiguous.Success, Is.False);
+            Assert.That(ambiguous.Message, Does.Contain("HELLO"));
+            Assert.That(ambiguous.Message, Does.Contain("hello"));
+            Assert.That(DiskFileSystemSupport.ToText(new byte[] { 0xDC }), Is.EqualTo("\\\\"));
+        });
+    }
+
+    /// <summary><c>--</c> lets a file name start with a dash.</summary>
+    [Test]
+    public void Read_DoubleDash_AllowsALeadingDash()
+    {
+        var builder = new Dos33ImageBuilder(35, 254);
+        builder.AddCatalogName(new byte[] { 0xAD, 0xC8, 0xC5, 0xCC, 0xCC, 0xCF }, Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x41 } });
+        var path = this.Write(builder.Build().Image, "dash.do");
+        var rejected = this.read.Execute(this.context, ["--image", path, "-HELLO"]);
+        var accepted = this.read.Execute(this.context, ["--image", path, "--", "-HELLO"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(rejected.Success, Is.False);
+            Assert.That(rejected.Message, Does.Contain("Unknown option"));
+            Assert.That(accepted.Success, Is.True, accepted.Message);
+        });
+    }
+
+    /// <summary><c>--to</c> refuses a symlink that leaves the output root.</summary>
+    [Test]
+    public void Read_To_RefusesSymlinkEscape()
+    {
+        var outside = Directory.CreateTempSubdirectory("bms-disk-out-");
+        try
+        {
+            var directoryLink = Path.Join(this.exportRoot, "link");
+            var directoryLinked = TryLink(directoryLink, outside.FullName, file: false);
+            Assume.That(directoryLinked, Is.True, "This platform did not create a directory symlink.");
+            var path = this.Write(this.DosVolume().Image, "link.do");
+            var throughDirectory = this.read.Execute(this.context, ["--image", path, "CODE", "--to", "link/x.bin"]);
+            var outsideFile = Path.Join(outside.FullName, "target.bin");
+            File.WriteAllBytes(outsideFile, new byte[] { 1 });
+            var fileLink = Path.Join(this.exportRoot, "file.bin");
+            var fileLinked = TryLink(fileLink, outsideFile, file: true);
+            Assume.That(fileLinked, Is.True, "This platform did not create a file symlink.");
+            var throughFile = this.read.Execute(this.context, ["--image", path, "CODE", "--to", "file.bin"]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(throughDirectory.Success, Is.False);
+                Assert.That(throughDirectory.Message, Does.Contain("outside"));
+                Assert.That(File.Exists(Path.Join(outside.FullName, "x.bin")), Is.False);
+                Assert.That(throughFile.Success, Is.False);
+                Assert.That(throughFile.Message, Does.Contain("outside"));
+                Assert.That(File.ReadAllBytes(outsideFile), Is.EqualTo(new byte[] { 1 }));
+            });
+        }
+        finally
+        {
+            outside.Delete(recursive: true);
+        }
+    }
+
+    private static bool TryLink(string link, string target, bool file)
+    {
+        try
+        {
+            if (file)
+            {
+                File.CreateSymbolicLink(link, target);
+            }
+            else
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
+
     private Dos33Fixture DosVolume()
     {
         var builder = new Dos33ImageBuilder(35, 254);
@@ -465,6 +650,22 @@ public sealed class DiskFileSystemCommandsTests
     {
         var builder = new PascalImageBuilder(8, "PASCAL");
         builder.AddFile("NOTE.TEXT", PascalFileKind.Text, "Hi"u8.ToArray());
+        return builder.Build();
+    }
+
+    private Dos33Fixture CaseVolume(bool upper, bool lower)
+    {
+        var builder = new Dos33ImageBuilder(35, 254);
+        if (upper)
+        {
+            builder.AddFile("HELLO", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x11 } });
+        }
+
+        if (lower)
+        {
+            builder.AddCatalogName(new byte[] { 0xE8, 0xE5, 0xEC, 0xEC, 0xEF }, Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x22 } });
+        }
+
         return builder.Build();
     }
 

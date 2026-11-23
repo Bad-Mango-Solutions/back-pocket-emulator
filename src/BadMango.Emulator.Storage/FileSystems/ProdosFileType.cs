@@ -17,4 +17,10 @@ public enum ProdosFileType : byte
 
     /// <summary>Directory. Value <c>$0F</c>.</summary>
     Directory = 0x0F,
+
+    /// <summary>Applesoft BASIC. Value <c>$FC</c>.</summary>
+    Applesoft = 0xFC,
+
+    /// <summary>ProDOS system file. Value <c>$FF</c>.</summary>
+    Sys = 0xFF,
 }

@@ -839,6 +839,79 @@ public class Dos33FileSystemTests
         Assert.That(listing.Entries[0].Path, Is.EqualTo("ABC"));
     }
 
+    /// <summary>
+    /// High-bit text keeps the low seven bits, so lowercase stays lowercase.
+    /// High-bit controls stay visible and still have a glyph lookup name.
+    /// </summary>
+    [Test]
+    public void Catalog_KeepsLowercaseAndEscapesHighBitControls()
+    {
+        byte[] hello = [0xC8, 0xE5, 0xEC, 0xEC, 0xEF];
+        byte[] control = [0xC8, 0x87];
+        var builder = new Dos33ImageBuilder();
+        builder.AddCatalogName(hello, Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0xC8 } });
+        builder.AddCatalogName(control, Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0xC1 } });
+        var fixture = builder.Build();
+        Assume.That(AppleCatalogName.TryDecodeDos(hello, out var helloName, out var helloDisplay), Is.True);
+        Assume.That(helloName, Is.EqualTo("Hello"));
+        Assume.That(helloDisplay, Is.EqualTo("Hello"));
+        Assume.That(AppleCatalogName.TryDecodeDos(control, out var controlName, out var controlDisplay), Is.True);
+        Assume.That(controlName, Is.EqualTo("HG"));
+        Assume.That(controlDisplay, Is.EqualTo("H\\c{G}"));
+        Assume.That(AppleCatalogName.EscapePlain("a{b}"), Is.EqualTo("a\\{b\\}"));
+
+        var listing = Open(fixture).ListDirectory(null);
+
+        Assert.That(listing.Succeeded, Is.True);
+        Assert.That(listing.Entries.Select(entry => entry.Name).ToArray(), Is.EqualTo(new[] { "Hello", "HG" }));
+        Assert.That(listing.Entries[0].DisplayName, Is.EqualTo("Hello"));
+        Assert.That(listing.Entries[1].DisplayName, Is.EqualTo("H\\c{G}"));
+        Assert.That(Open(fixture).GetFileInfo("hello")!.Name, Is.EqualTo("Hello"));
+        Assert.That(Open(fixture).GetFileInfo("HG")!.DisplayName, Is.EqualTo("H\\c{G}"));
+    }
+
+    /// <summary>
+    /// DOS keeps stored case. An exact name wins, a unique case fold is a fallback,
+    /// and two folds of the same letters are an ambiguity.
+    /// </summary>
+    [Test]
+    public void Read_DosNames_PreferExactCaseThenAUniqueFold()
+    {
+        byte[] lower = [0xE8, 0xE5, 0xEC, 0xEC, 0xEF];
+        var exactBuilder = new Dos33ImageBuilder();
+        exactBuilder.AddCatalogName(lower, Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x22 } });
+        var exact = Open(exactBuilder.Build()).TryReadFile("hello", FileReadView.Raw);
+        Assume.That(exact.Succeeded, Is.True);
+        Assume.That(exact.Data.Span[0], Is.EqualTo(0x22));
+
+        var foldedBuilder = new Dos33ImageBuilder();
+        foldedBuilder.AddFile("HELLO", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x11 } });
+        var folded = Open(foldedBuilder.Build()).TryReadFile("Hello", FileReadView.Raw);
+
+        var bothBuilder = new Dos33ImageBuilder();
+        bothBuilder.AddFile("HELLO", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x11 } });
+        bothBuilder.AddCatalogName(lower, Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x22 } });
+        var both = Open(bothBuilder.Build());
+        var ambiguous = both.TryReadFile("Hello", FileReadView.Raw);
+        var exactUpper = both.TryReadFile("HELLO", FileReadView.Raw);
+        var exactLower = both.TryReadFile("hello", FileReadView.Raw);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(folded.Succeeded, Is.True, folded.Reason);
+            Assert.That(folded.Data.Span[0], Is.EqualTo(0x11));
+            Assert.That(ambiguous.Succeeded, Is.False);
+            Assert.That(ambiguous.Status, Is.EqualTo(FileAccessStatus.Ambiguous));
+            Assert.That(ambiguous.Reason, Does.Contain("HELLO"));
+            Assert.That(ambiguous.Reason, Does.Contain("hello"));
+            Assert.That(exactUpper.Succeeded, Is.True, exactUpper.Reason);
+            Assert.That(exactUpper.Data.Span[0], Is.EqualTo(0x11));
+            Assert.That(exactLower.Succeeded, Is.True, exactLower.Reason);
+            Assert.That(exactLower.Data.Span[0], Is.EqualTo(0x22));
+            Assert.That(both.GetFileInfo("Hello"), Is.Null);
+        });
+    }
+
     private static void AssertLogical(Dos33FileSystem fs, Dos33Fixture fixture, string name, byte[] expected)
     {
         var entry = fixture.Entries.Single(item => item.Name == name);

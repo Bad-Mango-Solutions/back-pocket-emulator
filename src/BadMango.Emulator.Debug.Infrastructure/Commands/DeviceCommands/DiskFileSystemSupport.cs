@@ -10,6 +10,7 @@ using System.Text;
 using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Storage.FileSystems;
 using BadMango.Emulator.Storage.Formats;
+using BadMango.Emulator.Storage.Media;
 
 using Serilog;
 
@@ -111,6 +112,16 @@ internal static class DiskFileSystemSupport
                 continue;
             }
 
+            if (arg == "--")
+            {
+                for (i++; i < args.Length; i++)
+                {
+                    positionals.Add(args[i]);
+                }
+
+                break;
+            }
+
             if (arg.StartsWith('-'))
             {
                 request = null;
@@ -194,6 +205,11 @@ internal static class DiskFileSystemSupport
             else
             {
                 source = "drive";
+                if (!TryFlushMounted(context, request.SlotDrive!, logger, out error))
+                {
+                    session = null;
+                    return false;
+                }
             }
 
             if (!TryCreateSource(owned!, out var fileSource, out error))
@@ -217,7 +233,10 @@ internal static class DiskFileSystemSupport
         }
         finally
         {
-            owned?.Dispose();
+            if (owns)
+            {
+                owned?.Dispose();
+            }
         }
     }
 
@@ -261,25 +280,47 @@ internal static class DiskFileSystemSupport
             return false;
         }
 
+        if (!LinksStayInside(rootFull, combined, out error))
+        {
+            return false;
+        }
+
         fullPath = combined;
         error = null;
         return true;
     }
 
     /// <summary>Writes export bytes, creating parent directories inside the output root.</summary>
+    /// <param name="root">The configured output root. Checked again immediately before the write.</param>
     /// <param name="fullPath">A path already checked by <see cref="TryResolveExport"/>.</param>
     /// <param name="data">The selected file view.</param>
     /// <param name="logger">Logger for I/O failures.</param>
     /// <param name="error">The I/O error when the method returns <see langword="false"/>.</param>
     /// <returns><see langword="true"/> when the file was written.</returns>
-    internal static bool TryWriteExport(string fullPath, ReadOnlySpan<byte> data, ILogger logger, out string? error)
+    internal static bool TryWriteExport(string? root, string fullPath, ReadOnlySpan<byte> data, ILogger logger, out string? error)
     {
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            error = "--to is outside the output root.";
+            return false;
+        }
+
+        if (!LinksStayInside(Path.GetFullPath(root), fullPath, out error))
+        {
+            return false;
+        }
+
         try
         {
             var parent = Path.GetDirectoryName(fullPath);
             if (!string.IsNullOrEmpty(parent))
             {
                 Directory.CreateDirectory(parent);
+            }
+
+            if (!LinksStayInside(Path.GetFullPath(root), fullPath, out error))
+            {
+                return false;
             }
 
             File.WriteAllBytes(fullPath, data.ToArray());
@@ -514,6 +555,12 @@ internal static class DiskFileSystemSupport
             }
 
             var glyph = (char)(value & 0x7F);
+            if (glyph == '\\')
+            {
+                text.Append("\\\\");
+                continue;
+            }
+
             if (glyph is >= ' ' and <= '~')
             {
                 text.Append(glyph);
@@ -740,6 +787,138 @@ internal static class DiskFileSystemSupport
         return true;
     }
 
+    private static bool TryFlushMounted(ICommandContext context, string slotDrive, ILogger logger, out string? error)
+    {
+        error = null;
+        if (context is not IDebugContext debug || debug.Machine is null)
+        {
+            return true;
+        }
+
+        if (!DiskRuntimeHelpers.TryParseSlotDrive(slotDrive, out var slot, out var drive, out error))
+        {
+            return false;
+        }
+
+        if (!DiskRuntimeHelpers.TryGetSlotManager(context, out var slotManager, out _)
+            || slotManager is null
+            || !DiskRuntimeHelpers.TryGetController(slotManager, slot, drive, out var controller, out var driveIndex, out _)
+            || controller is null)
+        {
+            return true;
+        }
+
+        DriveSnapshot snapshot;
+        try
+        {
+            snapshot = controller.GetDriveSnapshot(driveIndex);
+        }
+        catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException or IOException)
+        {
+            logger.Warning(ex, "Drive snapshot failed for {SlotDrive}", slotDrive);
+            error = $"Cannot read drive state for {slotDrive}: {ex.Message}";
+            return false;
+        }
+
+        if (!snapshot.UnflushedChanges)
+        {
+            return true;
+        }
+
+        try
+        {
+            controller.Flush(driveIndex);
+        }
+        catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            logger.Warning(ex, "Flush failed for {SlotDrive}", slotDrive);
+            error = $"Slot {slot} drive {drive} has unflushed changes and flush failed: {ex.Message}";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool LinksStayInside(string rootFull, string candidate, out string? error)
+    {
+        string rootReal;
+        try
+        {
+            rootReal = FinalPath(new DirectoryInfo(rootFull));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            error = $"Cannot resolve the output root: {ex.Message}";
+            return false;
+        }
+
+        var relative = Path.GetRelativePath(rootFull, candidate);
+        var cursor = rootFull;
+        foreach (var segment in relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment is "." or "..")
+            {
+                error = "--to is outside the output root.";
+                return false;
+            }
+
+            cursor = Path.Join(cursor, segment);
+            if (!PathExists(cursor))
+            {
+                break;
+            }
+
+            if (!ComponentStaysInside(rootReal, cursor, out error))
+            {
+                return false;
+            }
+        }
+
+        error = null;
+        return true;
+    }
+
+    private static bool ComponentStaysInside(string rootReal, string path, out string? error)
+    {
+        FileSystemInfo info = Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path);
+        if (info.LinkTarget is null)
+        {
+            error = null;
+            return true;
+        }
+
+        var final = info.ResolveLinkTarget(returnFinalTarget: true);
+        if (final is null || !IsUnderRoot(rootReal, Path.GetFullPath(final.FullName)))
+        {
+            error = "--to is outside the output root.";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    private static string FinalPath(DirectoryInfo info)
+    {
+        var final = info.ResolveLinkTarget(returnFinalTarget: true);
+        return Path.GetFullPath(final?.FullName ?? info.FullName);
+    }
+
+    private static bool PathExists(string path) => File.Exists(path) || Directory.Exists(path);
+
+    private static bool IsUnderRoot(string rootReal, string candidate)
+    {
+        var root = Path.GetFullPath(rootReal).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var full = Path.GetFullPath(candidate);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (full.Equals(root, comparison))
+        {
+            return true;
+        }
+
+        return full.StartsWith(root + Path.DirectorySeparatorChar, comparison);
+    }
+
     private static bool IsMediaFailure(Exception ex) =>
         ex is ArgumentException
             or InvalidOperationException
@@ -776,8 +955,8 @@ internal static class DiskFileSystemSupport
         (byte)ProdosFileType.Text => "TXT",
         (byte)ProdosFileType.Binary => "BIN",
         (byte)ProdosFileType.Directory => "DIR",
-        0xFC => "BAS",
-        0xFF => "SYS",
+        (byte)ProdosFileType.Applesoft => "BAS",
+        (byte)ProdosFileType.Sys => "SYS",
         _ => fileType.ToString("X2", CultureInfo.InvariantCulture),
     };
 

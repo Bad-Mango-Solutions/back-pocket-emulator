@@ -138,7 +138,7 @@ public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
             }
 
             if (exportPath is not null
-                && !DiskFileSystemSupport.TryWriteExport(exportPath, read.Data.Span, this.logger, out error))
+                && !DiskFileSystemSupport.TryWriteExport(this.exportRoot?.Directory, exportPath, read.Data.Span, this.logger, out error))
             {
                 return CommandResult.Error(error ?? "Cannot write the export file.");
             }

@@ -41,4 +41,10 @@ public enum FileAccessStatus
 
     /// <summary>The path contains an empty segment, <c>.</c>, or <c>..</c>.</summary>
     InvalidPath = 6,
+
+    /// <summary>
+    /// A DOS 3.3 name has no exact match and more than one case-insensitive match.
+    /// The reason lists the catalog names.
+    /// </summary>
+    Ambiguous = 7,
 }

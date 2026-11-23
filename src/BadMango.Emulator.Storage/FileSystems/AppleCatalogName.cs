@@ -12,11 +12,13 @@ using System.Text;
 /// </summary>
 /// <remarks>
 /// <para>
-/// DOS 3.3 stores each catalog character with the high bit set. That is normal text.
-/// A clear high bit is the inverse / flashing catalog-name trick: bit 6 clear is inverse,
-/// and bit 6 set is flashing. The glyph is the Apple II 64-character set in the low six
-/// bits. <c>$00</c>–<c>$1F</c> are <c>@</c> through <c>_</c>, and <c>$20</c>–<c>$3F</c> are
-/// space through <c>?</c>.
+/// DOS 3.3 stores each catalog character with the high bit set. That is normal text,
+/// including lowercase in <c>$E0</c>–<c>$FF</c>. Those bytes keep the low seven bits, so
+/// <c>$C8 $E5 $EC $EC $EF</c> is <c>Hello</c>. A clear high bit is the inverse / flashing
+/// catalog-name trick: bit 6 clear is inverse, and bit 6 set is flashing. Only those bytes
+/// use the Apple II 64-character set. <c>$00</c>–<c>$1F</c> are <c>@</c> through <c>_</c>,
+/// and <c>$20</c>–<c>$3F</c> are space through <c>?</c>. High-bit controls (<c>$80</c>–<c>$9F</c>)
+/// display as <c>\c{G}</c> and use that same glyph as the lookup name.
 /// </para>
 /// <para>
 /// <see cref="TryDecodeDos"/> trims trailing <see cref="Dos33Layout.CatalogEntry.HighBitSpace"/>
@@ -74,8 +76,8 @@ public static class AppleCatalogName
     /// </summary>
     /// <param name="text">The volume or file name. Not <see langword="null"/>.</param>
     /// <returns>
-    /// <paramref name="text"/> when every character is printable ASCII other than a backslash;
-    /// otherwise a string with backslashes and non-printable characters escaped.
+    /// <paramref name="text"/> when every character is printable ASCII other than a backslash
+    /// or a brace; otherwise a string with those characters escaped.
     /// </returns>
     /// <exception cref="ArgumentNullException">If <paramref name="text"/> is <see langword="null"/>.</exception>
     public static string EscapePlain(string text)
@@ -97,15 +99,35 @@ public static class AppleCatalogName
 
     private static char Glyph(byte value)
     {
-        var low = value & 0x3F;
-        return low < 0x20 ? (char)(low + 0x40) : (char)low;
+        if ((value & 0x80) == 0)
+        {
+            var low = value & 0x3F;
+            return low < 0x20 ? (char)(low + 0x40) : (char)low;
+        }
+
+        var seven = value & 0x7F;
+        if (seven is >= 0x20 and <= 0x7E)
+        {
+            return (char)seven;
+        }
+
+        return (char)((value & 0x1F) + 0x40);
     }
 
     private static void AppendDosGlyph(StringBuilder display, byte value, char glyph)
     {
         if ((value & 0x80) != 0)
         {
+            var seven = value & 0x7F;
+            if (seven is >= 0x20 and <= 0x7E)
+            {
+                AppendPlain(display, glyph);
+                return;
+            }
+
+            display.Append("\\c{");
             AppendPlain(display, glyph);
+            display.Append('}');
             return;
         }
 
@@ -143,7 +165,7 @@ public static class AppleCatalogName
     {
         foreach (var ch in text)
         {
-            if (ch == '\\' || ch is < ' ' or > '~')
+            if (ch is '\\' or '{' or '}' || ch is < ' ' or > '~')
             {
                 return true;
             }

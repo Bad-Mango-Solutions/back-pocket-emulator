@@ -42,8 +42,10 @@ using Serilog;
 /// <para>
 /// One <see cref="Lock"/> guards the sector buffer and the cache, so concurrent calls are safe.
 /// The catalog and the file bytes are cached for the lifetime of the reader. Reopen the
-/// volume after the image changes. Name lookup uses
-/// <see cref="StringComparison.OrdinalIgnoreCase"/>, which DOS itself does not.
+/// volume after the image changes. DOS stores catalog case and does not fold it.
+/// Lookup tries <see cref="StringComparison.Ordinal"/> first. A case-insensitive match
+/// is used only when exactly one entry matches. Several matches are
+/// <see cref="FileAccessStatus.Ambiguous"/> and the reason lists those names.
 /// Catalog bytes normally have the high bit set. A clear high bit is inverse or flashing.
 /// <see cref="FileEntry.Name"/> is the visible glyph and <see cref="FileEntry.DisplayName"/>
 /// escapes those characters (<see cref="AppleCatalogName"/>).
@@ -157,8 +159,9 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     /// </summary>
     /// <param name="path">Volume-relative file name. Not <see langword="null"/>.</param>
     /// <returns>
-    /// The entry, or <see langword="null"/> when the path is missing, illegal, the volume
-    /// root, or the catalog chain repeats a sector or leaves the disk. Lookup ignores case.
+    /// The entry, or <see langword="null"/> when the path is missing, illegal, ambiguous,
+    /// the volume root, or the catalog chain repeats a sector or leaves the disk.
+    /// An exact name wins. A case-insensitive name is returned only when it is unique.
     /// </returns>
     /// <exception cref="ArgumentNullException">If <paramref name="path"/> is <see langword="null"/>.</exception>
     public FileEntry? GetFileInfo(string path)
@@ -173,8 +176,56 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     private static bool TryDecodeName(ReadOnlySpan<byte> bytes, out string name, out string displayName) =>
         AppleCatalogName.TryDecodeDos(bytes, out name, out displayName);
 
-    private static LocatedFile? Find(CatalogSnapshot catalog, string name) =>
-        catalog.Files.FirstOrDefault(file => file.Entry.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    private static bool TryFind(CatalogSnapshot catalog, string name, out LocatedFile? file, out string? ambiguity)
+    {
+        file = null;
+        ambiguity = null;
+        LocatedFile? exact = null;
+        var folded = new List<LocatedFile>();
+        foreach (var entry in catalog.Files)
+        {
+            if (entry.Entry.Name.Equals(name, StringComparison.Ordinal))
+            {
+                exact = entry;
+                break;
+            }
+
+            if (entry.Entry.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                folded.Add(entry);
+            }
+        }
+
+        if (exact is not null)
+        {
+            file = exact;
+            return true;
+        }
+
+        if (folded.Count == 1)
+        {
+            file = folded[0];
+            return true;
+        }
+
+        if (folded.Count > 1)
+        {
+            ambiguity = AmbiguousName(name, folded);
+        }
+
+        return false;
+    }
+
+    private static string AmbiguousName(string name, List<LocatedFile> matches)
+    {
+        var listed = new string[matches.Count];
+        for (var i = 0; i < matches.Count; i++)
+        {
+            listed[i] = matches[i].Entry.Name;
+        }
+
+        return $"The name '{name}' matches more than one file: {string.Join(", ", listed)}.";
+    }
 
     private static TrackSectorWalk FailedList(string reason) =>
         new(reason, new List<TrackSectorPair>(), -1);
@@ -203,9 +254,11 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             return DirectoryListing.Success(entries);
         }
 
-        if (Find(catalog, segments[0]) is null)
+        if (!TryFind(catalog, segments[0], out _, out var ambiguity))
         {
-            return DirectoryListing.Failure(FileAccessStatus.NotFound, "The path was not found.");
+            return ambiguity is null
+                ? DirectoryListing.Failure(FileAccessStatus.NotFound, "The path was not found.")
+                : DirectoryListing.Failure(FileAccessStatus.Ambiguous, ambiguity);
         }
 
         return DirectoryListing.Failure(FileAccessStatus.NotADirectory, "DOS 3.3 has no subdirectories.");
@@ -229,10 +282,11 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             return FileReadResult.Failure(FileAccessStatus.CorruptStructure, catalog.Reason);
         }
 
-        var file = Find(catalog, segments[0]);
-        if (file is null)
+        if (!TryFind(catalog, segments[0], out var file, out var ambiguity) || file is null)
         {
-            return FileReadResult.Failure(FileAccessStatus.NotFound, "The file was not found.");
+            return ambiguity is null
+                ? FileReadResult.Failure(FileAccessStatus.NotFound, "The file was not found.")
+                : FileReadResult.Failure(FileAccessStatus.Ambiguous, ambiguity);
         }
 
         return this.ReadLocated(file, view);
@@ -251,7 +305,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
             return null;
         }
 
-        return Find(catalog, segments[0])?.Entry;
+        return TryFind(catalog, segments[0], out var file, out _) ? file?.Entry : null;
     }
 
     private bool TryParse(string? path, out IReadOnlyList<string> segments, out string reason) =>
