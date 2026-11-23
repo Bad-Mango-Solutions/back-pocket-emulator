@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Storage.Tests.FileSystems;
 
+using BadMango.Emulator.Storage.FileSystems;
+
 /// <summary>
 /// An Apple Pascal block image built in the test process. No bytes are read from <c>disks/</c>.
 /// </summary>

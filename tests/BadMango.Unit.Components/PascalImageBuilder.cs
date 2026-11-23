@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Storage.Tests.FileSystems;
 
+using BadMango.Emulator.Storage.FileSystems;
+
 /// <summary>
 /// Builds an Apple Pascal volume in memory. Files are contiguous and the directory is 26-byte records.
 /// </summary>

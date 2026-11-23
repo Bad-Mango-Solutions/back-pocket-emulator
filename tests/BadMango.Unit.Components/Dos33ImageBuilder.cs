@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Storage.Tests.FileSystems;
 
+using BadMango.Emulator.Storage.FileSystems;
+
 /// <summary>
 /// Builds a tiny DOS 3.3 image in memory. The VTOC stays on track 17.
 /// </summary>
