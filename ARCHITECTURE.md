@@ -105,7 +105,7 @@ The child architecture pages are tracked by issue until files land; planned path
 | [#547](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/547) | `specs/architecture/compat.md` | pending |
 | [#548](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/548) | `specs/architecture/observability.md` | pending |
 | [#549](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/549) | `specs/architecture/machine.md` | pending |
-| [#550](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/550) | `specs/architecture/host-ui.md` | pending |
+| [#550](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/550) | [`specs/architecture/host-ui.md`](specs/architecture/host-ui.md) | exists |
 | [#551](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/551) | `CONTRIBUTING.md` | pending |
 
 ## Architecture vs. other docs
