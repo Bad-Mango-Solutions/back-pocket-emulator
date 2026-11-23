@@ -96,7 +96,7 @@ A handled trap adds `TrapResult.CyclesConsumed` to the CPU's cycle count. `TrapR
 
 Josh's order on 2026-11-16 is the delivery order. Appendix A is the issue split.
 
-**Already on main.** Do not redo these: the storage assembly and GCR nibblizer (#203), `disk create` / `disk info` (#208), config plumbing into slot factories (#209), `DiskIIController` (#194), `disk list` / `insert` / `eject` / `flush` (#210), and the DOS 3.3 and ProDOS 5.25" paths (#211, #212). What those boot issues could not do without Apple media is replaced by the synthetic tests below.
+**Already on main.** Do not redo these: the storage assembly and GCR nibblizer (#203), `disk create` / `disk info` (#208), config plumbing into slot factories (#209), `DiskIIController` (#194), `disk drives` / `insert` / `eject` / `flush` (#210), and the DOS 3.3 and ProDOS 5.25" paths (#211, #212). What those boot issues could not do without Apple media is replaced by the synthetic tests below.
 
 **P1, first.** SmartPort, 3.5", hard disk on both SmartPort and SCSI, and host-backed RAM volumes. Inside P1 the engineering order is:
 
@@ -653,7 +653,7 @@ Existing commands stay. The extensions are:
 
 | Command | Requirement |
 |---|---|
-| `disk list` | Includes block controllers. `--json` matches §12.5 once #435's JSON path exists. |
+| `disk drives` | Includes block controllers. `--json` matches §12.5 once #435's JSON path exists. |
 | `disk insert` | Works for removable block units. Rejects non-removable units and kind mismatches with a message that says which. |
 | `disk eject` | Disk II: FR-D4. 3.5": soft eject. Non-removable: error. |
 | `disk force-eject` | New. Disk II: alias of `disk eject`. 3.5": FR-35D. Non-removable: error. |

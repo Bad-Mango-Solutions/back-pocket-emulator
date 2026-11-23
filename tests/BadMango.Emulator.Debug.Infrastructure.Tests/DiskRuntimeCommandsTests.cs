@@ -20,7 +20,7 @@ using Moq;
 using Serilog;
 
 /// <summary>
-/// Unit tests for the runtime <see cref="DiskListCommand"/>, <see cref="DiskInsertCommand"/>,
+/// Unit tests for the runtime <see cref="DiskDrivesCommand"/>, <see cref="DiskInsertCommand"/>,
 /// <see cref="DiskEjectCommand"/>, and <see cref="DiskFlushCommand"/> debug subcommands
 /// (PRD §6.5 FR-DC3..FR-DC6).
 /// </summary>
@@ -81,12 +81,15 @@ public sealed class DiskRuntimeCommandsTests
     public void RuntimeSubcommands_AreMarkedForAutoRegistration()
     {
         var attr = typeof(BadMango.Emulator.Devices.DeviceDebugCommandAttribute);
+        var drives = new DiskDrivesCommand();
         Assert.Multiple(() =>
         {
-            Assert.That(typeof(DiskListCommand).GetCustomAttributes(attr, inherit: false), Is.Not.Empty);
+            Assert.That(typeof(DiskDrivesCommand).GetCustomAttributes(attr, inherit: false), Is.Not.Empty);
             Assert.That(typeof(DiskInsertCommand).GetCustomAttributes(attr, inherit: false), Is.Not.Empty);
             Assert.That(typeof(DiskEjectCommand).GetCustomAttributes(attr, inherit: false), Is.Not.Empty);
             Assert.That(typeof(DiskFlushCommand).GetCustomAttributes(attr, inherit: false), Is.Not.Empty);
+            Assert.That(drives.Name, Is.EqualTo("disk-drives"));
+            Assert.That(drives.Aliases, Is.EqualTo(new[] { "diskdrives" }));
         });
     }
 
@@ -99,20 +102,37 @@ public sealed class DiskRuntimeCommandsTests
         ctl.Setup(c => c.GetDriveSnapshot(It.IsAny<int>())).Returns(EmptySnapshot());
 
         var parent = new DiskCommand();
-        var list = parent.Execute(this.debugContext, ["list"]);
+        var drives = parent.Execute(this.debugContext, ["drives"]);
 
         Assert.Multiple(() =>
         {
-            Assert.That(list.Success, Is.True, list.Message);
+            Assert.That(drives.Success, Is.True, drives.Message);
             Assert.That(this.outputWriter.ToString(), Does.Contain("Slot 6"));
         });
     }
 
-    /// <summary><c>disk list</c> with no installed disk controllers prints a friendly stub.</summary>
+    /// <summary>
+    /// <c>disk list</c> is an unknown subcommand so #636 can claim the name.
+    /// </summary>
     [Test]
-    public void DiskList_NoControllers_PrintsNoneInstalled()
+    public void DiskCommand_List_IsUnknownSubcommand()
     {
-        var result = new DiskListCommand().Execute(this.debugContext, []);
+        var parent = new DiskCommand();
+        var result = parent.Execute(this.debugContext, ["list"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("Unknown 'disk' subcommand: 'list'"));
+            Assert.That(result.Message, Does.Contain("'drives'"));
+        });
+    }
+
+    /// <summary><c>disk drives</c> with no installed disk controllers prints a friendly stub.</summary>
+    [Test]
+    public void DiskDrives_NoControllers_PrintsNoneInstalled()
+    {
+        var result = new DiskDrivesCommand().Execute(this.debugContext, []);
 
         Assert.Multiple(() =>
         {
@@ -121,17 +141,17 @@ public sealed class DiskRuntimeCommandsTests
         });
     }
 
-    /// <summary><c>disk list</c> rejects extra positional arguments.</summary>
+    /// <summary><c>disk drives</c> rejects extra positional arguments.</summary>
     [Test]
-    public void DiskList_RejectsExtraArgs()
+    public void DiskDrives_RejectsExtraArgs()
     {
-        var result = new DiskListCommand().Execute(this.debugContext, ["6:1"]);
+        var result = new DiskDrivesCommand().Execute(this.debugContext, ["6:1"]);
         Assert.That(result.Success, Is.False);
     }
 
-    /// <summary><c>disk list --json</c> emits machine-readable live controller and drive data.</summary>
+    /// <summary><c>disk drives --json</c> emits machine-readable live controller and drive data.</summary>
     [Test]
-    public void DiskList_Json_PrintsControllerAndDriveSnapshot()
+    public void DiskDrives_Json_PrintsControllerAndDriveSnapshot()
     {
         var (card, ctl) = MakeMockController(slot: 6, driveCount: 1);
         this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
@@ -145,7 +165,7 @@ public sealed class DiskRuntimeCommandsTests
             MountedImagePath: "/tmp/json.dsk",
             Geometry: DiskGeometry.Standard525Dos));
 
-        var result = new DiskListCommand().Execute(this.debugContext, ["--json"]);
+        var result = new DiskDrivesCommand().Execute(this.debugContext, ["--json"]);
         Assert.That(result.Success, Is.True, result.Message);
 
         using JsonDocument json = JsonDocument.Parse(this.outputWriter.ToString());
@@ -166,7 +186,7 @@ public sealed class DiskRuntimeCommandsTests
     /// One unreadable drive is reported on its row and does not fail the other drive.
     /// </summary>
     [Test]
-    public void DiskList_Json_ReportsUnreadableDriveWithoutFailingTheCommand()
+    public void DiskDrives_Json_ReportsUnreadableDriveWithoutFailingTheCommand()
     {
         var (card, ctl) = MakeMockController(slot: 6, driveCount: 2);
         this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
@@ -181,7 +201,7 @@ public sealed class DiskRuntimeCommandsTests
             Geometry: null));
         ctl.Setup(c => c.GetDriveSnapshot(1)).Throws(new InvalidOperationException("drive 2 is unreadable"));
 
-        var result = new DiskListCommand().Execute(this.debugContext, ["--json"]);
+        var result = new DiskDrivesCommand().Execute(this.debugContext, ["--json"]);
         Assert.That(result.Success, Is.True, result.Message);
 
         using JsonDocument json = JsonDocument.Parse(this.outputWriter.ToString());
@@ -195,9 +215,9 @@ public sealed class DiskRuntimeCommandsTests
         });
     }
 
-    /// <summary><c>disk list --json</c> is an emudbg/v1 envelope.</summary>
+    /// <summary><c>disk drives --json</c> is an emudbg/v1 envelope.</summary>
     [Test]
-    public void DiskList_Json_MatchesGoldenEnvelope()
+    public void DiskDrives_Json_MatchesGoldenEnvelope()
     {
         var (card, ctl) = MakeMockController(slot: 6, driveCount: 1);
         this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
@@ -214,7 +234,7 @@ public sealed class DiskRuntimeCommandsTests
         var renderer = new DebugOutputRenderer(
             new EmudbgOptions(JsonOutput: true),
             () => new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
-        var result = new DiskListCommand(null, renderer).Execute(this.debugContext, ["--json"]);
+        var result = new DiskDrivesCommand(null, renderer).Execute(this.debugContext, ["--json"]);
 
         Assert.That(result.Success, Is.True, result.Message);
         Assert.That(this.outputWriter.ToString().Trim(), Is.EqualTo("""
@@ -251,17 +271,17 @@ public sealed class DiskRuntimeCommandsTests
 """.Trim()));
     }
 
-    /// <summary><c>disk list</c> rejects unknown options.</summary>
+    /// <summary><c>disk drives</c> rejects unknown options.</summary>
     [Test]
-    public void DiskList_RejectsUnknownOption()
+    public void DiskDrives_RejectsUnknownOption()
     {
-        var result = new DiskListCommand().Execute(this.debugContext, ["--yaml"]);
+        var result = new DiskDrivesCommand().Execute(this.debugContext, ["--yaml"]);
         Assert.That(result.Success, Is.False);
     }
 
-    /// <summary><c>disk list</c> prints a row per drive (mounted and empty) with snapshot fields.</summary>
+    /// <summary><c>disk drives</c> prints a row per drive (mounted and empty) with snapshot fields.</summary>
     [Test]
-    public void DiskList_PrintsPerDriveSnapshot()
+    public void DiskDrives_PrintsPerDriveSnapshot()
     {
         var (card, ctl) = MakeMockController(slot: 6, driveCount: 2);
         this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
@@ -277,7 +297,7 @@ public sealed class DiskRuntimeCommandsTests
             Geometry: DiskGeometry.Standard525Dos));
         ctl.Setup(c => c.GetDriveSnapshot(1)).Returns(EmptySnapshot());
 
-        var result = new DiskListCommand().Execute(this.debugContext, []);
+        var result = new DiskDrivesCommand().Execute(this.debugContext, []);
         Assert.That(result.Success, Is.True, result.Message);
 
         var output = this.outputWriter.ToString();
@@ -300,16 +320,16 @@ public sealed class DiskRuntimeCommandsTests
         });
     }
 
-    /// <summary><c>disk list</c> errors clearly when no machine is attached.</summary>
+    /// <summary><c>disk drives</c> errors clearly when no machine is attached.</summary>
     [Test]
-    public void DiskList_NoMachine_ReturnsError()
+    public void DiskDrives_NoMachine_ReturnsError()
     {
         var dispatcher = new CommandDispatcher();
         using var output = new StringWriter();
         using var error = new StringWriter();
         var bare = new DebugContext(dispatcher, output, error);
 
-        var result = new DiskListCommand().Execute(bare, []);
+        var result = new DiskDrivesCommand().Execute(bare, []);
 
         Assert.Multiple(() =>
         {

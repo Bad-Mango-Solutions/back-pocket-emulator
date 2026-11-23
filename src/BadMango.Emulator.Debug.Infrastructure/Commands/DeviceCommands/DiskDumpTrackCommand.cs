@@ -102,7 +102,7 @@ public sealed class DiskDumpTrackCommand : CommandHandlerBase, ICommandHelp
 
     /// <inheritdoc/>
     public IReadOnlyList<string> SeeAlso { get; } =
-        ["disk", "disk-list", "disk-read-sector"];
+        ["disk", "disk-drives", "disk-read-sector"];
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)

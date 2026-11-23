@@ -36,7 +36,7 @@ emudbg --headless --max-cycles 100000 --exec "run-until --until-cycles=1000;exit
 
 ## Commands that use the session
 
-`regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, `reset`, `abort`, and `maptrace` call the process-wide `IDebugSession`. `disk list`, `disk fsinfo`, `disk cat`, and `disk read` use the same envelope when `--json` is set or the process was started with `--json`.
+`regs`, `mem`, `peek`, `dasm`, `step`, `run`, `run-until`, `bp`, `watch`, `reset`, `abort`, and `maptrace` call the process-wide `IDebugSession`. `disk drives`, `disk fsinfo`, `disk cat`, and `disk read` use the same envelope when `--json` is set or the process was started with `--json`. `run-until` accepts a PC (`$0801`), `bp`, `watch`, `mem <addr> <byte>`, and `--until-cycles=<n>`. A bad `run-until` argument is exit code 2.
 
 ## Disk files
 
@@ -48,7 +48,7 @@ Inverse catalog characters display as `\i{A}`, flashing characters as `\f{B}`, a
 
 `--to name` writes the selected view under `--export-root`. The path must stay inside that directory. A rooted path, a `..` segment, or a symlink that leaves the root is refused. Without `--export-root`, `--to` fails.
 
-A mounted drive with unflushed track data is flushed before the catalog or file is read. If that flush fails, the command stops and names the drive. A nibble image has no file system view; the command reports that and leaves the mounted file open. `run-until` accepts a PC (`$0801`), `bp`, `watch`, `mem <addr> <byte>`, and `--until-cycles=<n>`. A bad `run-until` argument is exit code 2.
+A mounted drive with unflushed track data is flushed before the catalog or file is read. If that flush fails, the command stops and names the drive. A nibble image has no file system view; the command reports that and leaves the mounted file open.
 
 `abort` shows or sets how a 65C02 treats `SignalLine.Abort`. With no argument it prints the current reaction. `abort noop` selects `NoOp` (the default: the line is ignored and an unmapped fetch still stops with STP). `abort hostbreak` selects `HostBreak` (the next instruction boundary requests a host stop and does not set STP). The command does not pulse the line. A machine reset does not clear the setting. `HostBreak` is rejected when the attached CPU is not a 65C02. With `--json`, the result is one `emudbg/v1` envelope whose payload is `{ "reaction": "NoOp" }` or `{ "reaction": "HostBreak" }`.
 

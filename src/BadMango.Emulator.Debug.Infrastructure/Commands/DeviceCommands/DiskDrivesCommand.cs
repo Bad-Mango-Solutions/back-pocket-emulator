@@ -1,4 +1,4 @@
-// <copyright file="DiskListCommand.cs" company="Bad Mango Solutions">
+// <copyright file="DiskDrivesCommand.cs" company="Bad Mango Solutions">
 // Copyright (c) Bad Mango Solutions. All rights reserved.
 // </copyright>
 
@@ -26,47 +26,47 @@ using BadMango.Emulator.Devices;
 /// </para>
 /// </remarks>
 [DeviceDebugCommand]
-public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
+public sealed class DiskDrivesCommand : CommandHandlerBase, ICommandHelp
 {
     private readonly IMachineIoSession? session;
     private readonly IDebugOutputRenderer renderer;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="DiskListCommand"/> class.
+    /// Initializes a new instance of the <see cref="DiskDrivesCommand"/> class.
     /// </summary>
-    public DiskListCommand()
+    public DiskDrivesCommand()
         : this(null, null)
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="DiskListCommand"/> class that lists disks
+    /// Initializes a new instance of the <see cref="DiskDrivesCommand"/> class that lists disks
     /// through an existing session.
     /// </summary>
     /// <param name="session">The session to query, or <see langword="null"/> to open one from the command context.</param>
-    public DiskListCommand(IMachineIoSession? session)
+    public DiskDrivesCommand(IMachineIoSession? session)
         : this(session, null)
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="DiskListCommand"/> class that lists disks
+    /// Initializes a new instance of the <see cref="DiskDrivesCommand"/> class that lists disks
     /// through an existing session and renderer.
     /// </summary>
     /// <param name="session">The session to query, or <see langword="null"/> to open one from the command context.</param>
     /// <param name="renderer">The output renderer. <see langword="null"/> writes text unless <c>--json</c> is passed.</param>
-    public DiskListCommand(IMachineIoSession? session, IDebugOutputRenderer? renderer)
-        : base("disk-list", "List installed disk controllers and per-drive mount state")
+    public DiskDrivesCommand(IMachineIoSession? session, IDebugOutputRenderer? renderer)
+        : base("disk-drives", "List installed disk controllers and per-drive mount state")
     {
         this.session = session;
         this.renderer = renderer ?? DebugOutputRenderer.PlainText;
     }
 
     /// <inheritdoc/>
-    public override IReadOnlyList<string> Aliases { get; } = ["disklist"];
+    public override IReadOnlyList<string> Aliases { get; } = ["diskdrives"];
 
     /// <inheritdoc/>
-    public override string Usage => "disk-list [--json]";
+    public override string Usage => "disk-drives [--json]";
 
     /// <inheritdoc/>
     public string Synopsis => this.Usage;
@@ -88,9 +88,9 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
     /// <inheritdoc/>
     public IReadOnlyList<string> Examples { get; } =
     [
-        "disk-list",
-        "disk list",
-        "disk list --json",
+        "disk-drives",
+        "disk drives",
+        "disk drives --json",
     ];
 
     /// <inheritdoc/>
@@ -108,7 +108,7 @@ public sealed class DiskListCommand : CommandHandlerBase, ICommandHelp
         bool emitJson = false;
         if (args.Length > 1)
         {
-            return CommandResult.Error("Usage: disk-list [--json]");
+            return CommandResult.Error("Usage: disk-drives [--json]");
         }
 
         if (args.Length == 1)

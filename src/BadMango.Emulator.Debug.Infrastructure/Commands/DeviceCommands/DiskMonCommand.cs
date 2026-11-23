@@ -80,7 +80,7 @@ public sealed class DiskMonCommand : CommandHandlerBase, ICommandHelp
     public string? SideEffects => "None. Read-only snapshot.";
 
     /// <inheritdoc/>
-    public IReadOnlyList<string> SeeAlso { get; } = ["statmon", "disk", "disk-list", "devicemap"];
+    public IReadOnlyList<string> SeeAlso { get; } = ["statmon", "disk", "disk-drives", "devicemap"];
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
