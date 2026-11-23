@@ -36,7 +36,7 @@ benchmarks/
 
 - The project is in `BackPocketEmulator.slnx`, under a `benchmark` solution folder (along with any later benchmark tooling such as the compare tool), so it builds with everything else, but it has no test adapter and is not discovered as tests.
 - The BenchmarkDotNet version is pinned centrally in `Directory.Packages.props`.
-- Repo rules apply: .NET 10, no unsafe code, no static mutable state, no empty catches.
+- Repo rules apply: .NET 11, no unsafe code, no static mutable state, no empty catches.
 
 Each area folder holds plain BenchmarkDotNet classes. Categories (`[BenchmarkCategory("Cpu", "Dispatch")]`) let a run select an area with `--anyCategories` or `--filter`.
 

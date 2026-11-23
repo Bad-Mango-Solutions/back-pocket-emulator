@@ -172,10 +172,14 @@ public sealed class SwapGroup
     /// <param name="variantName">The name of the variant to retrieve.</param>
     /// <returns>The variant if found.</returns>
     /// <exception cref="KeyNotFoundException">Thrown when no variant with the specified name exists.</exception>
-    /// <remarks>The caller must hold the owning <see cref="MainBus"/>'s <c>swapGroupLock</c>.</remarks>
+    /// <remarks>
+    /// <see cref="MainBus"/> calls this while it already holds <c>swapGroupLock</c>, which is the
+    /// only lock that excludes every other mutator of a group owned by the bus. The public
+    /// <see cref="GetVariant"/> method still takes <see cref="syncLock"/> for direct callers.
+    /// </remarks>
     internal SwapVariant GetVariantNoLock(string variantName)
     {
-        if (!variants.TryGetValue(variantName, out var variant))
+        if (!variants.TryGetValue(variantName, out SwapVariant variant))
         {
             throw new KeyNotFoundException($"Variant '{variantName}' not found in swap group '{Name}'.");
         }
@@ -188,7 +192,9 @@ public sealed class SwapGroup
     /// </summary>
     /// <param name="variantName">The name of the variant to set as active.</param>
     /// <exception cref="KeyNotFoundException">Thrown when no variant with the specified name exists.</exception>
-    /// <remarks>The caller must hold the owning <see cref="MainBus"/>'s <c>swapGroupLock</c>.</remarks>
+    /// <remarks>
+    /// Same calling rule as <see cref="GetVariantNoLock"/>.
+    /// </remarks>
     internal void SetActiveVariantNoLock(string variantName)
     {
         if (!variants.ContainsKey(variantName))

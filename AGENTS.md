@@ -27,7 +27,7 @@ I/O tools are `get_screen_text`, `type_keys`, `mount_disk`, `disk_list_files`, a
       "command": "dotnet",
       "args": [
         "exec",
-        "src/BadMango.Emulator.Debug.Mcp/bin/Release/net10.0/emudbg-mcp.dll"
+        "src/BadMango.Emulator.Debug.Mcp/bin/Release/net11.0/emudbg-mcp.dll"
       ]
     }
   }

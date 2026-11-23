@@ -1,4 +1,4 @@
-# Technical Specification: ProDOS-to-FAT/exFAT Compatibility Layer for .NET 10–Based Apple II Emulator
+# Technical Specification: ProDOS-to-FAT/exFAT Compatibility Layer for .NET 11–Based Apple II Emulator
 
 ---
 
@@ -6,7 +6,7 @@
 
 The Apple II family, particularly under ProDOS 8, remains a vibrant platform for retrocomputing, educational, and archival projects. Modern emulators, such as those built in .NET and C#, have enabled Apple II software to run on contemporary hardware, but disk image formats and file system compatibility remain persistent challenges. ProDOS 8 expects block devices formatted in its native structure, while host systems overwhelmingly use FAT16, FAT32, or exFAT on removable media and hard disks. Bridging these worlds requires a robust, transparent compatibility layer that allows ProDOS 8 to access host-side FAT/exFAT volumes as if they were native block devices, with seamless translation of directory structures, file metadata, and block allocation.
 
-This specification details the architecture, interfaces, and implementation strategies for a ProDOS-to-FAT/exFAT compatibility layer targeting a .NET 10–based Apple II emulator, using modern C#14 features. It addresses the translation of FAT/exFAT volumes into ProDOS-compatible block devices, the mapping of directory and file metadata, block allocation, and strategies for handling ProDOS limitations. The spec also explores optional support for multiple ProDOS volumes per FAT/exFAT volume and sketches a GS/OS-style File System Translator (FST) module for future IIgs clones.
+This specification details the architecture, interfaces, and implementation strategies for a ProDOS-to-FAT/exFAT compatibility layer targeting a .NET 11–based Apple II emulator, using modern C#14 features. It addresses the translation of FAT/exFAT volumes into ProDOS-compatible block devices, the mapping of directory and file metadata, block allocation, and strategies for handling ProDOS limitations. The spec also explores optional support for multiple ProDOS volumes per FAT/exFAT volume and sketches a GS/OS-style File System Translator (FST) module for future IIgs clones.
 
 ---
 
@@ -461,9 +461,9 @@ The emulator queries `MountManager.GetMountedDevices()` to enumerate available b
 - Prefetch directory blocks during enumeration.
 - Use memory-mapped files for host-side disk images if supported.
 
-### .NET 10 Features
+### .NET 11 features
 
-- Leverage new .NET 10 caching APIs (HybridCache) for distributed or local caching scenarios.
+- Leverage HybridCache for distributed or local caching scenarios.
 - Use modern concurrency primitives (e.g., `SemaphoreSlim`, `ConcurrentDictionary`) for thread safety.
 
 ---
@@ -664,11 +664,11 @@ public interface IFstModule
 
 ## Conclusion and Future Directions
 
-This specification provides a comprehensive, implementation-ready blueprint for a ProDOS-to-FAT/exFAT compatibility layer in a .NET 10–based Apple II emulator. By leveraging modern C#14 features, robust .NET libraries, and careful mapping of file system semantics, the layer enables transparent, performant access to host-side volumes, unlocking new possibilities for retrocomputing, archival, and educational projects.
+This specification provides a comprehensive, implementation-ready blueprint for a ProDOS-to-FAT/exFAT compatibility layer in a .NET 11–based Apple II emulator. By leveraging modern C#14 features, robust .NET libraries, and careful mapping of file system semantics, the layer enables transparent, performant access to host-side volumes, unlocking new possibilities for retrocomputing, archival, and educational projects.
 
 Future enhancements may include:
 
-- Advanced caching and performance tuning using .NET 10 HybridCache.
+- Advanced caching and performance tuning using HybridCache.
 - Full GS/OS FST integration for IIgs clones, supporting forked files and extended metadata.
 - Support for additional host file systems (NTFS, HFS+, APFS) via extensible interfaces.
 - Enhanced recovery and repair tools for FAT/exFAT volumes.
