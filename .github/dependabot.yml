@@ -23,6 +23,14 @@ updates:
       - dependency-name: "Microsoft.CodeAnalysis.*"
         update-types:
           - "version-update:semver-major"
+      # Serilog's Microsoft.Extensions integration packages track the .NET major
+      # version (11.x requires Microsoft.Extensions.* 11.x). Stay on the LTS line.
+      - dependency-name: "Serilog.Extensions.*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "Serilog.Settings.Configuration"
+        update-types:
+          - "version-update:semver-major"
     groups:
       microsoft-extensions:
         patterns:
