@@ -85,7 +85,7 @@ public sealed class DiskInsertCommand : CommandHandlerBase, ICommandHelp
         "that flush fails the insert is rejected and the prior disk remains mounted.";
 
     /// <inheritdoc/>
-    public IReadOnlyList<string> SeeAlso { get; } = ["disk", "disk-list", "disk-eject", "disk-flush"];
+    public IReadOnlyList<string> SeeAlso { get; } = ["disk", "disk-drives", "disk-eject", "disk-flush"];
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)

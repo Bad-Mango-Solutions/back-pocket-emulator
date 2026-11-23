@@ -62,7 +62,7 @@ public sealed class DiskEjectCommand : CommandHandlerBase, ICommandHelp
         "deferred to the next scheduler turn (PRD FR-R1).";
 
     /// <inheritdoc/>
-    public IReadOnlyList<string> SeeAlso { get; } = ["disk", "disk-list", "disk-insert", "disk-flush"];
+    public IReadOnlyList<string> SeeAlso { get; } = ["disk", "disk-drives", "disk-insert", "disk-flush"];
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)

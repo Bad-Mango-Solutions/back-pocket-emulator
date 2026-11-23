@@ -58,7 +58,7 @@ public sealed class DiskFlushCommand : CommandHandlerBase, ICommandHelp
         "Writes any dirty cached tracks back to the underlying file. The medium stays mounted.";
 
     /// <inheritdoc/>
-    public IReadOnlyList<string> SeeAlso { get; } = ["disk", "disk-list", "disk-insert", "disk-eject"];
+    public IReadOnlyList<string> SeeAlso { get; } = ["disk", "disk-drives", "disk-insert", "disk-eject"];
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
