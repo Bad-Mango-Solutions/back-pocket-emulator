@@ -6,12 +6,12 @@ This guide builds BackPocket Emulator (`BackPocketEmulator.slnx`) on your system
 
 ### Required Software
 
-- **[.NET 10.0 SDK](https://dotnet.microsoft.com/download)** or later
+- **[.NET 11.0 SDK](https://dotnet.microsoft.com/download/dotnet/11.0)** (pinned to 11.0.100 by `global.json`)
 - **Git** (for cloning the repository)
 
 ### Supported Platforms
 
-The emulator runs on any platform that supports .NET 10.0:
+The emulator runs on any platform that supports .NET 11.0:
 
 - **Windows** 10/11 (x64, ARM64)
 - **macOS** 10.15+ (x64, ARM64/Apple Silicon)
@@ -104,7 +104,7 @@ dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj
 ### Visual Studio
 
 1. Open `BackPocketEmulator.slnx` in Visual Studio 2022 or later
-2. Ensure .NET 10.0 SDK is installed
+2. Ensure the .NET 11.0 SDK is installed
 3. Build the solution (Ctrl+Shift+B)
 4. Run tests from Test Explorer
 
@@ -127,7 +127,7 @@ dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj
 
 **Problem**: `The command could not be loaded, possibly because: You intended to execute a .NET application...`
 
-**Solution**: Install the .NET 10.0 SDK from https://dotnet.microsoft.com/download
+**Solution**: Install the .NET 11.0 SDK from https://dotnet.microsoft.com/download/dotnet/11.0
 
 ### Build Warnings About Console.Beep
 

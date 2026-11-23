@@ -1,4 +1,4 @@
-# Unified Block Device Backing API for Apple II Emulator in C# 14 / .NET 10
+# Unified Block Device Backing API for Apple II Emulator in C# 14 / .NET 11
 
 ---
 
@@ -6,7 +6,7 @@
 
 Emulating the Apple II family’s storage ecosystem requires a nuanced approach to block device abstraction, honoring both historical slot conventions and the diversity of device types (floppy, hard disk, CD-ROM, network volumes). The Apple II’s SmartPort (slot 5) and SCSI (slot 7) interfaces are the primary means by which block devices are exposed to the system, each with distinct protocol and enumeration semantics. Modern emulators must support both, providing a clean, extensible API that enables future device types and network-backed volumes, while maintaining compatibility with ProDOS and GS/OS.
 
-This technical design document proposes a unified block device backing API in C# 14 targeting .NET 10, with SmartPort and SCSI façade classes, device enumeration and slot assignment logic, a future-proof disk image format, and extensibility recommendations. The design leverages contemporary C# features (extension members, field-backed properties, spans) and draws on best practices from emulator, driver, and plugin architectures.
+This technical design document proposes a unified block device backing API in C# 14 targeting .NET 11, with SmartPort and SCSI façade classes, device enumeration and slot assignment logic, a future-proof disk image format, and extensibility recommendations. The design leverages contemporary C# features (extension members, field-backed properties, spans) and draws on best practices from emulator, driver, and plugin architectures.
 
 ---
 
@@ -838,7 +838,7 @@ smartPortDevice.DeviceError += (sender, args) =>
 
 ## Conclusion
 
-This unified block device backing API for Apple II emulation in C# 14 / .NET 10 provides a robust, extensible foundation for supporting both SmartPort and SCSI interfaces, honoring historical slot conventions while enabling modern flexibility. By abstracting block device operations, metadata, and command handling, and by leveraging contemporary C# features and plugin architectures, the design ensures future-proof compatibility with ProDOS, GS/OS, and emerging device types (network, RAMDisk, tape, CD-ROM).
+This unified block device backing API for Apple II emulation in C# 14 / .NET 11 provides a robust, extensible foundation for supporting both SmartPort and SCSI interfaces, honoring historical slot conventions while enabling modern flexibility. By abstracting block device operations, metadata, and command handling, and by leveraging contemporary C# features and plugin architectures, the design ensures future-proof compatibility with ProDOS, GS/OS, and emerging device types (network, RAMDisk, tape, CD-ROM).
 
 The proposed disk image format supports rich metadata, multi-volume, and extensibility, mapping cleanly to the API and emulator requirements. Comprehensive error handling, performance optimizations, and developer ergonomics further enhance the architecture.
 
@@ -920,7 +920,7 @@ public class DeviceManager
 ---
 
 **End of Technical Design Document**
-Perfect — I’ve kicked off a deep research task to design a unified block device API in C#14 targeting .NET 10, with support for both SmartPort and SCSI façades. This will include:
+Perfect — I’ve kicked off a deep research task to design a unified block device API in C#14 targeting .NET 11, with support for both SmartPort and SCSI façades. This will include:
 
 - A clean abstraction for block-oriented devices
 - Slot-specific façade implementations for SmartPort and SCSI

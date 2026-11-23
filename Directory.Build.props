@@ -8,7 +8,8 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
+    <!-- C# 15 is the default language version for net11.0. Kept explicit so every project, including the test override, stays on 15. -->
     <LangVersion>15</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -19,7 +20,6 @@
 
   <ItemGroup>
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)StyleCop.json" Link="StyleCop.json" />
-    <Compile Include="$(MSBuildThisFileDirectory)src/Shared/CSharp15Polyfills.cs" Link="Shared/CSharp15Polyfills.cs" />
   </ItemGroup>
 
 </Project>
