@@ -35,8 +35,8 @@ public sealed class DiskFileSystemCommandsTests
     [SetUp]
     public void SetUp()
     {
-        this.tempRoot = Path.Combine(Path.GetTempPath(), "bms-disk-fs-" + Guid.NewGuid().ToString("N"));
-        this.exportRoot = Path.Combine(this.tempRoot, "out");
+        this.tempRoot = Directory.CreateTempSubdirectory("bms-disk-fs-").FullName;
+        this.exportRoot = Path.Join(this.tempRoot, "out");
         Directory.CreateDirectory(this.exportRoot);
         this.output = new StringWriter();
         var dispatcher = new CommandDispatcher();
@@ -376,7 +376,7 @@ public sealed class DiskFileSystemCommandsTests
     {
         var path = this.Write(this.DosVolume().Image, "export.do");
         var inside = this.read.Execute(this.context, ["--image", path, "CODE", "--logical", "--to", "nested/code.bin"]);
-        var written = File.ReadAllBytes(Path.Combine(this.exportRoot, "nested", "code.bin"));
+        var written = File.ReadAllBytes(Path.Join(this.exportRoot, "nested", "code.bin"));
         var outside = this.read.Execute(this.context, ["--image", path, "CODE", "--to", "../code.bin"]);
         var absolute = this.read.Execute(this.context, ["--image", path, "CODE", "--to", "/tmp/code.bin"]);
         var unconfigured = new DiskReadCommand(this.detector, DebugOutputRenderer.PlainText, this.logger, new DebugExportRoot(null));
@@ -389,7 +389,7 @@ public sealed class DiskFileSystemCommandsTests
             Assert.That(this.output.ToString(), Does.Contain("nested/code.bin"));
             Assert.That(outside.Success, Is.False);
             Assert.That(outside.Message, Does.Contain("outside"));
-            Assert.That(File.Exists(Path.Combine(this.tempRoot, "code.bin")), Is.False);
+            Assert.That(File.Exists(Path.Join(this.tempRoot, "code.bin")), Is.False);
             Assert.That(absolute.Success, Is.False);
             Assert.That(absolute.Message, Does.Contain("relative"));
             Assert.That(missingRoot.Success, Is.False);
@@ -470,7 +470,7 @@ public sealed class DiskFileSystemCommandsTests
 
     private string Write(ReadOnlyMemory<byte> image, string name)
     {
-        var path = Path.Combine(this.tempRoot, name);
+        var path = Path.Join(this.tempRoot, name);
         File.WriteAllBytes(path, image.ToArray());
         return path;
     }

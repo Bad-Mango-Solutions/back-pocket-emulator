@@ -249,7 +249,7 @@ internal static class DiskFileSystemSupport
         }
 
         var rootFull = Path.GetFullPath(root);
-        var combined = Path.GetFullPath(Path.Combine(rootFull, relative));
+        var combined = Path.GetFullPath(Path.Join(rootFull, relative));
         var relativeBack = Path.GetRelativePath(rootFull, combined);
         if (relativeBack == "."
             || relativeBack == ".."
@@ -602,16 +602,14 @@ internal static class DiskFileSystemSupport
     {
         open = null;
         location = rawPath;
-        var debug = context as IDebugContext;
-        var factory = debug?.DiskImageFactory;
-        if (factory is null)
+        if (context is not IDebugContext debug || debug.DiskImageFactory is not DiskImageFactory factory)
         {
             error = "DiskImageFactory not available on debug context.";
             return false;
         }
 
         var path = rawPath;
-        var resolver = debug?.PathResolver;
+        var resolver = debug.PathResolver;
         if (resolver is not null)
         {
             if (!resolver.TryResolve(rawPath, out var resolved) || resolved is null)
