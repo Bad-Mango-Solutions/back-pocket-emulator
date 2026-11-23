@@ -693,6 +693,12 @@ public sealed partial class MainBus
             return false;
         }
 
+        if (bytes == 2 && TryReadIndexedWord(address, out Word word))
+        {
+            value = word;
+            return true;
+        }
+
         uint assembled = 0;
         for (int i = 0; i < bytes; i++)
         {
@@ -754,6 +760,31 @@ public sealed partial class MainBus
         }
 
         return assembled;
+    }
+
+    /// <summary>
+    /// Reads two same-page bytes when both publish <see cref="FastPathOps.Read"/>.
+    /// </summary>
+    /// <param name="address">The address of the low byte.</param>
+    /// <param name="value">The little-endian word when this method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when both bytes were indexed.</returns>
+    private bool TryReadIndexedWord(Addr address, out Word value)
+    {
+        value = 0;
+        if (!TryGetIndexedSlot(address, FastPathOps.Read, out byte[]? backing, out int index))
+        {
+            return false;
+        }
+
+        if ((uint)(index + 1) >= (uint)backing.Length)
+        {
+            return false;
+        }
+
+        byte low = backing[index];
+        byte high = backing[index + 1];
+        value = (Word)(low | (high << 8));
+        return true;
     }
 
     /// <summary>

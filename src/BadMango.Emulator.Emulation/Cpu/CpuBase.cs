@@ -880,12 +880,18 @@ public abstract class CpuBase : ICpu
             return false;
         }
 
-        if (!TryReadFastByte(address, FastPathOps.Read, out byte low)
-            || !TryReadFastByte(address + 1, FastPathOps.Read, out byte high))
+        if (!TryGetFastIndex(address, FastPathOps.Read, out byte[]? backing, out int index))
         {
             return false;
         }
 
+        if ((uint)(index + 1) >= (uint)backing.Length)
+        {
+            return false;
+        }
+
+        byte low = backing[index];
+        byte high = backing[index + 1];
         value = (Word)(low | (high << 8));
         return true;
     }
