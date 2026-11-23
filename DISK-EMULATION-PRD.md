@@ -122,7 +122,7 @@ The schema task (#217) is documentation and can land as soon as this spec is acc
 
 These bind every implementation issue in Appendix A.
 
-- Target `net10.0`, C# language version as set by `Directory.Build.props`. Nullable reference types stay on.
+- Target `net11.0`, C# language version as set by `Directory.Build.props`. Nullable reference types stay on.
 - New locks are `System.Threading.Lock`. New disk code has no static mutable fields. A `static readonly` template of slot-independent firmware bytes is allowed; the per-slot image is an instance array. The existing `DeviceFactoryRegistry` static map is not part of this work.
 - No empty `catch`, and no `catch (Exception)` except a filtered clause that lists the types the callee is documented to throw. Log with an injected `Serilog.ILogger`. Best-effort teardown in `Dispose` logs and continues.
 - Do not use `unsafe` for the block copy. A loop of `ICpu.Write8` / `Read8` over 512 bytes is the intended implementation. The Disk II hot path already avoids per-cycle allocation; block traps are not that path, and they still MUST NOT allocate on the success path after the first call (reuse a pooled or owner-held 512-byte buffer).

@@ -10,10 +10,9 @@ This guide covers everything you need to start developing on the project. For ge
 
 ### Required Software
 
-1. **[.NET 10.0 runtime](https://dotnet.microsoft.com/download/dotnet/10.0)** for running the emulator
-2. **[.NET 11.0 SDK](https://dotnet.microsoft.com/download/dotnet/11.0)** for the C# 15 compiler (pinned by `global.json`)
-3. **Git** - [Download](https://git-scm.com/downloads)
-4. **Code Editor** (choose one):
+1. **[.NET 11.0 SDK](https://dotnet.microsoft.com/download/dotnet/11.0)** (pinned to 11.0.100 by `global.json`). The SDK includes the runtime the emulator targets.
+2. **Git** - [Download](https://git-scm.com/downloads)
+3. **Code Editor** (choose one):
    - [Visual Studio 2026](https://visualstudio.microsoft.com/) or the latest Visual Studio / C# Dev Kit (recommended)
    - [Visual Studio Code](https://code.visualstudio.com/) (All platforms)
    - [JetBrains Rider](https://www.jetbrains.com/rider/) (All platforms)
@@ -21,8 +20,8 @@ This guide covers everything you need to start developing on the project. For ge
 ### C# 15 Toolchain Notes
 
 - The repository pins the .NET 11 SDK at `11.0.100` in `global.json` with `rollForward: latestPatch`.
-- All projects keep `TargetFramework` set to `net10.0`; the .NET 11 SDK is used to compile newer C# language features while the shipped app continues to run on the .NET 10 LTS runtime.
-- Prefer `union` and `closed` only for internal result/state types (for example debugger stop reasons, halt reasons, or bus-fault classification). They are not for JSON DTOs or for extensible CPU/device hierarchies.
+- All projects set `TargetFramework` to `net11.0`. `<LangVersion>15</LangVersion>` matches the C# 15 default for that target.
+- Prefer `union` and `closed` only for internal result/state types (for example debugger stop reasons, halt reasons, or bus-fault classification). .NET 11 can serialize unions, but they are not the default shape for JSON DTOs or for extensible CPU/device hierarchies.
 - `closed` forbids derivation outside the declaring assembly, so avoid using it for future-proof CPU, bus-target, or device models where extension is part of the design.
 
 ### Optional Tools
@@ -294,7 +293,7 @@ dotnet test BackPocketEmulator.slnx --collect:"XPlat Code Coverage"
 dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj
 
 # Or run the built executable
-./src/BadMango.Emulator.Debug/bin/Debug/net10.0/emudbg
+./src/BadMango.Emulator.Debug/bin/Debug/net11.0/emudbg
 ```
 
 ## Code Quality Tools
@@ -340,7 +339,7 @@ Project includes `.editorconfig` with code style rules:
       "name": "Debug Console App",
       "type": "coreclr",
       "request": "launch",
-      "program": "${workspaceFolder}/src/BadMango.Emulator.Debug/bin/Debug/net10.0/emudbg.dll",
+      "program": "${workspaceFolder}/src/BadMango.Emulator.Debug/bin/Debug/net11.0/emudbg.dll",
       "args": [],
       "cwd": "${workspaceFolder}",
       "stopAtEntry": false

@@ -25,7 +25,7 @@ Inspection tools are `get_registers`, `read_memory`, `write_memory`, and `disass
       "command": "dotnet",
       "args": [
         "exec",
-        "src/BadMango.Emulator.Debug.Mcp/bin/Release/net10.0/emudbg-mcp.dll"
+        "src/BadMango.Emulator.Debug.Mcp/bin/Release/net11.0/emudbg-mcp.dll"
       ]
     }
   }
