@@ -58,8 +58,22 @@ public sealed class SandboxPathGuard
     /// </summary>
     /// <param name="path">The path to test.</param>
     /// <returns><see langword="true"/> when the path is confined to a sandbox root.</returns>
-    public bool IsAllowed(string? path)
+    public bool IsAllowed(string? path) => this.TryGetAllowedPath(path, out _);
+
+    /// <summary>
+    /// Resolves <paramref name="path"/>, including symbolic links, when the final path stays inside a root.
+    /// </summary>
+    /// <param name="path">The path to confine.</param>
+    /// <param name="allowedPath">The resolved path inside a sandbox root when the method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when <paramref name="path"/> is confined to a sandbox root.</returns>
+    /// <remarks>
+    /// <see cref="FileSystemInfo.ResolveLinkTarget(bool)"/> supplies each link target. A link that cannot
+    /// be resolved is denied. The returned path is the final target, so a later open does not follow the
+    /// original link again.
+    /// </remarks>
+    public bool TryGetAllowedPath(string? path, out string allowedPath)
     {
+        allowedPath = string.Empty;
         if (string.IsNullOrWhiteSpace(path) || this.roots.Count == 0)
         {
             return false;
@@ -84,6 +98,7 @@ public sealed class SandboxPathGuard
         {
             if (IsUnderRoot(full, root))
             {
+                allowedPath = full;
                 return true;
             }
         }
@@ -100,7 +115,7 @@ public sealed class SandboxPathGuard
     public void EnsureAllowed(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (!this.IsAllowed(path))
+        if (!this.TryGetAllowedPath(path, out _))
         {
             throw new InvalidOperationException($"Path is outside the configured sandbox roots: {path}");
         }
@@ -129,20 +144,24 @@ public sealed class SandboxPathGuard
         foreach (string segment in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
         {
             string next = Path.Join(current, segment);
-            FileSystemInfo? link = ResolveExistingLink(next);
-            if (link is null)
+            if (!TryReadLink(next, out string? linkTarget))
             {
                 current = next;
                 continue;
             }
 
-            current = Follow(Normalize(link.FullName), depth + 1);
+            if (linkTarget is null)
+            {
+                throw new InvalidOperationException("Symbolic link target cannot be resolved.");
+            }
+
+            current = Follow(Normalize(linkTarget), depth + 1);
         }
 
         return TrimTrailingSeparator(current);
     }
 
-    private static FileSystemInfo? ResolveExistingLink(string path)
+    private static bool TryReadLink(string path, out string? target)
     {
         FileSystemInfo info = new FileInfo(path);
         if (info.LinkTarget is null)
@@ -150,11 +169,14 @@ public sealed class SandboxPathGuard
             info = new DirectoryInfo(path);
             if (info.LinkTarget is null)
             {
-                return null;
+                target = null;
+                return false;
             }
         }
 
-        return info.ResolveLinkTarget(returnFinalTarget: true);
+        FileSystemInfo? final = info.ResolveLinkTarget(returnFinalTarget: true);
+        target = final?.FullName;
+        return true;
     }
 
     private static string TrimTrailingSeparator(string full)

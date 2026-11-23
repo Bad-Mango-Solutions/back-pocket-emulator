@@ -20,7 +20,7 @@ using Serilog;
 [DeviceDebugCommand]
 public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
 {
-    private readonly IAppleFileSystemDetector detector;
+    private readonly DiskFileSystemReader files;
     private readonly IDebugOutputRenderer renderer;
     private readonly ILogger logger;
     private readonly IDebugExportRoot? exportRoot;
@@ -37,9 +37,9 @@ public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
         : base("disk-read", "Print a file from a mounted drive or an offline image")
     {
         ArgumentNullException.ThrowIfNull(detector);
-        this.detector = detector;
-        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
         this.logger = logger ?? Serilog.Core.Logger.None;
+        this.files = new DiskFileSystemReader(detector, this.logger);
+        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
         this.exportRoot = exportRoot;
     }
 
@@ -105,64 +105,36 @@ public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error(error ?? "--to is outside the output root.");
         }
 
-        if (!DiskFileSystemSupport.TryOpen(context, this.detector, this.logger, request, out var session, out error) || session is null)
+        if (!this.files.TryRead(context, request.Image, request.SlotDrive, request.Path!, request.Raw, out DiskVolumeFile? file, out error) || file is null)
         {
             return CommandResult.Error(error ?? "Cannot read the file system.");
         }
 
-        using (session)
+        if (exportPath is not null
+            && !DiskFileSystemSupport.TryWriteExport(this.exportRoot?.Directory, exportPath, file.Data.Span, this.logger, out error))
         {
-            var fileSystem = session.Detection.FileSystem;
-            if (fileSystem is null)
-            {
-                return CommandResult.Error(DiskFileSystemSupport.UnrecognizedMessage(session.Detection));
-            }
-
-            FileReadResult read;
-            try
-            {
-                read = fileSystem.TryReadFile(request.Path!, request.View);
-            }
-            catch (Exception ex) when (ex is ArgumentException
-                                       or InvalidOperationException
-                                       or IOException
-                                       or ObjectDisposedException)
-            {
-                this.logger.Warning(ex, "File read failed for {Location} {Path}", session.Location, request.Path);
-                return CommandResult.Error($"Cannot read the file system: {ex.Message}");
-            }
-
-            if (!read.Succeeded)
-            {
-                return CommandResult.Error($"Cannot read '{request.Path}': {read.Reason}");
-            }
-
-            if (exportPath is not null
-                && !DiskFileSystemSupport.TryWriteExport(this.exportRoot?.Directory, exportPath, read.Data.Span, this.logger, out error))
-            {
-                return CommandResult.Error(error ?? "Cannot write the export file.");
-            }
-
-            if (request.ExportTo is not null)
-            {
-                savedTo = request.ExportTo;
-            }
-
-            var payload = new DiskFilePayload(
-                session.Source,
-                session.Location,
-                fileSystem.Kind.ToString(),
-                AppleCatalogName.EscapePlain(fileSystem.VolumeName),
-                request.Path!,
-                request.Raw ? "raw" : "logical",
-                request.Hex ? "hex" : "text",
-                read.Data.Length,
-                Convert.ToHexStringLower(read.Data.Span),
-                request.Hex ? null : DiskFileSystemSupport.ToText(read.Data.Span),
-                savedTo);
-            var text = DiskFileSystemSupport.FormatFile(payload, request.Hex, read.Data);
-            this.renderer.WriteDiskFile(context.Output, payload, text, request.Json || this.renderer.JsonOutput);
-            return CommandResult.Ok();
+            return CommandResult.Error(error ?? "Cannot write the export file.");
         }
+
+        if (request.ExportTo is not null)
+        {
+            savedTo = request.ExportTo;
+        }
+
+        var payload = new DiskFilePayload(
+            file.Source,
+            file.Location,
+            file.Kind,
+            file.VolumeName,
+            file.Path,
+            file.View,
+            request.Hex ? "hex" : "text",
+            file.Data.Length,
+            Convert.ToHexStringLower(file.Data.Span),
+            request.Hex ? null : DiskFileSystemSupport.ToText(file.Data.Span),
+            savedTo);
+        var text = DiskFileSystemSupport.FormatFile(payload, request.Hex, file.Data);
+        this.renderer.WriteDiskFile(context.Output, payload, text, request.Json || this.renderer.JsonOutput);
+        return CommandResult.Ok();
     }
 }

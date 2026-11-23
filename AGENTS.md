@@ -13,9 +13,11 @@ The 65C02 SingleStepTests full category (`SingleStepFull`) is not part of that t
 
 The debug host project is `src/BadMango.Emulator.Debug`. Its assembly name is `emudbg`.
 
-The stdio MCP host is `src/BadMango.Emulator.Debug.Mcp`. Its assembly name is `emudbg-mcp`. stdout is the protocol. Serilog writes to stderr and `logs/debug-mcp-.log` under the application directory. Sandbox roots are the `DebugMcp:SandboxRoots` list of absolute directories. An empty list denies sandboxed file access. Part 3 uses that list for disk paths.
+The stdio MCP host is `src/BadMango.Emulator.Debug.Mcp`. Its assembly name is `emudbg-mcp`. stdout is the protocol. Serilog writes to stderr and `logs/debug-mcp-.log` under the application directory. Sandbox roots are the `DebugMcp:SandboxRoots` list of absolute directories. An empty list denies sandboxed file access.
 
 Inspection tools are `get_registers`, `read_memory`, `write_memory`, and `disassemble`. Breakpoint tools are `set_breakpoint` and `set_watchpoint`. `read_memory` length is 1 through 4096 and defaults to 16. `write_memory` accepts at most 256 bytes. `disassemble` count is 1 through 256 and defaults to 16. Addresses accept `$` hex, `0x` hex, decimal, or a soft-switch name. Bus faults use the shared `FaultKind` formatter.
+
+I/O tools are `get_screen_text`, `type_keys`, `mount_disk`, `disk_list_files`, and `disk_read_file`. `mount_disk` takes `path`, `slot` (default 6), `drive` (default 1), and `writeProtect`. `disk_list_files` and `disk_read_file` take either an `image` path or `slot` plus `drive`, plus the volume `path` or `filename`. `disk_read_file` defaults to the logical view (`raw` selects on-disk bytes) and returns host text and base64. It does not write a host file. Image paths resolve only under the sandbox roots: `..` that leaves a root, an absolute path outside the roots, and a symlink whose target leaves the roots are rejected. The link target is resolved with `FileSystemInfo.ResolveLinkTarget` before that check. Catalog display names use the same `\c{X}`, `\i{X}`, and `\f{X}` escaping as `disk cat`. File lookup matches `disk read`: exact name, then a case-insensitive match only when it is unique.
 
 ```json
 {
