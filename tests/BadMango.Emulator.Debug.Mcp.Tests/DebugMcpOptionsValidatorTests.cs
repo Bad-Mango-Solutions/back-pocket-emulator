@@ -42,6 +42,21 @@ public sealed class DebugMcpOptionsValidatorTests
     }
 
     /// <summary>
+    /// A non-positive file cap is rejected.
+    /// </summary>
+    [Test]
+    public void Validate_NonPositiveFileCap_Fails()
+    {
+        ValidateOptionsResult result = this.validator.Validate(null, new DebugMcpOptions
+        {
+            MaxDiskFileBytes = 0,
+        });
+
+        Assert.That(result.Failed, Is.True);
+        Assert.That(string.Join(" ", result.Failures ?? []), Does.Contain("MaxDiskFileBytes"));
+    }
+
+    /// <summary>
     /// An empty entry is rejected.
     /// </summary>
     [Test]

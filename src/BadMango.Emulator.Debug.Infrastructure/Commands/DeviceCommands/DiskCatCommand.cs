@@ -4,6 +4,7 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 
+using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Storage.FileSystems;
 
@@ -18,9 +19,8 @@ using Serilog;
 [DeviceDebugCommand]
 public sealed class DiskCatCommand : CommandHandlerBase, ICommandHelp
 {
-    private readonly IAppleFileSystemDetector detector;
+    private readonly DiskFileSystemReader files;
     private readonly IDebugOutputRenderer renderer;
-    private readonly ILogger logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DiskCatCommand"/> class.
@@ -33,9 +33,8 @@ public sealed class DiskCatCommand : CommandHandlerBase, ICommandHelp
         : base("disk-cat", "List a catalog or directory on a mounted drive or an offline image")
     {
         ArgumentNullException.ThrowIfNull(detector);
-        this.detector = detector;
+        this.files = new DiskFileSystemReader(detector, logger ?? Serilog.Core.Logger.None);
         this.renderer = renderer ?? DebugOutputRenderer.PlainText;
-        this.logger = logger ?? Serilog.Core.Logger.None;
     }
 
     /// <inheritdoc/>
@@ -86,43 +85,13 @@ public sealed class DiskCatCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error(error ?? "Usage: disk cat <slot:drive> [path]");
         }
 
-        if (!DiskFileSystemSupport.TryOpen(context, this.detector, this.logger, request, out var session, out error) || session is null)
+        if (!this.files.TryList(context, request.Image, request.SlotDrive, request.Path, out DiskCatalogPayload? payload, out error) || payload is null)
         {
             return CommandResult.Error(error ?? "Cannot read the file system.");
         }
 
-        using (session)
-        {
-            var fileSystem = session.Detection.FileSystem;
-            if (fileSystem is null)
-            {
-                return CommandResult.Error(DiskFileSystemSupport.UnrecognizedMessage(session.Detection));
-            }
-
-            DirectoryListing listing;
-            try
-            {
-                listing = fileSystem.ListDirectory(request.Path);
-            }
-            catch (Exception ex) when (ex is ArgumentException
-                                       or InvalidOperationException
-                                       or IOException
-                                       or ObjectDisposedException)
-            {
-                this.logger.Warning(ex, "Catalog read failed for {Location}", session.Location);
-                return CommandResult.Error($"Cannot read the file system: {ex.Message}");
-            }
-
-            if (!listing.Succeeded)
-            {
-                var where = string.IsNullOrEmpty(request.Path) ? "/" : request.Path;
-                return CommandResult.Error($"Cannot list '{where}': {listing.Reason}");
-            }
-
-            var payload = DiskFileSystemSupport.DescribeCatalog(session, request.Path, listing);
-            var text = DiskFileSystemSupport.FormatCatalog(payload);
-            this.renderer.WriteDiskCatalog(context.Output, payload, text, request.Json || this.renderer.JsonOutput);
-            return CommandResult.Ok();
-        }
+        var text = DiskFileSystemSupport.FormatCatalog(payload);
+        this.renderer.WriteDiskCatalog(context.Output, payload, text, request.Json || this.renderer.JsonOutput);
+        return CommandResult.Ok();
     }
 }

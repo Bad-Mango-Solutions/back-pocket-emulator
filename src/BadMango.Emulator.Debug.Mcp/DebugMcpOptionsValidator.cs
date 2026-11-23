@@ -22,6 +22,11 @@ internal sealed class DebugMcpOptionsValidator : IValidateOptions<DebugMcpOption
         }
 
         var failures = new List<string>();
+        if (options.MaxDiskFileBytes < 1)
+        {
+            failures.Add("DebugMcp:MaxDiskFileBytes must be at least 1.");
+        }
+
         var seen = new HashSet<string>(PathComparison());
         for (int index = 0; index < options.SandboxRoots.Count; index++)
         {

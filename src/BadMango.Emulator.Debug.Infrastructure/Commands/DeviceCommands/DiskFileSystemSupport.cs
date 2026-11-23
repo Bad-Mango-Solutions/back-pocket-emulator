@@ -820,7 +820,7 @@ internal static class DiskFileSystemSupport
             return false;
         }
 
-        if (!snapshot.UnflushedChanges)
+        if (snapshot.WriteProtect || !snapshot.UnflushedChanges)
         {
             return true;
         }

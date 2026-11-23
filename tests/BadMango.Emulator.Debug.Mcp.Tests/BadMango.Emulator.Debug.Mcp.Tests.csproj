@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\BadMango.Emulator.Debug.Mcp\BadMango.Emulator.Debug.Mcp.csproj" />
     <ProjectReference Include="..\BadMango.Unit.Components\BadMango.Unit.Components.csproj" />
+    <ProjectReference Include="..\BadMango.Unit.Components.Storage\BadMango.Unit.Components.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>

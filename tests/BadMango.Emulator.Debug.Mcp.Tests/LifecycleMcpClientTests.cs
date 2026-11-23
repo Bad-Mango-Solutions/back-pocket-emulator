@@ -46,8 +46,12 @@ public sealed class LifecycleMcpClientTests
             Assert.That(names, Is.EqualTo(new[]
             {
                 "disassemble",
+                "disk_list_files",
+                "disk_read_file",
                 "get_registers",
+                "get_screen_text",
                 "load_profile",
+                "mount_disk",
                 "pause",
                 "read_memory",
                 "reset",
@@ -55,6 +59,7 @@ public sealed class LifecycleMcpClientTests
                 "set_breakpoint",
                 "set_watchpoint",
                 "step",
+                "type_keys",
                 "write_memory",
             }));
             Assert.That(tools.All(static tool => !string.IsNullOrWhiteSpace(tool.Description)), Is.True);
