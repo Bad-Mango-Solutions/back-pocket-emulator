@@ -774,7 +774,7 @@ None. The two questions that were here are decisions 11 and 12.
 - `src/BadMango.Emulator.Devices/Interfaces/IBlockMedia.cs` and the neighboring unused storage interfaces
 - `src/BadMango.Emulator.Debug.Abstractions/IDebugSession.cs` (`ReadMemory`)
 - PR #435 branch `copilot/headless-host-session-api`: `IMachineIoSession`, `MachineDebugSession` mount/eject/list
-- `.github/copilot-instructions.md` (net10, warnings as errors, `Lock`, empty catches)
+- `.github/copilot-instructions.md` (net11, warnings as errors, `Lock`, empty catches)
 - Issues #195, #213–#218, #341–#345, #374, #437, #440, #443
 - Commit `42540b7`
 - ProDOS Technical Note #3, "ProDOS Device Search and Identification Procedure" (20 December 1983): `$CnFE` bit layout. Bits 0 and 1 must be set.

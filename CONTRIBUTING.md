@@ -83,7 +83,7 @@ This project is committed to providing a welcoming and inclusive environment for
 
 ### Dependency Management
 
-Package versions are centralized in `Directory.Packages.props` using NuGet Central Package Management (CPM). Dependabot watches the repo weekly for `nuget` and `github-actions` updates, grouping minor and patch bumps to keep PRs small while leaving major-version updates separate. The solution targets `net11.0`. Major updates for `Microsoft.Extensions.*` and `Microsoft.CodeAnalysis.*` stay ignored in `.github/dependabot.yml` until the next deliberate framework move. `Serilog.Extensions.*` and `Serilog.Settings.Configuration` are not ignored on this branch; [PR #643](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/pull/643) would add those ignores and was still open when this retarget landed.
+Package versions are centralized in `Directory.Packages.props` using NuGet Central Package Management (CPM). Dependabot watches the repo weekly for `nuget` and `github-actions` updates, grouping minor and patch bumps to keep PRs small while leaving major-version updates separate. The solution targets `net11.0`. Major updates for `Microsoft.Extensions.*` and `Microsoft.CodeAnalysis.*` stay ignored in `.github/dependabot.yml` until the next deliberate framework move. `Serilog.Extensions.*` and `Serilog.Settings.Configuration` are not ignored; those packages track the runtime line.
 
 ## Project Structure
 
