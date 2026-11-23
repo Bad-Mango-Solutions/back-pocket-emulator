@@ -28,19 +28,19 @@ public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
     /// <summary>
     /// Initializes a new instance of the <see cref="DiskReadCommand"/> class.
     /// </summary>
-    /// <param name="detector">The shared file-system detector. Not <see langword="null"/>.</param>
-    /// <param name="renderer">The output renderer. <see langword="null"/> writes text unless <c>--json</c> is passed.</param>
-    /// <param name="logger">Logger for media and export failures. <see langword="null"/> discards those messages.</param>
-    /// <param name="exportRoot">The directory <c>--to</c> may write into. <see langword="null"/> refuses <c>--to</c>.</param>
-    /// <exception cref="ArgumentNullException">If <paramref name="detector"/> is <see langword="null"/>.</exception>
-    public DiskReadCommand(IAppleFileSystemDetector detector, IDebugOutputRenderer? renderer, ILogger? logger, IDebugExportRoot? exportRoot)
+    /// <param name="fileSystemDetector">The shared file-system detector. Not <see langword="null"/>.</param>
+    /// <param name="outputRenderer">The output renderer. <see langword="null"/> writes text unless <c>--json</c> is passed.</param>
+    /// <param name="diagnosticLogger">Logger for media and export failures. <see langword="null"/> discards those messages.</param>
+    /// <param name="configuredExportRoot">The directory <c>--to</c> may write into. <see langword="null"/> refuses <c>--to</c>.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="fileSystemDetector"/> is <see langword="null"/>.</exception>
+    public DiskReadCommand(IAppleFileSystemDetector fileSystemDetector, IDebugOutputRenderer? outputRenderer, ILogger? diagnosticLogger, IDebugExportRoot? configuredExportRoot)
         : base("disk-read", "Print a file from a mounted drive or an offline image")
     {
-        ArgumentNullException.ThrowIfNull(detector);
-        this.detector = detector;
-        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
-        this.logger = logger ?? Serilog.Core.Logger.None;
-        this.exportRoot = exportRoot;
+        ArgumentNullException.ThrowIfNull(fileSystemDetector);
+        this.detector = fileSystemDetector;
+        this.renderer = outputRenderer ?? DebugOutputRenderer.PlainText;
+        this.logger = diagnosticLogger ?? Serilog.Core.Logger.None;
+        this.exportRoot = configuredExportRoot;
     }
 
     /// <inheritdoc/>

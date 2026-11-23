@@ -1057,13 +1057,13 @@ internal static class DiskFileSystemSupport
         /// <param name="source"><c>image</c> or <c>drive</c>.</param>
         /// <param name="location">The image path or <c>slot:drive</c>.</param>
         /// <param name="detection">The detector result.</param>
-        /// <param name="owned">An image this session must dispose, or <see langword="null"/> for a mounted drive.</param>
-        public VolumeSession(string source, string location, FileSystemDetectionResult detection, DiskImageOpenResult? owned)
+        /// <param name="ownedImage">An image this session must dispose, or <see langword="null"/> for a mounted drive.</param>
+        public VolumeSession(string source, string location, FileSystemDetectionResult detection, DiskImageOpenResult? ownedImage)
         {
             this.Source = source;
             this.Location = location;
             this.Detection = detection;
-            this.owned = owned;
+            this.owned = ownedImage;
         }
 
         /// <summary>Gets the source kind.</summary>

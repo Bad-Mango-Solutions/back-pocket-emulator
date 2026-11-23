@@ -23,19 +23,19 @@ public sealed class ProdosImageBuilder
     /// <summary>
     /// Initializes a new instance of the <see cref="ProdosImageBuilder"/> class.
     /// </summary>
-    /// <param name="blockCount">Blocks, from the bitmap's end through <see cref="ProdosLayout.MaxBlockCount"/>.</param>
-    /// <param name="volumeName">Volume name, 1–15 ProDOS characters.</param>
+    /// <param name="blocks">Blocks, from the bitmap's end through <see cref="ProdosLayout.MaxBlockCount"/>.</param>
+    /// <param name="name">Volume name, 1–15 ProDOS characters.</param>
     /// <exception cref="ArgumentOutOfRangeException">If the volume cannot hold its directory and bitmap.</exception>
-    /// <exception cref="ArgumentException">If <paramref name="volumeName"/> is not a ProDOS name.</exception>
-    public ProdosImageBuilder(int blockCount, string volumeName)
+    /// <exception cref="ArgumentException">If <paramref name="name"/> is not a ProDOS name.</exception>
+    public ProdosImageBuilder(int blocks, string name)
     {
-        if (blockCount > ProdosLayout.MaxBlockCount || blockCount < ProdosLayout.FirstDataBlock(Math.Max(blockCount, 1)))
+        if (blocks > ProdosLayout.MaxBlockCount || blocks < ProdosLayout.FirstDataBlock(Math.Max(blocks, 1)))
         {
-            throw new ArgumentOutOfRangeException(nameof(blockCount), "Block count must fit a directory and a bitmap, and is at most 65535.");
+            throw new ArgumentOutOfRangeException(nameof(blocks), "Block count must fit a directory and a bitmap, and is at most 65535.");
         }
 
-        this.blockCount = blockCount;
-        this.volumeName = Normalize(volumeName);
+        this.blockCount = blocks;
+        this.volumeName = Normalize(name);
     }
 
     private enum PendingKind

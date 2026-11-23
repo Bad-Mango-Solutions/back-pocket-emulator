@@ -25,17 +25,17 @@ public sealed class DiskCatCommand : CommandHandlerBase, ICommandHelp
     /// <summary>
     /// Initializes a new instance of the <see cref="DiskCatCommand"/> class.
     /// </summary>
-    /// <param name="detector">The shared file-system detector. Not <see langword="null"/>.</param>
-    /// <param name="renderer">The output renderer. <see langword="null"/> writes text unless <c>--json</c> is passed.</param>
-    /// <param name="logger">Logger for media failures. <see langword="null"/> discards those messages.</param>
-    /// <exception cref="ArgumentNullException">If <paramref name="detector"/> is <see langword="null"/>.</exception>
-    public DiskCatCommand(IAppleFileSystemDetector detector, IDebugOutputRenderer? renderer, ILogger? logger)
+    /// <param name="fileSystemDetector">The shared file-system detector. Not <see langword="null"/>.</param>
+    /// <param name="outputRenderer">The output renderer. <see langword="null"/> writes text unless <c>--json</c> is passed.</param>
+    /// <param name="diagnosticLogger">Logger for media failures. <see langword="null"/> discards those messages.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="fileSystemDetector"/> is <see langword="null"/>.</exception>
+    public DiskCatCommand(IAppleFileSystemDetector fileSystemDetector, IDebugOutputRenderer? outputRenderer, ILogger? diagnosticLogger)
         : base("disk-cat", "List a catalog or directory on a mounted drive or an offline image")
     {
-        ArgumentNullException.ThrowIfNull(detector);
-        this.detector = detector;
-        this.renderer = renderer ?? DebugOutputRenderer.PlainText;
-        this.logger = logger ?? Serilog.Core.Logger.None;
+        ArgumentNullException.ThrowIfNull(fileSystemDetector);
+        this.detector = fileSystemDetector;
+        this.renderer = outputRenderer ?? DebugOutputRenderer.PlainText;
+        this.logger = diagnosticLogger ?? Serilog.Core.Logger.None;
     }
 
     /// <inheritdoc/>

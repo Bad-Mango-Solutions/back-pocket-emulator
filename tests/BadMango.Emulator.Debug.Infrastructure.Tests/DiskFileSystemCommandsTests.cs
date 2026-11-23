@@ -267,12 +267,12 @@ public sealed class DiskFileSystemCommandsTests
         var cat = parent.Execute(this.context, ["cat", "--image", path]);
         var catOutput = this.output.ToString();
         this.ClearOutput();
-        var catalog = parent.Execute(this.context, ["catalog", "--image", path]);
+        var catalogResult = parent.Execute(this.context, ["catalog", "--image", path]);
 
         Assert.Multiple(() =>
         {
             Assert.That(cat.Success, Is.True, cat.Message);
-            Assert.That(catalog.Success, Is.True, catalog.Message);
+            Assert.That(catalogResult.Success, Is.True, catalogResult.Message);
             Assert.That(this.output.ToString(), Is.EqualTo(catOutput));
             Assert.That(this.catalog.Aliases, Does.Contain("disk-catalog"));
             Assert.That(this.catalog.Aliases, Does.Contain("diskcatalog"));

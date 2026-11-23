@@ -23,19 +23,19 @@ public sealed class PascalImageBuilder
     /// <summary>
     /// Initializes a new instance of the <see cref="PascalImageBuilder"/> class.
     /// </summary>
-    /// <param name="blockCount">Blocks. At least 6 and at most <see cref="ProdosLayout.MaxBlockCount"/>.</param>
-    /// <param name="volumeName">Volume name, 1–7 characters.</param>
-    /// <exception cref="ArgumentOutOfRangeException">If <paramref name="blockCount"/> is out of range.</exception>
-    /// <exception cref="ArgumentException">If <paramref name="volumeName"/> is not a legal volume name.</exception>
-    public PascalImageBuilder(int blockCount, string volumeName)
+    /// <param name="blocks">Blocks. At least 6 and at most <see cref="ProdosLayout.MaxBlockCount"/>.</param>
+    /// <param name="name">Volume name, 1–7 characters.</param>
+    /// <exception cref="ArgumentOutOfRangeException">If <paramref name="blocks"/> is out of range.</exception>
+    /// <exception cref="ArgumentException">If <paramref name="name"/> is not a legal volume name.</exception>
+    public PascalImageBuilder(int blocks, string name)
     {
-        if (blockCount < PascalLayout.FirstDataBlock || blockCount > ProdosLayout.MaxBlockCount)
+        if (blocks < PascalLayout.FirstDataBlock || blocks > ProdosLayout.MaxBlockCount)
         {
-            throw new ArgumentOutOfRangeException(nameof(blockCount), "A Pascal fixture needs 6 through 65535 blocks.");
+            throw new ArgumentOutOfRangeException(nameof(blocks), "A Pascal fixture needs 6 through 65535 blocks.");
         }
 
-        this.blockCount = blockCount;
-        this.volumeName = Normalize(volumeName, PascalLayout.VolumeHeader.NameCapacity, nameof(volumeName));
+        this.blockCount = blocks;
+        this.volumeName = Normalize(name, PascalLayout.VolumeHeader.NameCapacity, nameof(name));
     }
 
     /// <summary>

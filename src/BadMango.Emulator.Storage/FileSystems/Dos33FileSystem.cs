@@ -65,38 +65,38 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     /// <summary>
     /// Initializes a new instance of the <see cref="Dos33FileSystem"/> class.
     /// </summary>
-    /// <param name="sectors">DOS logical sectors. Track 17 sector 0 must be a DOS 3.3 VTOC.</param>
-    /// <param name="logger">Logger for a corrupt catalog or track/sector list. Not used per sector.</param>
-    /// <exception cref="ArgumentNullException">If <paramref name="sectors"/> or <paramref name="logger"/> is <see langword="null"/>.</exception>
+    /// <param name="sectorReader">DOS logical sectors. Track 17 sector 0 must be a DOS 3.3 VTOC.</param>
+    /// <param name="diagnosticLogger">Logger for a corrupt catalog or track/sector list. Not used per sector.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="sectorReader"/> or <paramref name="diagnosticLogger"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">If the geometry is not DOS 3.3 or track 17 sector 0 is not a VTOC.</exception>
     /// <exception cref="ArgumentOutOfRangeException">If the sector reader rejects the VTOC read.</exception>
     /// <exception cref="InvalidOperationException">If the sector reader refuses the VTOC read.</exception>
     /// <exception cref="IOException">If the VTOC sector cannot be read.</exception>
-    /// <exception cref="ObjectDisposedException">If <paramref name="sectors"/> has been disposed.</exception>
-    public Dos33FileSystem(ISectorReader sectors, ILogger logger)
+    /// <exception cref="ObjectDisposedException">If <paramref name="sectorReader"/> has been disposed.</exception>
+    public Dos33FileSystem(ISectorReader sectorReader, ILogger diagnosticLogger)
     {
-        ArgumentNullException.ThrowIfNull(sectors);
-        ArgumentNullException.ThrowIfNull(logger);
-        if (sectors.BytesPerSector != Dos33Layout.SectorSize
-            || sectors.SectorsPerTrack != Dos33Layout.DefaultSectorsPerTrack)
+        ArgumentNullException.ThrowIfNull(sectorReader);
+        ArgumentNullException.ThrowIfNull(diagnosticLogger);
+        if (sectorReader.BytesPerSector != Dos33Layout.SectorSize
+            || sectorReader.SectorsPerTrack != Dos33Layout.DefaultSectorsPerTrack)
         {
-            throw new ArgumentException("DOS 3.3 reads 16 sectors of 256 bytes.", nameof(sectors));
+            throw new ArgumentException("DOS 3.3 reads 16 sectors of 256 bytes.", nameof(sectorReader));
         }
 
-        if (sectors.TrackCount <= Dos33Layout.VtocTrack)
+        if (sectorReader.TrackCount <= Dos33Layout.VtocTrack)
         {
-            throw new ArgumentException("DOS 3.3 needs track 17.", nameof(sectors));
+            throw new ArgumentException("DOS 3.3 needs track 17.", nameof(sectorReader));
         }
 
         var vtoc = new byte[Dos33Layout.SectorSize];
-        sectors.ReadSector(Dos33Layout.VtocTrack, Dos33Layout.VtocSector, vtoc);
-        if (!Dos33Layout.IsVtoc(vtoc, sectors.TrackCount, sectors.SectorsPerTrack))
+        sectorReader.ReadSector(Dos33Layout.VtocTrack, Dos33Layout.VtocSector, vtoc);
+        if (!Dos33Layout.IsVtoc(vtoc, sectorReader.TrackCount, sectorReader.SectorsPerTrack))
         {
-            throw new ArgumentException("Track 17 sector 0 is not a DOS 3.3 VTOC.", nameof(sectors));
+            throw new ArgumentException("Track 17 sector 0 is not a DOS 3.3 VTOC.", nameof(sectorReader));
         }
 
-        this.sectors = sectors;
-        this.logger = logger.ForContext<Dos33FileSystem>();
+        this.sectors = sectorReader;
+        this.logger = diagnosticLogger.ForContext<Dos33FileSystem>();
         this.firstCatalogTrack = vtoc[Dos33Layout.Vtoc.CatalogTrackOffset];
         this.firstCatalogSector = vtoc[Dos33Layout.Vtoc.CatalogSectorOffset];
         this.VolumeName = vtoc[Dos33Layout.Vtoc.VolumeOffset].ToString(CultureInfo.InvariantCulture);
