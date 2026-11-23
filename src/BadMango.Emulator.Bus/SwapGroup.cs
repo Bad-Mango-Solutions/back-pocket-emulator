@@ -121,12 +121,7 @@ public sealed class SwapGroup
     {
         lock (syncLock)
         {
-            if (!variants.TryGetValue(variantName, out var variant))
-            {
-                throw new KeyNotFoundException($"Variant '{variantName}' not found in swap group '{Name}'.");
-            }
-
-            return variant;
+            return GetVariantNoLock(variantName);
         }
     }
 
@@ -153,12 +148,7 @@ public sealed class SwapGroup
     {
         lock (syncLock)
         {
-            if (!variants.ContainsKey(variantName))
-            {
-                throw new KeyNotFoundException($"Variant '{variantName}' not found in swap group '{Name}'.");
-            }
-
-            ActiveVariantName = variantName;
+            SetActiveVariantNoLock(variantName);
         }
     }
 
@@ -175,4 +165,37 @@ public sealed class SwapGroup
     /// <param name="pageShift">The page shift value (e.g., 12 for 4KB pages).</param>
     /// <returns>The number of pages in this swap group.</returns>
     public int GetPageCount(int pageShift) => (int)(Size >> pageShift);
+
+    /// <summary>
+    /// Gets a variant by name without taking <see cref="syncLock"/>.
+    /// </summary>
+    /// <param name="variantName">The name of the variant to retrieve.</param>
+    /// <returns>The variant if found.</returns>
+    /// <exception cref="KeyNotFoundException">Thrown when no variant with the specified name exists.</exception>
+    /// <remarks>The caller must hold the owning <see cref="MainBus"/>'s <c>swapGroupLock</c>.</remarks>
+    internal SwapVariant GetVariantNoLock(string variantName)
+    {
+        if (!variants.TryGetValue(variantName, out var variant))
+        {
+            throw new KeyNotFoundException($"Variant '{variantName}' not found in swap group '{Name}'.");
+        }
+
+        return variant;
+    }
+
+    /// <summary>
+    /// Sets the active variant name without taking <see cref="syncLock"/>.
+    /// </summary>
+    /// <param name="variantName">The name of the variant to set as active.</param>
+    /// <exception cref="KeyNotFoundException">Thrown when no variant with the specified name exists.</exception>
+    /// <remarks>The caller must hold the owning <see cref="MainBus"/>'s <c>swapGroupLock</c>.</remarks>
+    internal void SetActiveVariantNoLock(string variantName)
+    {
+        if (!variants.ContainsKey(variantName))
+        {
+            throw new KeyNotFoundException($"Variant '{variantName}' not found in swap group '{Name}'.");
+        }
+
+        ActiveVariantName = variantName;
+    }
 }

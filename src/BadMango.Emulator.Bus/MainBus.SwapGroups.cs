@@ -89,7 +89,7 @@ public sealed partial class MainBus
             }
 
             // Get the variant to select (this validates the variant exists)
-            var variant = swapGroup.GetVariant(variantName);
+            var variant = swapGroup.GetVariantNoLock(variantName);
 
             // Atomically update all page entries for the swap group's address range.
             // One snapshot covers every page this rebuild stores.
@@ -124,7 +124,7 @@ public sealed partial class MainBus
             }
 
             // Update the active variant in the swap group
-            swapGroup.SetActiveVariant(variantName);
+            swapGroup.SetActiveVariantNoLock(variantName);
         }
     }
 
