@@ -102,7 +102,7 @@ The child architecture pages are tracked by issue; landed pages link to their ca
 | [#544](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/544) | [`specs/architecture/scheduler.md`](specs/architecture/scheduler.md) | landed |
 | [#545](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/545) | [`specs/architecture/devices.md`](specs/architecture/devices.md) | landed |
 | [#546](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/546) | `specs/architecture/rom-traps.md` | pending |
-| [#547](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/547) | `specs/architecture/compat.md` | pending |
+| [#547](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/547) | [`specs/architecture/compat.md`](specs/architecture/compat.md) | landed |
 | [#548](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/548) | [`specs/architecture/observability.md`](specs/architecture/observability.md) | landed |
 | [#549](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/549) | `specs/architecture/machine.md` | pending |
 | [#550](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/550) | [`specs/architecture/host-ui.md`](specs/architecture/host-ui.md) | landed |
