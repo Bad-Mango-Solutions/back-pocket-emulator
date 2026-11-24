@@ -763,7 +763,8 @@ public sealed partial class MainBus
     }
 
     /// <summary>
-    /// Reads two little-endian bytes from one indexed backing array when the fast read slot and both positions are available.
+    /// Reads a little-endian word from <paramref name="address"/> and the next byte when the page publishes <see cref="FastPathOps.Read"/>.
+    /// The caller must ensure both bytes are on the same page; this method does not check the page boundary.
     /// </summary>
     /// <param name="address">The address of the low byte.</param>
     /// <param name="value">The little-endian word when this method returns <see langword="true"/>.</param>
