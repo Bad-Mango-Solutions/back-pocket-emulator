@@ -62,7 +62,7 @@ public class GuestOsBootMonitorTests
         var registry = Registry(machine);
         Assert.That(registry.IsEmpty, Is.True);
 
-        var output = new StringWriter();
+        using var output = new StringWriter();
         var command = new OsCommand(Logger.None);
         var result = command.Execute(Context(machine, output), ["on"]);
 
@@ -144,12 +144,13 @@ public class GuestOsBootMonitorTests
             Assert.That(registry.HasTrap(0x9D84), Is.False);
         });
 
-        var bootOutput = new StringWriter();
+        using var bootOutput = new StringWriter();
         var command = new OsCommand(Logger.None);
         Assert.That(command.Execute(Context(machine, bootOutput), ["boot"]).Success, Is.True);
         Assert.That(bootOutput.ToString(), Does.Contain("DOS 3.3 cold start"));
 
-        var tools = new InspectionTools(new Mock<IDebugSession>().Object, Context(machine, new StringWriter()), Logger.None);
+        using var inspectionOutput = new StringWriter();
+        var tools = new InspectionTools(new Mock<IDebugSession>().Object, Context(machine, inspectionOutput), Logger.None);
         var boot = (DebugEnvelope<BootLogSnapshot>)tools.GetBootLog();
         Assert.That(boot.Payload.Milestones, Has.Count.EqualTo(logged));
         Assert.That(boot.Payload.Stage, Is.EqualTo(nameof(GuestOsBootStage.Ready)));
@@ -313,7 +314,8 @@ public class GuestOsBootMonitorTests
         Assert.That(monitor.Milestones, Is.Empty);
         Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
 
-        var tools = new InspectionTools(new Mock<IDebugSession>().Object, Context(machine, new StringWriter()), Logger.None);
+        using var output = new StringWriter();
+        var tools = new InspectionTools(new Mock<IDebugSession>().Object, Context(machine, output), Logger.None);
         var guest = (DebugEnvelope<GuestOsSnapshot>)tools.GetGuestOs();
 
         Assert.Multiple(() =>
