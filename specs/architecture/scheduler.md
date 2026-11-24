@@ -144,7 +144,6 @@ VBlank-end callback clears the state and schedules the next frame. RESET
 assertion flushes the pending edge and `VideoDevice` re-arms the original
 start or end cycle, preserving the frame phase rather than resetting video time.
 
-
 ## Gap 4: Scheduler Reset — **Partly implemented**
 
 [`IScheduler.Reset`](../../src/BadMango.Emulator.Bus/Interfaces/IScheduler.cs)

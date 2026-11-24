@@ -90,7 +90,7 @@ Versioned module host support is **not** claimed as implemented yet.
 
 ## Architecture pages and issue tracking
 
-The child architecture pages are tracked by issue until files land; planned paths are shown as code (not file links yet).
+The child architecture pages are tracked by issue; landed pages use file links and pending pages keep planned paths as code.
 
 | Issue | Planned page path | Status |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ The child architecture pages are tracked by issue until files land; planned path
 | [#541](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/541) | `specs/architecture/cpu-65832.md` | pending |
 | [#542](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/542) | `specs/architecture/bus-mmu.md` | pending |
 | [#543](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/543) | `specs/architecture/signals.md` | pending |
-| [#544](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/544) | [`specs/architecture/scheduler.md`](specs/architecture/scheduler.md) | written |
+| [#544](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/544) | [`specs/architecture/scheduler.md`](specs/architecture/scheduler.md) | landed |
 | [#545](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/545) | `specs/architecture/devices.md` | pending |
 | [#546](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/546) | `specs/architecture/rom-traps.md` | pending |
 | [#547](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/547) | `specs/architecture/compat.md` | pending |
