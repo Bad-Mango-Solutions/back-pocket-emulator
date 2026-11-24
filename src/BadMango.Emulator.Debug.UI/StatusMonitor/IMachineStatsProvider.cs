@@ -7,6 +7,7 @@ namespace BadMango.Emulator.Debug.UI.StatusMonitor;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Cpu;
+using BadMango.Emulator.Devices.GuestOs;
 
 /// <summary>
 /// Provides statistics and metrics about machine performance and state.
@@ -43,6 +44,27 @@ public interface IMachineStatsProvider
     /// </summary>
     /// <value>The elapsed time since WAI was entered, or <see cref="TimeSpan.Zero"/> if not in WAI state.</value>
     TimeSpan WaiDuration { get; }
+
+    /// <summary>
+    /// Gets the detected guest operating system.
+    /// </summary>
+    /// <value>
+    /// The value from <see cref="IGuestOsDetector"/> when the machine has one.
+    /// <see langword="null"/> when detection is off, which the status row shows as "(detection off)".
+    /// </value>
+    GuestOsInfo? GuestOs { get; }
+
+    /// <summary>
+    /// Gets the current guest boot stage.
+    /// </summary>
+    /// <value>
+    /// An injected stage source when one was supplied; otherwise the machine's
+    /// <see cref="IBootSequenceMonitor.Stage"/> when that monitor is present.
+    /// When neither is present and <see cref="GuestOs"/> names an operating system, the value is
+    /// <see cref="GuestOsBootStage.Ready"/> (detection with no boot observed).
+    /// Otherwise the value is <see cref="GuestOsBootStage.None"/>.
+    /// </value>
+    GuestOsBootStage BootStage { get; }
 
     /// <summary>
     /// Gets a copy of the current CPU registers.

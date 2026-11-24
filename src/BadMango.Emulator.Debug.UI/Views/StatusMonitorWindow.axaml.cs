@@ -16,6 +16,7 @@ using Avalonia.Threading;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Core.Cpu;
+using BadMango.Emulator.Debug.Infrastructure.Status;
 using BadMango.Emulator.Debug.UI.StatusMonitor;
 
 /// <summary>
@@ -203,6 +204,12 @@ public partial class StatusMonitorWindow : Window
         var isWai = statsProvider.IsWaitingForInterrupt;
         WaiStateText.Text = isWai ? "Yes" : "No";
         WaiStateText.Foreground = isWai ? Brushes.Yellow : Brushes.White;
+
+        // Built-in guest-OS row. Extensions stay in the panel below.
+        var guestOs = statsProvider.GuestOs;
+        var bootStage = statsProvider.BootStage;
+        OsText.Text = GuestOsStatusText.FormatOperatingSystem(guestOs, bootStage);
+        BootStageText.Text = GuestOsStatusText.FormatStage(bootStage);
 
         // WAI duration
         var waiDuration = statsProvider.WaiDuration;

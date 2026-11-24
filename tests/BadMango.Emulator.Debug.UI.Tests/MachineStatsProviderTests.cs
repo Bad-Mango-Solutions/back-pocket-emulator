@@ -8,7 +8,9 @@ using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Cpu;
 using BadMango.Emulator.Core.Interfaces.Cpu;
+using BadMango.Emulator.Debug.Infrastructure.Status;
 using BadMango.Emulator.Debug.UI.StatusMonitor;
+using BadMango.Emulator.Devices.GuestOs;
 using BadMango.Emulator.Devices.Interfaces;
 
 /// <summary>
@@ -332,12 +334,186 @@ public class MachineStatsProviderTests
         });
     }
 
+    /// <summary>
+    /// Missing guest-OS components leave the row off and do not throw.
+    /// </summary>
+    [Test]
+    public void GuestOs_WhenComponentsMissing_IsDetectionOff()
+    {
+        var machine = CreateMockMachine();
+        var provider = new MachineStatsProvider(machine.Object);
+
+        GuestOsInfo? guestOs = null;
+        var bootStage = GuestOsBootStage.Ready;
+        Assert.DoesNotThrow(() =>
+        {
+            guestOs = provider.GuestOs;
+            bootStage = provider.BootStage;
+            provider.Sample();
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(guestOs, Is.Null);
+            Assert.That(bootStage, Is.EqualTo(GuestOsBootStage.None));
+            Assert.That(GuestOsStatusText.FormatOperatingSystem(guestOs, bootStage), Is.EqualTo("(detection off)"));
+        });
+    }
+
+    /// <summary>
+    /// Each monitor stage is reported as-is, including None while an OS is already in memory.
+    /// </summary>
+    /// <param name="bootStage">The stage the fake monitor reports.</param>
+    [TestCase(GuestOsBootStage.None)]
+    [TestCase(GuestOsBootStage.BootRom)]
+    [TestCase(GuestOsBootStage.Boot1)]
+    [TestCase(GuestOsBootStage.Loader)]
+    [TestCase(GuestOsBootStage.Ready)]
+    [TestCase(GuestOsBootStage.Unknown)]
+    [TestCase(GuestOsBootStage.CustomBoot)]
+    public void BootStage_ReadsEachMonitorStage(GuestOsBootStage bootStage)
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.ProDos8, "ProDOS 8", "ProDOS 8 2.4.x", "kversion", null);
+        var provider = CreateGuestOsProvider(guestOs, bootStage);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(provider.BootStage, Is.EqualTo(bootStage));
+            Assert.That(provider.GuestOs, Is.EqualTo(guestOs));
+        });
+    }
+
+    /// <summary>
+    /// A detected OS with no boot monitor means the stage is Ready.
+    /// </summary>
+    [Test]
+    public void BootStage_DetectedOsWithoutMonitor_IsReady()
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.Dos33, "DOS 3.3", "DOS 3.3", "vectors", null);
+        var detector = CreateDetector(guestOs);
+        var machine = CreateMockMachine(guestOsDetector: detector.Object);
+        var provider = new MachineStatsProvider(machine.Object);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(provider.BootStage, Is.EqualTo(GuestOsBootStage.Ready));
+            Assert.That(
+                GuestOsStatusText.FormatOperatingSystem(provider.GuestOs, provider.BootStage),
+                Is.EqualTo("DOS 3.3"));
+        });
+    }
+
+    /// <summary>
+    /// No signature and no monitor stays at None, shown as an em dash.
+    /// </summary>
+    [Test]
+    public void BootStage_NoSignatureWithoutMonitor_IsNone()
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.None, "None", string.Empty, "no signature", null);
+        var detector = CreateDetector(guestOs);
+        var machine = CreateMockMachine(guestOsDetector: detector.Object);
+        var provider = new MachineStatsProvider(machine.Object);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(provider.BootStage, Is.EqualTo(GuestOsBootStage.None));
+            Assert.That(
+                GuestOsStatusText.FormatLine(provider.GuestOs, provider.BootStage),
+                Is.EqualTo($"OS: {GuestOsStatusText.NotEntered}     Stage: {GuestOsStatusText.NotEntered}"));
+        });
+    }
+
+    /// <summary>
+    /// Custom boot shows the custom-loader OS text and the stage words, with no media name.
+    /// </summary>
+    [Test]
+    public void CustomBoot_FormatsCustomLoader()
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.None, "None", string.Empty, "unrecognized loader", null);
+        var provider = CreateGuestOsProvider(guestOs, GuestOsBootStage.CustomBoot);
+        var line = GuestOsStatusText.FormatLine(provider.GuestOs, provider.BootStage);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(line, Is.EqualTo("OS: None (custom loader)     Stage: Custom boot"));
+            Assert.That(line, Does.Not.Contain("Disk"));
+            Assert.That(line, Does.Not.Contain("slot"));
+        });
+    }
+
+    /// <summary>
+    /// The OS row is the display name plus the version label.
+    /// </summary>
+    [Test]
+    public void GuestOs_FormatsDisplayNamePlusVersionLabel()
+    {
+        var guestOs = new GuestOsInfo(new GuestOsId("geos"), "GEOS", "2.1", "matched", null);
+        var provider = CreateGuestOsProvider(guestOs, GuestOsBootStage.Ready);
+
+        Assert.That(
+            GuestOsStatusText.FormatOperatingSystem(provider.GuestOs, provider.BootStage),
+            Is.EqualTo("GEOS 2.1"));
+    }
+
+    /// <summary>
+    /// An injected stage source wins over the machine's boot monitor.
+    /// </summary>
+    [Test]
+    public void BootStage_InjectedSource_OverridesMonitor()
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.Dos33, "DOS 3.3", "DOS 3.3", "vectors", null);
+        var detector = CreateDetector(guestOs);
+        var monitor = CreateMonitor(GuestOsBootStage.Ready);
+        var machine = CreateMockMachine(guestOsDetector: detector.Object, bootMonitor: monitor.Object);
+        var injected = new Mock<IGuestOsStageSource>();
+        injected.Setup(source => source.Stage).Returns(GuestOsBootStage.Loader);
+
+        var provider = new MachineStatsProvider(machine.Object, injected.Object);
+
+        Assert.That(provider.BootStage, Is.EqualTo(GuestOsBootStage.Loader));
+    }
+
+    /// <summary>
+    /// The no-op source forces None even when a monitor and a detected OS are present.
+    /// </summary>
+    [Test]
+    public void BootStage_NoneStageSource_StaysNone()
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.ProDos8, "ProDOS 8", "ProDOS 8 2.4.x", "kversion", null);
+        var detector = CreateDetector(guestOs);
+        var monitor = CreateMonitor(GuestOsBootStage.Boot1);
+        var machine = CreateMockMachine(guestOsDetector: detector.Object, bootMonitor: monitor.Object);
+        var provider = new MachineStatsProvider(machine.Object, NoneGuestOsStageSource.Instance);
+
+        Assert.That(provider.BootStage, Is.EqualTo(GuestOsBootStage.None));
+    }
+
+    /// <summary>
+    /// Sample drops the cached detection so the next read calls the detector again.
+    /// </summary>
+    [Test]
+    public void Sample_RefreshesGuestOsDetection()
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.Dos33, "DOS 3.3", "DOS 3.3", "vectors", null);
+        var detector = CreateDetector(guestOs);
+        var machine = CreateMockMachine(guestOsDetector: detector.Object);
+        var provider = new MachineStatsProvider(machine.Object);
+
+        _ = provider.GuestOs;
+        provider.Sample();
+        _ = provider.GuestOs;
+
+        detector.Verify(d => d.Detect(), Times.Exactly(2));
+    }
+
     private static Mock<IMachine> CreateMockMachine(
         MachineState state = MachineState.Stopped,
         bool isWai = false,
         ulong cycles = 0,
         IScheduler? scheduler = null,
-        IVideoDevice? videoDevice = null)
+        IVideoDevice? videoDevice = null,
+        IGuestOsDetector? guestOsDetector = null,
+        IBootSequenceMonitor? bootMonitor = null)
     {
         var mockCpu = new Mock<ICpu>();
         mockCpu.Setup(c => c.GetRegisters()).Returns(new Registers());
@@ -366,6 +542,40 @@ public class MachineStatsProviderTests
             machine.Setup(m => m.GetComponent<IVideoDevice>()).Returns(videoDevice);
         }
 
+        if (guestOsDetector != null)
+        {
+            machine.Setup(m => m.GetComponent<IGuestOsDetector>()).Returns(guestOsDetector);
+        }
+
+        if (bootMonitor != null)
+        {
+            machine.Setup(m => m.GetComponent<IBootSequenceMonitor>()).Returns(bootMonitor);
+        }
+
         return machine;
+    }
+
+    private static MachineStatsProvider CreateGuestOsProvider(GuestOsInfo guestOs, GuestOsBootStage bootStage)
+    {
+        var detector = CreateDetector(guestOs);
+        var monitor = CreateMonitor(bootStage);
+        var machine = CreateMockMachine(guestOsDetector: detector.Object, bootMonitor: monitor.Object);
+        return new MachineStatsProvider(machine.Object);
+    }
+
+    private static Mock<IGuestOsDetector> CreateDetector(GuestOsInfo guestOs)
+    {
+        var detector = new Mock<IGuestOsDetector>();
+        detector.Setup(d => d.Detect()).Returns(guestOs);
+        detector.Setup(d => d.Current).Returns(guestOs);
+        return detector;
+    }
+
+    private static Mock<IBootSequenceMonitor> CreateMonitor(GuestOsBootStage bootStage)
+    {
+        var monitor = new Mock<IBootSequenceMonitor>();
+        monitor.Setup(m => m.Stage).Returns(bootStage);
+        monitor.Setup(m => m.Milestones).Returns([]);
+        return monitor;
     }
 }
