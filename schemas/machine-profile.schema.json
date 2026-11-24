@@ -41,6 +41,9 @@
         },
         "boot": {
             "$ref": "#/$defs/bootSection"
+        },
+        "guestOs": {
+            "$ref": "#/$defs/guestOsSection"
         }
     },
     "$defs": {
@@ -541,6 +544,23 @@
                     "additionalProperties": false
                 }
             }
+        },
+        "guestOsSection": {
+            "type": "object",
+            "description": "Guest OS detection and boot milestone log. Both switches are off by default.",
+            "properties": {
+                "detect": {
+                    "type": "boolean",
+                    "description": "Install on-demand guest OS detection. Off registers no detector.",
+                    "default": false
+                },
+                "bootLog": {
+                    "type": "boolean",
+                    "description": "Install the boot-sequence monitor. Off registers no boot traps. The console command os on can also enable it.",
+                    "default": false
+                }
+            },
+            "additionalProperties": false
         }
     }
 }

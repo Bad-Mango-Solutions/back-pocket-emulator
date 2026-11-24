@@ -11,8 +11,11 @@ using BadMango.Emulator.Core.Cpu;
 using BadMango.Emulator.Core.Interfaces;
 using BadMango.Emulator.Core.Interfaces.Cpu;
 using BadMango.Emulator.Devices;
+using BadMango.Emulator.Devices.GuestOs;
 using BadMango.Emulator.Emulation.Cpu;
 using BadMango.Emulator.Emulation.Debugging;
+
+using Serilog;
 
 /// <summary>
 /// Factory for creating emulator components from machine profiles.
@@ -66,10 +69,11 @@ public static class MachineFactory
         // This enables profiles to declare devices like speaker, keyboard, video, etc.
         builder.RegisterStandardDeviceFactories();
 
-        var machine = builder
+        builder
             .FromProfile(profile, pathResolver)
-            .WithCpuFactory(CreateCpuFactory(profile.Cpu))
-            .Build();
+            .WithCpuFactory(CreateCpuFactory(profile.Cpu));
+        AttachGuestOs(builder, profile);
+        var machine = builder.Build();
 
         ConfigurePowerOnMemory(machine, profile);
 
@@ -118,15 +122,58 @@ public static class MachineFactory
         // This enables profiles to declare devices like speaker, keyboard, video, etc.
         builder.RegisterStandardDeviceFactories();
 
-        var machine = builder
+        builder
             .FromProfile(profile, pathResolver)
-            .WithCpuFactory(CreateCpuFactory(profile.Cpu))
-            .Build();
+            .WithCpuFactory(CreateCpuFactory(profile.Cpu));
+        AttachGuestOs(builder, profile);
+        var machine = builder.Build();
 
         // Wire the trap registry to the CPU so that traps fire during execution.
         WireTrapRegistry(machine);
 
         return machine;
+    }
+
+    /// <summary>
+    /// Installs guest-OS detection, the boot monitor, or neither, from <paramref name="profile"/>.
+    /// </summary>
+    /// <param name="builder">The builder that is about to build.</param>
+    /// <param name="profile">The profile whose <c>guestOs</c> section is read.</param>
+    /// <remarks>
+    /// Both flags off registers nothing, so the instruction loop gains no boot trap.
+    /// <c>bootLog</c> attaches <see cref="BootSequenceMonitor"/> with the DOS 3.3 and ProDOS 8 profiles.
+    /// </remarks>
+    private static void AttachGuestOs(MachineBuilder builder, MachineProfile profile)
+    {
+        bool detect = profile.GuestOs?.Detect == true;
+        bool bootLog = profile.GuestOs?.BootLog == true;
+        if (!detect && !bootLog)
+        {
+            return;
+        }
+
+        builder.AddComponentFactory<object>(machine =>
+        {
+            ILogger guestLogger = Log.Logger;
+            var detector = machine.GetComponent<IGuestOsDetector>()
+                ?? BootSequenceMonitor.CreateDetector(machine, guestLogger);
+            if (!bootLog)
+            {
+                return detector;
+            }
+
+            if (!machine.HasComponent<IGuestOsDetector>())
+            {
+                machine.AddComponent(detector);
+            }
+
+            var monitor = new BootSequenceMonitor(
+                guestLogger,
+                detector,
+                BootSequenceMonitor.CreateStandardProfiles());
+            monitor.Attach(machine);
+            return monitor;
+        });
     }
 
     private static void ConfigurePowerOnMemory(IMachine machine, MachineProfile profile)

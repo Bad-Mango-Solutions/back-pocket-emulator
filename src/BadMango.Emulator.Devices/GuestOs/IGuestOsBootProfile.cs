@@ -51,4 +51,26 @@ public interface IGuestOsBootProfile
 
         return false;
     }
+
+    /// <summary>
+    /// Describes one milestone this profile owns.
+    /// </summary>
+    /// <param name="kind">The milestone being recorded.</param>
+    /// <param name="address">The guest address that was entered.</param>
+    /// <returns>A non-empty detail string. The monitor stores it on the milestone.</returns>
+    string DescribeMilestone(BootMilestoneKind kind, ushort address) =>
+        $"{kind} at ${address:X4}";
+
+    /// <summary>
+    /// Names a system call entered at a profile address.
+    /// </summary>
+    /// <param name="memory">Side-effect-free guest memory.</param>
+    /// <param name="parameterAddress">The first guest byte after the call instruction.</param>
+    /// <returns>A non-empty detail string.</returns>
+    /// <exception cref="ArgumentNullException">If <paramref name="memory"/> is <see langword="null"/>.</exception>
+    string DescribeSystemCall(IGuestMemoryReader memory, ushort parameterAddress)
+    {
+        ArgumentNullException.ThrowIfNull(memory);
+        return this.DescribeMilestone(BootMilestoneKind.FirstSystemCall, parameterAddress);
+    }
 }

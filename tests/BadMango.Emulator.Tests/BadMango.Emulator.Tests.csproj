@@ -14,6 +14,8 @@
     <ProjectReference Include="..\..\src\BadMango.Emulator.Bus\BadMango.Emulator.Bus.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Debug.Infrastructure\BadMango.Emulator.Debug.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Debug.Mcp\BadMango.Emulator.Debug.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Debug.Abstractions\BadMango.Emulator.Debug.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Devices\BadMango.Emulator.Devices.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Emulation\BadMango.Emulator.Emulation.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Storage\BadMango.Emulator.Storage.csproj" />

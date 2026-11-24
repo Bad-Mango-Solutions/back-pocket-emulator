@@ -120,6 +120,16 @@ public sealed class MachineProfile
     public BootProfile? Boot { get; set; }
 
     /// <summary>
+    /// Gets or sets guest-OS detection and the boot milestone log.
+    /// </summary>
+    /// <remarks>
+    /// Omitted, or both flags false, registers no guest-OS traps.
+    /// <c>os on</c> in the debug console can turn the boot log on later.
+    /// </remarks>
+    [JsonPropertyName("guestOs")]
+    public GuestOsProfile? GuestOs { get; set; }
+
+    /// <summary>
     /// Gets the slot system configuration from the devices section.
     /// </summary>
     /// <remarks>
