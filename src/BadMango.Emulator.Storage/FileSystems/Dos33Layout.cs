@@ -333,4 +333,17 @@ public static class Dos33Layout
         /// <summary>DOS release byte written by DOS 3.3.</summary>
         public const byte Version33 = 0x03;
     }
+
+    /// <summary>The DOS 3.3 boot sector at track 0 sector 0.</summary>
+    public static class BootSector
+    {
+        private static readonly byte[] SignatureBytes =
+        [
+            0x01, 0xA5, 0x27, 0xC9, 0x09,
+        ];
+
+        /// <summary>Gets the boot-sector prefix <c>01 A5 27 C9 09</c>.</summary>
+        /// <value>The five bytes at the start of track 0 sector 0.</value>
+        public static ReadOnlySpan<byte> Signature => SignatureBytes;
+    }
 }
