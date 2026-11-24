@@ -9,10 +9,10 @@ machine-thread operation explicitly supplies cycles.
 
 ## Covers
 
-- [`Cycle`](#61-core-concepts) and scheduled-event kinds.
-- [`IScheduler`](#62-scheduler-interface) and the concrete event queue.
-- [`Cpu65C02`](#63-cpu-scheduler-integration) as the implemented CPU-to-scheduler client.
-- [`VideoDevice`](#63-cpu-scheduler-integration) VBlank scheduling as a device client.
+- [`Cycle`](#61-core-concepts--implemented) and scheduled-event kinds.
+- [`IScheduler`](#62-scheduler-interface--implemented) and the concrete event queue.
+- [`Cpu65C02`](#63-cpu-scheduler-integration--partly-implemented) as the implemented CPU-to-scheduler client.
+- [`VideoDevice`](#63-cpu-scheduler-integration--partly-implemented) VBlank scheduling as a device client.
 - [Scheduler reset Gap 4](#gap-4-scheduler-reset--partly-implemented).
 
 ## Does not cover
