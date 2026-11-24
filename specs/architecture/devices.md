@@ -12,8 +12,9 @@ overlay.
 **Status legend:** **Implemented** means the audited behavior has working
 code in the current tree. **Partly implemented** means the core or most
 addresses work, but one or more behavior ranges are missing or inaccurate.
-**Aspirational** means no implementation of the described behavior exists.
-**Superseded** means older specification text is retained only as
+**Incomplete** means some addresses in the named range are implemented while
+others are still missing. **Aspirational** means no implementation of the
+described behavior exists. **Superseded** means older specification text is retained only as
 historical context and must not override the current implementation or
 linked normative specification.
 
@@ -79,7 +80,7 @@ The storage assembly remains separate for disk and media implementations.
 The Rendering assembly remains separate for display-pipeline output. Speaker
 audio remains in Devices.
 
-## 1.3 Historical context
+## 1.3 Historical context — Implemented
 
 ### 1.3.1 Memory-mapped I/O — Implemented
 
@@ -104,8 +105,8 @@ returned value is not meaningful.
 
 ### 1.3.3 Floating bus — Partly implemented
 
-Unregistered soft-switch reads currently return `0xFF`
-(`IOPageDispatcher.FloatingBusValue`). Unregistered writes are ignored.
+Unregistered soft-switch reads currently return `0xFF`. Unregistered writes are
+ignored.
 
 This does not yet model the Apple II's last-bus or video-fetch open-bus
 behavior. Such a model is not a valid substitute for the implemented $FF
@@ -118,7 +119,7 @@ $Cn00-$CnFF. Slot 0 is reserved for the language-card/I/O region at
 $C080-$C08F and is not one of the seven expansion-slot entries.
 `SlotManager.SlotCount` is 7, as specified for the built Pocket2e layout.
 
-## 7.1 The Apple II I/O page
+## 7.1 The Apple II I/O page — Implemented
 
 ### 7.1.1 Layout — Implemented
 
@@ -148,7 +149,7 @@ read returns $FF; a missing write is a no-op. ROM regions ignore writes, but
 address snooping still participates in slot selection where that behavior is
 required.
 
-## 7.2 Soft-switch sub-regions
+## 7.2 Soft-switch sub-regions — Implemented
 
 ### 7.2.1 System switches ($C000-$C07F) — Partly implemented
 
@@ -157,7 +158,9 @@ The built-in dispatcher registers:
 - Keyboard data and strobe: $C000 and $C010.
 - Speaker toggle: $C030.
 - Graphics and annunciator switches: $C050-$C05F.
-- Pushbuttons, paddles, and paddle trigger: $C060-$C07F.
+- Pushbuttons: $C060-$C063.
+- Paddle reads: $C064-$C067.
+- Paddle trigger mirrors: $C070-$C07F.
 - Apple IIe auxiliary-memory, status, and character switches in their
   respective devices.
 
@@ -165,6 +168,7 @@ Missing behavior is explicit:
 
 - Cassette output at $C020: **Aspirational**, no cassette device.
 - $C040 game I/O strobes: **Aspirational**, no $C040 handler.
+- $C068-$C06F: **No handler**.
 - Speaker mirrors $C031-$C03F: **Incomplete**; only $C030 is registered.
 
 The same status is retained in Appendix A.3 below.
@@ -281,7 +285,7 @@ The Apple IIe internal-ROM controls are implemented on
 access latch. This is IIe 80-column card behavior, not a claim of a built IIc
 personality.
 
-## Appendix A.3 Soft-switch summary
+## Appendix A.3 Soft-switch summary — Partly implemented
 
 The following twelve ranges are the normative summary from the architecture
 appendix. Status names below match the audit.
@@ -304,7 +308,7 @@ mirrors $C031-$C03F are incomplete**; they are not currently registered.
 
 ### A.3 / Utility strobes ($C040-$C04F) — Aspirational
 
-No $C040 game-I/O strobe handler is implemented. **$C040 is incomplete**.
+No $C040 game-I/O strobe handler is implemented. **$C040 is unimplemented**.
 Unregistered reads return $FF and writes are ignored.
 
 ### A.3 / Graphics mode switches ($C050-$C057) — Implemented
@@ -319,9 +323,8 @@ the implemented double-hi-res side of the annunciator 3 pair.
 
 ### A.3 / Pushbutton and joystick ($C060-$C06F) — Partly implemented
 
-`GameIOController` implements pushbuttons $C061-$C063 and paddle reads
-$C064-$C067; $C060 is cassette input in legacy naming and is not a cassette
-implementation. $C068-$C06F has no handler.
+`GameIOController` implements pushbuttons $C060-$C063 and paddle reads
+$C064-$C067. $C068-$C06F has no handler.
 
 ### A.3 / Paddle trigger ($C070-$C07F) — Implemented
 
@@ -342,7 +345,7 @@ read $FF and ignore writes.
 ### A.3 / Apple IIe auxiliary-memory switches ($C000-$C00F) — Implemented
 
 `Extended80ColumnDevice` owns $C000-$C00D for 80STORE, RAMRD, RAMWRT, INTCXROM,
-ALTZP, INTC3ROM, and 80COL. `CharacterDevice` owns $C00E/$C00F for alternate
+ALTZP, SLOTC3ROM, and 80COL. `CharacterDevice` owns $C00E/$C00F for alternate
 character-set switching. `AuxiliaryMemoryController` owns the main/auxiliary
 bank routing.
 
