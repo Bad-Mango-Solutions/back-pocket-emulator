@@ -662,7 +662,7 @@ public class DiskIIControllerTests
     /// <summary>
     /// Verifies that power-off (<see cref="DiskIIController.Reset"/>) during the NE556
     /// hold stops the drive at once and cancels the pending event before the scheduler
-    /// flush the machine performs on power-off.
+    /// flush that the machine performs on power-off.
     /// </summary>
     [Test]
     public void PowerOffDuringMotorOffDelay_StopsImmediatelyAndDropsTheEvent()
