@@ -72,8 +72,11 @@ public sealed class MachineStatsProvider : IMachineStatsProvider, IDisposable
     /// </summary>
     /// <param name="machine">The machine to monitor.</param>
     /// <param name="stageSource">
-    /// Boot stage to display. When <see langword="null"/>, the machine's <see cref="IBootSequenceMonitor"/>
-    /// is used, or <see cref="NoneGuestOsStageSource"/> when that monitor is not registered.
+    /// Boot stage to display. When not <see langword="null"/>, this value is used as given.
+    /// When <see langword="null"/>, the machine's <see cref="T:BadMango.Emulator.Devices.GuestOs.IBootSequenceMonitor"/>
+    /// is used when present. With no monitor, a detected operating system is
+    /// <see cref="GuestOsBootStage.Ready"/>; otherwise the stage is
+    /// <see cref="NoneGuestOsStageSource"/> (<see cref="GuestOsBootStage.None"/>).
     /// </param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="machine"/> is null.</exception>
     public MachineStatsProvider(IMachine machine, IGuestOsStageSource? stageSource = null)

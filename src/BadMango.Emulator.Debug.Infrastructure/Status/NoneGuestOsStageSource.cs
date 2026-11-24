@@ -10,9 +10,12 @@ using BadMango.Emulator.Devices.GuestOs;
 /// Boot-stage source that always reports <see cref="GuestOsBootStage.None"/>.
 /// </summary>
 /// <remarks>
-/// This is the default when no <see cref="IBootSequenceMonitor"/> is registered and the
-/// caller did not inject another <see cref="IGuestOsStageSource"/>. The instance is immutable
-/// and installs nothing.
+/// Inject this to force <see cref="GuestOsBootStage.None"/> even when a
+/// <see cref="T:BadMango.Emulator.Devices.GuestOs.IBootSequenceMonitor"/> is registered.
+/// When nothing is injected and that monitor is absent,
+/// <see cref="GuestOsStatusText.ReadBootStage"/> returns this stage only if detection did not
+/// name an operating system. A detected operating system in that case is
+/// <see cref="GuestOsBootStage.Ready"/>. The instance is immutable and installs nothing.
 /// </remarks>
 public sealed class NoneGuestOsStageSource : IGuestOsStageSource
 {

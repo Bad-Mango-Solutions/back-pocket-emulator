@@ -18,8 +18,9 @@ using BadMango.Emulator.Devices.GuestOs;
 /// <para>
 /// <see cref="NoneGuestOsStageSource"/> is the no-op. Its stage is <see cref="GuestOsBootStage.None"/>.
 /// When a host does not inject a source, the status row uses
-/// <see cref="IBootSequenceMonitor.Stage"/> if that monitor is on the machine, and otherwise
-/// this no-op.
+/// <see cref="IBootSequenceMonitor.Stage"/> when that monitor is on the machine.
+/// With neither a source nor a monitor, a detected operating system is
+/// <see cref="GuestOsBootStage.Ready"/>; otherwise the stage is <see cref="GuestOsBootStage.None"/>.
 /// </para>
 /// </remarks>
 public interface IGuestOsStageSource
