@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
+using BadMango.Emulator.Debug.Infrastructure.Status;
+
 /// <summary>
 /// Opens a status monitor window displaying active machine metrics in real-time.
 /// </summary>
@@ -48,9 +50,11 @@ public sealed class StatMonCommand : CommandHandlerBase, ICommandHelp
     public string DetailedDescription =>
         "Opens a status monitor window that displays active machine metrics in real-time. " +
         "The window shows CPU registers (A, X, Y, P, SP, PC), machine state " +
-        "(Off/Running/Paused/Stopped/Halted/WAI), performance metrics (IPS, cycles, MHz), " +
+        "(Off/Running/Paused/Stopped/Halted/WAI), the detected guest OS and boot stage, " +
+        "performance metrics (IPS, cycles, MHz), " +
         "annunciator visualization with scrolling history and fade effects, " +
-        "and device extension panels (e.g., PocketWatch time display).";
+        "and device extension panels (e.g., PocketWatch time display). " +
+        "The same OS and stage line is printed to the console.";
 
     /// <inheritdoc/>
     public IReadOnlyList<CommandOption> Options { get; } = [];
@@ -72,6 +76,8 @@ public sealed class StatMonCommand : CommandHandlerBase, ICommandHelp
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        WriteGuestOsLine(context);
+
         // If a window manager is available, try to show the popup window
         if (windowManager is null)
         {
@@ -90,5 +96,20 @@ public sealed class StatMonCommand : CommandHandlerBase, ICommandHelp
         // Fire and forget the async operation - we don't want to block the REPL
         _ = windowManager.ShowWindowAsync("StatusMonitor", machineContext);
         return CommandResult.Ok("Opening Status Monitor window...");
+    }
+
+    /// <summary>
+    /// Prints the guest-OS line. This is the text-mode view of the status-monitor row.
+    /// </summary>
+    /// <param name="context">The command output.</param>
+    private void WriteGuestOsLine(ICommandContext context)
+    {
+        var attachedMachine = this.debugContext?.Machine;
+        if (attachedMachine is null && context is IDebugContext commandContext)
+        {
+            attachedMachine = commandContext.Machine;
+        }
+
+        context.Output.WriteLine(GuestOsStatusText.FormatMachineLine(attachedMachine));
     }
 }

@@ -9,6 +9,8 @@ using System.Diagnostics;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Cpu;
+using BadMango.Emulator.Debug.Infrastructure.Status;
+using BadMango.Emulator.Devices.GuestOs;
 using BadMango.Emulator.Devices.Interfaces;
 
 /// <summary>
@@ -49,6 +51,7 @@ public sealed class MachineStatsProvider : IMachineStatsProvider, IDisposable
     private const double EstimatedAverageCpi = 3.0;
 
     private readonly IMachine machine;
+    private readonly IGuestOsStageSource? stageSource;
     private readonly IVideoDevice? videoDevice;
     private readonly Stopwatch stopwatch;
     private readonly List<IStatusWindowExtension> extensions = [];
@@ -61,17 +64,27 @@ public sealed class MachineStatsProvider : IMachineStatsProvider, IDisposable
     private double cpuUtilization;
     private DateTime? waiStartTime;
     private bool disposed;
+    private GuestOsInfo? guestOsSnapshot;
+    private bool guestOsCached;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MachineStatsProvider"/> class.
     /// </summary>
     /// <param name="machine">The machine to monitor.</param>
+    /// <param name="stageSource">
+    /// Boot stage to display. When not <see langword="null"/>, this value is used as given.
+    /// When <see langword="null"/>, the machine's <see cref="T:BadMango.Emulator.Devices.GuestOs.IBootSequenceMonitor"/>
+    /// is used when present. With no monitor, a detected operating system is
+    /// <see cref="GuestOsBootStage.Ready"/>; otherwise the stage is
+    /// <see cref="NoneGuestOsStageSource"/> (<see cref="GuestOsBootStage.None"/>).
+    /// </param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="machine"/> is null.</exception>
-    public MachineStatsProvider(IMachine machine)
+    public MachineStatsProvider(IMachine machine, IGuestOsStageSource? stageSource = null)
     {
         ArgumentNullException.ThrowIfNull(machine);
 
         this.machine = machine;
+        this.stageSource = stageSource;
         videoDevice = machine.GetComponent<IVideoDevice>();
         stopwatch = Stopwatch.StartNew();
 
@@ -105,6 +118,25 @@ public sealed class MachineStatsProvider : IMachineStatsProvider, IDisposable
             return DateTime.UtcNow - waiStartTime.Value;
         }
     }
+
+    /// <inheritdoc/>
+    public GuestOsInfo? GuestOs
+    {
+        get
+        {
+            if (guestOsCached)
+            {
+                return guestOsSnapshot;
+            }
+
+            guestOsSnapshot = GuestOsStatusText.ReadGuestOs(machine);
+            guestOsCached = true;
+            return guestOsSnapshot;
+        }
+    }
+
+    /// <inheritdoc/>
+    public GuestOsBootStage BootStage => GuestOsStatusText.ReadBootStage(machine, stageSource, GuestOs);
 
     /// <inheritdoc/>
     public Registers Registers => machine.Cpu.GetRegisters();
@@ -177,6 +209,8 @@ public sealed class MachineStatsProvider : IMachineStatsProvider, IDisposable
     /// <inheritdoc/>
     public void Sample()
     {
+        guestOsCached = false;
+
         var currentTicks = stopwatch.ElapsedTicks;
         var currentCycles = TotalCycles;
 

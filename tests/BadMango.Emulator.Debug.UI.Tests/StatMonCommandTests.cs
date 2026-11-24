@@ -4,6 +4,9 @@
 
 namespace BadMango.Emulator.Debug.UI.Tests;
 
+using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Devices.GuestOs;
+
 /// <summary>
 /// Unit tests for the <see cref="StatMonCommand"/> class.
 /// </summary>
@@ -139,6 +142,92 @@ public class StatMonCommandTests
 
         // Complete the task to clean up
         tcs.SetResult(true);
+    }
+
+    /// <summary>
+    /// Text-mode statmon prints the guest OS and boot stage before the window opens.
+    /// </summary>
+    [Test]
+    public void Execute_PrintsGuestOsLine()
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.ProDos8, "ProDOS 8", "ProDOS 8 2.4.x", "kversion", null);
+        var output = ExecuteWithGuestOs(guestOs, GuestOsBootStage.Ready, withWindowManager: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(output.Result.Success, Is.True);
+            Assert.That(output.Result.Message, Does.Contain("Opening"));
+            Assert.That(output.Text, Does.Contain("OS: ProDOS 8 2.4.x     Stage: Ready"));
+        });
+    }
+
+    /// <summary>
+    /// A custom boot prints the media-neutral loader text.
+    /// </summary>
+    [Test]
+    public void Execute_CustomBoot_PrintsCustomLoader()
+    {
+        var guestOs = new GuestOsInfo(GuestOsId.None, "None", string.Empty, "unrecognized loader", null);
+        var output = ExecuteWithGuestOs(guestOs, GuestOsBootStage.CustomBoot, withWindowManager: true);
+
+        Assert.That(output.Text, Does.Contain("OS: None (custom loader)     Stage: Custom boot"));
+        Assert.That(output.Text, Does.Not.Contain("Disk"));
+    }
+
+    /// <summary>
+    /// No detector prints "(detection off)" and, without a window manager, still returns the existing error.
+    /// </summary>
+    [Test]
+    public void Execute_WithoutDetectorOrWindow_PrintsDetectionOff()
+    {
+        using var outputWriter = new StringWriter();
+        using var errorWriter = new StringWriter();
+        var context = CreateTestContext(outputWriter, errorWriter);
+        var command = new StatMonCommand();
+
+        var result = command.Execute(context, []);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("window manager"));
+            Assert.That(outputWriter.ToString(), Does.Contain("OS: (detection off)"));
+        });
+    }
+
+    private static (CommandResult Result, string Text) ExecuteWithGuestOs(
+        GuestOsInfo guestOs,
+        GuestOsBootStage bootStage,
+        bool withWindowManager)
+    {
+        var detector = new Mock<IGuestOsDetector>();
+        detector.Setup(d => d.Detect()).Returns(guestOs);
+
+        var monitor = new Mock<IBootSequenceMonitor>();
+        monitor.Setup(m => m.Stage).Returns(bootStage);
+        monitor.Setup(m => m.Milestones).Returns([]);
+
+        var machine = new Mock<IMachine>();
+        machine.Setup(m => m.GetComponent<IGuestOsDetector>()).Returns(detector.Object);
+        machine.Setup(m => m.GetComponent<IBootSequenceMonitor>()).Returns(monitor.Object);
+
+        var debugContext = new Mock<IDebugContext>();
+        debugContext.Setup(c => c.Machine).Returns(machine.Object);
+
+        IDebugWindowManager? windowManager = null;
+        if (withWindowManager)
+        {
+            var manager = new Mock<IDebugWindowManager>();
+            manager.Setup(w => w.ShowWindowAsync(It.IsAny<string>(), It.IsAny<object?>())).ReturnsAsync(true);
+            windowManager = manager.Object;
+        }
+
+        using var outputWriter = new StringWriter();
+        using var errorWriter = new StringWriter();
+        var context = CreateTestContext(outputWriter, errorWriter);
+        var command = new StatMonCommand(windowManager, debugContext.Object);
+        var result = command.Execute(context, []);
+        return (result, outputWriter.ToString());
     }
 
     private static ICommandContext CreateTestContext(StringWriter outputWriter, StringWriter errorWriter)
