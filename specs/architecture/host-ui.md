@@ -47,4 +47,3 @@ The target layout is defined by [#478](https://github.com/Bad-Mango-Solutions/ba
 > **Current location (until #561):** `src/BadMango.Emulator.TextEditor`; target: `src/BadMango.Emulator.Debug.UI` (namespace `BadMango.Emulator.TextEditor` unchanged).
 
 > **Current location (until #561):** `tests/BadMango.Emulator.TextEditor.Tests`; target: `tests/BadMango.Emulator.Debug.UI.Tests` (namespace unchanged).
-
