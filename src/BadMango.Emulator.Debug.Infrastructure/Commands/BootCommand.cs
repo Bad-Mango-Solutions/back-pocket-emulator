@@ -339,6 +339,11 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
             // Now boot the machine
             await this.startPowerOn(debugContext.Machine!, CancellationToken.None).ConfigureAwait(false);
         }
+
+        // The command returns before this task finishes. Power-on can throw any exception type from any
+        // attached device, and that fault would otherwise go unobserved. The debugger shows the message
+        // on the error stream. Same rationale as profile auto-start (PR #619).
+        // codeql[cs/catch-of-all-exceptions]
         catch (Exception ex)
         {
             debugContext.Error.WriteLine($"Boot error: {ex.Message}");
