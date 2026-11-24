@@ -96,9 +96,26 @@ Notes:
 
 - Two drives are supported per controller. Only the selected drive receives motor, step,
   and data signals.
-- Motor on/off is software-managed. There is no automatic motor timeout in hardware.
+- Motor on/off is software-managed. There is no inactivity timeout that stops a spinning
+  drive on its own.
 - Boot ROM expects drive 1 for boot. Switching drives mid-operation should reset the
   read/write state and apply a brief settle delay.
+
+`$C0S8` (MOTOROFF), read or write, does not stop the platter on that access. The drive
+off/on signal is routed through one half of an NE556 timer, which holds the selected
+drive on for about one second after the reference (Sather, *Understanding the Apple IIe*,
+p. 9-13). Until the delay expires the platter keeps spinning, `$C0SC` reads return live
+data, and byte-ready matches the motor-on behavior. A further `$C0S8` while the timer is
+already running restarts the one-second hold from that reference. `$C0S9` (MOTORON)
+before expiry cancels the hold: the motor stays on and no spin-up settle interval starts.
+When the delay expires the motor turns off and a dirty track is flushed.
+
+The default hold is 1,000,000 cycles, one second at the same 1 MHz assumption as the
+~1 ms motor-settle interval. A delay of 0 stops the motor on the `$C0S8` access.
+
+RESET does not use this delay. Table 9.1 note 1 (p. 9-12) says RESET' forces all
+switches off, and p. 9-13 says pressing RESET clears the delay timer and turns the drive
+off almost immediately. Power-off stops the motor immediately as well.
 
 ### 2.5 Head Stepping and Track Position
 
