@@ -132,6 +132,12 @@ public class TrapRegistryWiringTests
 
         registry.RegisterSlotDependent(0xC800, TrapOperation.Call, 1, "SLOT1", TrapCategory.SlotFirmware, slotOne);
         registry.RegisterSlotDependent(0xC800, TrapOperation.Call, 6, "SLOT6", TrapCategory.SlotFirmware, slotSix);
+        Assert.That(registry.GetTrapInfo(0xC800)!.Value.Name, Is.EqualTo("SLOT6"));
+        activeSlot = 1;
+        Assert.That(registry.GetTrapInfo(0xC800)!.Value.Name, Is.EqualTo("SLOT1"));
+        activeSlot = 4;
+        Assert.That(registry.GetTrapInfo(0xC800), Is.Null);
+        activeSlot = 6;
 
         var cpu = new Mock<ICpu>();
         var bus = new Mock<IMemoryBus>();
@@ -153,6 +159,13 @@ public class TrapRegistryWiringTests
             Assert.Throws<InvalidOperationException>(() =>
                 registry.RegisterSlotDependent(0xC800, TrapOperation.Call, 6, "AGAIN", TrapCategory.SlotFirmware, slotSix));
         });
+
+        registry.Register(0xC800, "BP", TrapCategory.UserDefined, slotSix);
+        Assert.That(registry.Unregister(0xC800), Is.True);
+        Assert.That(registry.Unregister(0xC800), Is.False);
+        Assert.That(
+            registry.GetTrapsAtAddress(0xC800).Select(info => info.SlotNumber),
+            Is.EquivalentTo(new int?[] { 1, 6 }));
     }
 
     /// <summary>

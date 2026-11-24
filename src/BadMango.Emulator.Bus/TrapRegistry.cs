@@ -371,24 +371,20 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Removes the slot-independent trap only. Slot-dependent traps stay until
+    /// <see cref="UnregisterSlotTraps"/>.
+    /// </remarks>
     public bool UnregisterWithContext(Addr address, TrapOperation operation, MemoryContext memoryContext)
     {
-        var keysToRemove = traps.Keys
-            .Where(key => key.Address == address && key.Operation == operation && key.MemoryContext == memoryContext)
-            .ToList();
-
-        if (keysToRemove.Count == 0)
+        var key = new TrapKey(address, operation, memoryContext, SlotIndependent);
+        if (!traps.Remove(key))
         {
             return false;
         }
 
-        foreach (var key in keysToRemove)
-        {
-            traps.Remove(key);
-            NoteRemoved(key.Address, key.Operation);
-            TrapUnregistered?.Invoke(key.Address, key.Operation, key.MemoryContext);
-        }
-
+        NoteRemoved(address, operation);
+        TrapUnregistered?.Invoke(address, operation, memoryContext);
         return true;
     }
 
@@ -540,24 +536,18 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Returns the trap <see cref="TryExecute(Addr, TrapOperation, ICpu, IMemoryBus, IEventContext)"/>
+    /// would select: the active slot for slot and expansion ROM, otherwise the slot-independent trap.
+    /// </remarks>
     public TrapInfo? GetTrapInfo(Addr address, TrapOperation operation, MemoryContext memoryContext)
     {
-        if (traps.TryGetValue(new TrapKey(address, operation, memoryContext, SlotIndependent), out var fixedEntry))
+        if (!TrySelectEntry(address, operation, memoryContext, out TrapEntry entry))
         {
-            return fixedEntry.ToTrapInfo();
+            return null;
         }
 
-        foreach (var pair in traps)
-        {
-            if (pair.Key.Address == address
-                && pair.Key.Operation == operation
-                && pair.Key.MemoryContext == memoryContext)
-            {
-                return pair.Value.ToTrapInfo();
-            }
-        }
-
-        return null;
+        return entry.ToTrapInfo();
     }
 
     /// <inheritdoc />
@@ -587,29 +577,25 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Updates the slot-independent trap only. Slot-dependent traps are unchanged.
+    /// </remarks>
     public bool SetEnabled(Addr address, TrapOperation operation, bool enabled, MemoryContext memoryContext)
     {
-        bool updated = false;
-        foreach (var pair in traps)
+        var key = new TrapKey(address, operation, memoryContext, SlotIndependent);
+        if (!traps.TryGetValue(key, out TrapEntry? entry) || entry is null)
         {
-            if (pair.Key.Address != address
-                || pair.Key.Operation != operation
-                || pair.Key.MemoryContext != memoryContext)
-            {
-                continue;
-            }
-
-            bool previousState = pair.Value.IsEnabled;
-            pair.Value.IsEnabled = enabled;
-            if (previousState != enabled)
-            {
-                TrapEnabledChanged?.Invoke(address, operation, memoryContext, enabled);
-            }
-
-            updated = true;
+            return false;
         }
 
-        return updated;
+        bool previousState = entry.IsEnabled;
+        entry.IsEnabled = enabled;
+        if (previousState != enabled)
+        {
+            TrapEnabledChanged?.Invoke(address, operation, memoryContext, enabled);
+        }
+
+        return true;
     }
 
     /// <inheritdoc />
