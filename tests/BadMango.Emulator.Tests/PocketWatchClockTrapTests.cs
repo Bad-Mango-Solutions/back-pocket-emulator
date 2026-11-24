@@ -26,6 +26,8 @@ public class PocketWatchClockTrapTests
     private const int TimeLength = 14;
     private const string FrozenInstant = "1986-06-15T10:30:00";
     private const string ExpectedTime = "06,00,15,10,30";
+    private const byte ReadEntry = 0x08;
+    private const byte WriteEntry = 0x0B;
 
     /// <summary>
     /// Verifies that <see cref="DeviceFactoryExtensions.RegisterPocketWatchCardFactory"/>
@@ -138,6 +140,76 @@ public class PocketWatchClockTrapTests
         });
     }
 
+    /// <summary>
+    /// Verifies that removing a PocketWatch while the machine is off drops its traps,
+    /// and inserting that same card in another slot registers them once at the new slot.
+    /// </summary>
+    [Test]
+    public void RemoveAndReinsertSameCard_MovesTrapsToTheNewSlot()
+    {
+        using var machine = CreateOffMachine();
+        var card = CreateFrozenCard();
+        machine.InsertSlotCard(4, card);
+
+        Power(machine);
+        AssertClockTrapFires(machine, 4);
+        machine.PowerOffAsync().GetAwaiter().GetResult();
+        Assert.That(machine.State, Is.EqualTo(MachineState.Off));
+
+        machine.RemoveSlotCard(4);
+        AssertNoPocketWatchTraps(machine);
+
+        machine.InsertSlotCard(6, card);
+        AssertPocketWatchTraps(machine, 6, exclusive: true);
+
+        Power(machine);
+        AssertClockTrapFires(machine, 6);
+    }
+
+    /// <summary>
+    /// Verifies that a new PocketWatch inserted in a vacated slot registers its traps once.
+    /// </summary>
+    [Test]
+    public void RemoveAndInsertNewCard_RegistersTrapsOnce()
+    {
+        using var machine = CreateOffMachine();
+        machine.InsertSlotCard(4, CreateFrozenCard());
+
+        Power(machine);
+        AssertClockTrapFires(machine, 4);
+        machine.PowerOffAsync().GetAwaiter().GetResult();
+
+        machine.RemoveSlotCard(4);
+        AssertNoPocketWatchTraps(machine);
+
+        machine.InsertSlotCard(4, CreateFrozenCard());
+        AssertPocketWatchTraps(machine, 4, exclusive: true);
+
+        Power(machine);
+        AssertClockTrapFires(machine, 4);
+    }
+
+    /// <summary>
+    /// Verifies that removing a card from another slot leaves the PocketWatch traps in place.
+    /// </summary>
+    [Test]
+    public void RemoveOtherSlot_LeavesPocketWatchTraps()
+    {
+        using var machine = CreateOffMachine();
+        machine.InsertSlotCard(4, CreateFrozenCard());
+        machine.InsertSlotCard(5, CreateFrozenCard());
+        AssertPocketWatchTraps(machine, 4);
+        AssertPocketWatchTraps(machine, 5);
+
+        machine.RemoveSlotCard(5);
+
+        AssertPocketWatchTraps(machine, 4, exclusive: true);
+        AssertNoPocketWatchTraps(machine, 5);
+
+        Power(machine);
+        AssertClockTrapFires(machine, 4);
+    }
+
     private static string FrozenConfigJson()
         => $$"""{"timeSource":"frozen","frozenTime":"{{FrozenInstant}}"}""";
 
@@ -161,11 +233,24 @@ public class PocketWatchClockTrapTests
         return (PocketWatchCard)installed!;
     }
 
-    private static MachineProfile CreateProfile(JsonElement cardConfig, bool includeExtended80)
+    private static MachineProfile CreateProfile(
+        JsonElement cardConfig,
+        bool includeExtended80,
+        bool includePocketWatch = true)
     {
         List<MotherboardDeviceEntry> motherboard = includeExtended80
             ? [new() { Type = "extended80column", Enabled = true }]
             : [];
+        var cards = new List<SlotCardProfile>();
+        if (includePocketWatch)
+        {
+            cards.Add(new()
+            {
+                Slot = 4,
+                Type = "pocketwatch",
+                Config = cardConfig,
+            });
+        }
 
         return new()
         {
@@ -233,15 +318,7 @@ public class PocketWatchClockTrapTests
                 Slots = new()
                 {
                     Enabled = true,
-                    Cards =
-                    [
-                        new()
-                        {
-                            Slot = 4,
-                            Type = "pocketwatch",
-                            Config = cardConfig,
-                        },
-                    ],
+                    Cards = cards,
                 },
             },
         };
@@ -272,5 +349,83 @@ public class PocketWatchClockTrapTests
         }
 
         return Encoding.ASCII.GetString(bytes);
+    }
+
+    private static IMachine CreateOffMachine()
+        => MachineFactory.CreateMachine(CreateProfile(default, includeExtended80: false, includePocketWatch: false));
+
+    private static PocketWatchCard CreateFrozenCard()
+        => new(new PocketWatchConfig
+        {
+            TimeSource = "frozen",
+            FrozenTime = FrozenInstant,
+        });
+
+    private static void Power(IMachine machine)
+        => machine.PowerOnAsync().GetAwaiter().GetResult();
+
+    private static void AssertClockTrapFires(IMachine machine, int slot)
+    {
+        var cpu = machine.Cpu;
+        Fill(cpu, TimeBuffer, TimeLength + 1, 0x11);
+        byte high = (byte)(0xC0 + slot);
+        WriteProgram(cpu, 0x20, 0x0B, high, 0x20, 0x08, high, 0xDB);
+        cpu.SetPC(ProgramAddress);
+
+        machine.Step();
+        machine.Step();
+        machine.Step();
+        machine.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cpu.GetPC(), Is.EqualTo(0x0306u));
+            Assert.That(ReadAscii(cpu, TimeBuffer, TimeLength), Is.EqualTo(ExpectedTime));
+            Assert.That(cpu.Read8(TimeBuffer + TimeLength), Is.EqualTo(0x11));
+        });
+    }
+
+    private static void AssertPocketWatchTraps(IMachine machine, int slot, bool exclusive = false)
+    {
+        var traps = PocketWatchTraps(machine).ToList();
+        var forSlot = traps.Where(trap => trap.SlotNumber == slot).ToList();
+        Addr page = (Addr)(0xC000 + (slot << 8));
+        Assert.Multiple(() =>
+        {
+            Assert.That(forSlot, Has.Count.EqualTo(2));
+            Assert.That(forSlot.Any(trap => trap.Address == page + ReadEntry), Is.True);
+            Assert.That(forSlot.Any(trap => trap.Address == page + WriteEntry), Is.True);
+            if (exclusive)
+            {
+                Assert.That(traps, Has.Count.EqualTo(2));
+            }
+        });
+    }
+
+    private static void AssertNoPocketWatchTraps(IMachine machine, int? slot = null)
+    {
+        var registry = machine.GetComponent<ITrapRegistry>();
+        Assert.That(registry, Is.Not.Null);
+        if (slot is int removedSlot)
+        {
+            Addr page = (Addr)(0xC000 + (removedSlot << 8));
+            Assert.Multiple(() =>
+            {
+                Assert.That(registry!.HasTrap(page + ReadEntry), Is.False);
+                Assert.That(registry.HasTrap(page + WriteEntry), Is.False);
+                Assert.That(PocketWatchTraps(machine).Any(trap => trap.SlotNumber == removedSlot), Is.False);
+            });
+
+            return;
+        }
+
+        Assert.That(PocketWatchTraps(machine), Is.Empty);
+    }
+
+    private static IEnumerable<TrapInfo> PocketWatchTraps(IMachine machine)
+    {
+        var registry = machine.GetComponent<ITrapRegistry>();
+        Assert.That(registry, Is.Not.Null);
+        return registry!.GetAllTraps().Where(trap => trap.Name.StartsWith("PW_", StringComparison.Ordinal));
     }
 }

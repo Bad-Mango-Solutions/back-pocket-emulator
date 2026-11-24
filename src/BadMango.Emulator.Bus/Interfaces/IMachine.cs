@@ -326,8 +326,9 @@ public interface IMachine : IEventContext, IMachineDispatcher, IDisposable
     /// </exception>
     /// <remarks>
     /// <para>
-    /// Flushes the card's storage, removes it from the slot, and unregisters it before disposal.
-    /// A disposal failure still leaves the registry entry removed, and the exception propagates.
+    /// Flushes the card's storage, removes it from the slot, and unregisters the device and that
+    /// slot's slot-dependent traps before disposal. A disposal failure still leaves both removed,
+    /// and the exception propagates.
     /// The loaded profile and the profile file on disk are left unchanged.
     /// </para>
     /// <para>

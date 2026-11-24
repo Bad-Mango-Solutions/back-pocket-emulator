@@ -313,6 +313,26 @@ public class TrapRegistryTests
     }
 
     /// <summary>
+    /// Verifies that UnregisterSlotTraps leaves fixed-address traps in place.
+    /// </summary>
+    [Test]
+    public void UnregisterSlotTraps_LeavesFixedAddressTraps()
+    {
+        TrapHandler handler = (cpu, bus, ctx) => TrapResult.NotHandled;
+        registry.RegisterSlotDependent(0xC408, 4, "PW_READ", TrapCategory.SlotFirmware, handler);
+        registry.Register(0xFDED, "COUT", TrapCategory.MonitorRom, handler);
+
+        registry.UnregisterSlotTraps(4);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(registry.HasTrap(0xC408), Is.False);
+            Assert.That(registry.HasTrap(0xFDED), Is.True);
+            Assert.That(registry.GetAllTraps().Any(trap => trap.SlotNumber == 4), Is.False);
+        });
+    }
+
+    /// <summary>
     /// Verifies that UnregisterSlotTraps throws for invalid slot.
     /// </summary>
     [Test]

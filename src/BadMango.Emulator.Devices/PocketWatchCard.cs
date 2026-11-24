@@ -40,7 +40,7 @@ using Interfaces;
 /// </para>
 /// </remarks>
 [DeviceType("pocketwatch")]
-public sealed class PocketWatchCard : IClockDevice
+public sealed class PocketWatchCard : IClockDevice, IDisposable
 {
     /// <summary>
     /// Offset of the ProDOS READ entry within the slot ROM page ($Cn08).
@@ -217,6 +217,21 @@ public sealed class PocketWatchCard : IClockDevice
     public void OnExpansionROMDeselected()
     {
         // No expansion ROM
+    }
+
+    /// <summary>
+    /// Detaches the card from the machine that installed it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Machine.RemoveSlotCard"/> calls this after the slot's traps are unregistered.
+    /// Clearing the registration flag lets the same instance register again on a later insert.
+    /// </remarks>
+    public void Dispose()
+    {
+        clockTrapsRegistered = false;
+        eventContext = null;
+        timeLatched = false;
+        readIndex = 0;
     }
 
     private static void WriteTwoDigits(ICpu cpu, Addr address, int value)

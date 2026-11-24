@@ -352,6 +352,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     {
         ValidateSlotNumber(slot);
 
+        // SlotNumber is set only by RegisterSlotDependent. Fixed-address traps have none.
         var keysToRemove = traps
             .Where(kvp => kvp.Value.SlotNumber == slot)
             .Select(kvp => kvp.Key)
