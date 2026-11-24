@@ -338,6 +338,28 @@ emulator must ensure:
   per-cycle polling to avoid excessive overhead.
 - For high-accuracy modes, allow per-cycle stepping or a fast path for boot ROM timing.
 
+### 6.5 Spike timing disposition (#346)
+
+The spike branch (`feature/emudbg-repl-for-agents-humans`, PR #314) rewrote large parts of
+the Disk II controller to fit one ProDOS boot. This table is the disposition of each of
+those behaviors. Later Disk II work (#676, #677, and the logic-state sequencer in #487/#488)
+keeps the RWTS-facing timing now on `main` unless an entry says otherwise.
+`DiskIIControllerTimingTests` pins that timing: rapid `LDA $C08C,X / BPL` polls, track-step
+settle, a ProDOS phase on/off seek from track 6 to track 0, and address-field decode of a
+GCR track built in the test.
+
+Hardware facts are from Jim Sather, *Understanding the Apple IIe* (Quality Software, 1985),
+chapter 9. Page numbers below are that edition.
+
+| Spike behavior | Disposition |
+| --- | --- |
+| Time-based nibble catch-up | Already on `main` (FR-D6 on-demand spin advance in `AdvanceSpinAndLatch`). A bit cell is four MPU cycles (Sather, Figure 9.6). RWTS stores address bytes at 32-cycle intervals (Sather, pp. 9-39 to 9-42). |
+| Rapid-poll latch handling (bit 7 cleared on tight polls) | Superseded by `main`'s spin-position byte-ready gating. The READ sequence polls the data register until a complete byte is present with its MSB set (Sather, pp. 9-14 to 9-15 and 9-27 to 9-29). Exact behavior is deferred to the LSS engine (#487/#488). |
+| Motor-off spin-down | Ported as the NE556 one-second motor-off delay in #676; drive switching during the delay in #677. Access to `$C088,X` starts that one-second drive-off delay (Sather, pp. 9-13 and 9-36). |
+| `Pass2Bisect` gap-14 skip (177/473), `Pass2InnerSpinDelta`, slot-6 LC-snapshot hooks, autostart-vector hooks | Dropped. These constants were fitted to one disk. |
+| Bisect / poll diagnostics logging | Dropped. Debugger visibility belongs to #333. |
+| Code derived from other emulators | Never ported. Behavior is re-derived clean-room from hardware documentation (Sather, *Understanding the Apple IIe*, ch. 9). Head steps are phase-on then the previous phase off, two phases per track, descending toward track 0 (p. 9-8; commands pp. 9-11 to 9-13). ProDOS DIIDD uses the same phase on/off tables as DOS 3.3 RWTS (pp. 9-43 to 9-44). |
+
 ---
 
 ## 7. Integration with the Emulator Core
