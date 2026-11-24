@@ -373,17 +373,11 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     /// <inheritdoc />
     public bool UnregisterWithContext(Addr address, TrapOperation operation, MemoryContext memoryContext)
     {
-        List<TrapKey>? keysToRemove = null;
-        foreach (var key in traps.Keys)
-        {
-            if (key.Address == address && key.Operation == operation && key.MemoryContext == memoryContext)
-            {
-                keysToRemove ??= [];
-                keysToRemove.Add(key);
-            }
-        }
+        var keysToRemove = traps.Keys
+            .Where(key => key.Address == address && key.Operation == operation && key.MemoryContext == memoryContext)
+            .ToList();
 
-        if (keysToRemove is null)
+        if (keysToRemove.Count == 0)
         {
             return false;
         }
