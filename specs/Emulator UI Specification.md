@@ -3,7 +3,7 @@
 **Document Purpose:** Design specification for the Avalonia-based emulator user interface.  
 **Version:** 1.1  
 **Date:** 2025-12-27  
-**Target Framework:** Avalonia UI 11.x on .NET 10.0
+**Target Framework:** Avalonia UI 11.x on .NET 11.0
 
 ---
 

@@ -23,7 +23,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: '10.0.x'
+        dotnet-version: '11.0.x'
         global-json-file: global.json
 
     - name: Restore dependencies
@@ -40,7 +40,7 @@ jobs:
         echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
     - name: Cache pinned WDC 65C02 vectors
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       with:
         path: ~/.local/share/back-pocket-emulator/singlestep/65x02/${{ steps.vectors.outputs.commit }}
         key: singlestep-wdc65c02-v1-${{ steps.vectors.outputs.commit }}

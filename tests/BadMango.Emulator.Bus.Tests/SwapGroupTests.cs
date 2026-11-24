@@ -192,6 +192,50 @@ public class SwapGroupTests
     }
 
     /// <summary>
+    /// Verifies that the no-lock getter matches locked behavior and keeps the same exception text.
+    /// </summary>
+    [Test]
+    public void GetVariantNoLock_MissingVariant_ThrowsWithSameMessage()
+    {
+        var group = new SwapGroup(0, "Group", virtualBase: 0xD000, size: 0x1000);
+        var memory = new PhysicalMemory(PageSize, "Bank1");
+        var target = new RamTarget(memory.Slice(0, PageSize));
+        var variant = new SwapVariant("BANK1", target, 0, PagePerms.ReadWrite);
+        group.AddVariant(variant);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(group.GetVariantNoLock("BANK1"), Is.EqualTo(variant));
+            Assert.That(
+                () => group.GetVariantNoLock("MISSING"),
+                Throws.TypeOf<KeyNotFoundException>()
+                    .With.Message.EqualTo("Variant 'MISSING' not found in swap group 'Group'."));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that the no-lock setter matches locked behavior and keeps the same exception text.
+    /// </summary>
+    [Test]
+    public void SetActiveVariantNoLock_MissingVariant_ThrowsWithSameMessage()
+    {
+        var group = new SwapGroup(0, "Group", virtualBase: 0xD000, size: 0x1000);
+        var memory = new PhysicalMemory(PageSize, "Bank1");
+        var target = new RamTarget(memory.Slice(0, PageSize));
+        group.AddVariant(new SwapVariant("BANK1", target, 0, PagePerms.ReadWrite));
+
+        Assert.Multiple(() =>
+        {
+            Assert.DoesNotThrow(() => group.SetActiveVariantNoLock("BANK1"));
+            Assert.That(group.ActiveVariantName, Is.EqualTo("BANK1"));
+            Assert.That(
+                () => group.SetActiveVariantNoLock("MISSING"),
+                Throws.TypeOf<KeyNotFoundException>()
+                    .With.Message.EqualTo("Variant 'MISSING' not found in swap group 'Group'."));
+        });
+    }
+
+    /// <summary>
     /// Verifies that GetActiveSwapVariant throws for non-existent group.
     /// </summary>
     [Test]

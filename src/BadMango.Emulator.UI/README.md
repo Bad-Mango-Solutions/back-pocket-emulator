@@ -4,7 +4,7 @@ Avalonia-based cross-platform user interface for the BackPocket emulator.
 
 ## Overview
 
-This project provides a graphical frontend for the BackPocket emulator family, built with Avalonia UI 12 on .NET 10.0. The UI follows the MVVM pattern using CommunityToolkit.Mvvm and uses Autofac for dependency injection with Microsoft.Extensions.Hosting patterns. The assembly name is `bpui`. It references `BadMango.Emulator.Core`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions`.
+This project provides a graphical frontend for the BackPocket emulator family, built with Avalonia UI 12 on .NET 11.0. The UI follows the MVVM pattern using CommunityToolkit.Mvvm and uses Autofac for dependency injection with Microsoft.Extensions.Hosting patterns. The assembly name is `bpui`. It references `BadMango.Emulator.Core`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions`.
 
 ## Features
 
