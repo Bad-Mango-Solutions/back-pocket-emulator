@@ -155,7 +155,6 @@
             }
         ],
         "slots": {
-            "io-region": "io-region",
             "enabled": true,
             "internalC3Rom": false,
             "internalCxRom": false,
@@ -178,7 +177,6 @@
 
     "boot": {
         "autoStart": false,
-        "autoVideoWindowOpen": true,
-        "startupSlot": 6
+        "autoVideoWindowOpen": true
     }
 }

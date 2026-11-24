@@ -431,7 +431,7 @@ public sealed partial class MachineBuilder
     /// <summary>
     /// Registers a factory function for creating composite region handlers.
     /// </summary>
-    /// <param name="handlerName">The name of the handler (e.g., "pocket2e-io").</param>
+    /// <param name="handlerName">The name of the handler (e.g., "composite-io").</param>
     /// <param name="factory">A factory function that creates the <see cref="IBusTarget"/> for the handler.</param>
     /// <returns>This builder instance for method chaining.</returns>
     /// <exception cref="ArgumentNullException">
@@ -444,13 +444,11 @@ public sealed partial class MachineBuilder
     /// by name and invokes the factory to create the <see cref="IBusTarget"/>.
     /// </para>
     /// <para>
-    /// Example:
+    /// Shipped profiles name the handler <c>composite-io</c>.
+    /// <see cref="MachineBuilderExtensions.RegisterCompositeIOHandler"/> registers that
+    /// name and creates the dispatcher and slot manager inside the factory.
+    /// Call it before <see cref="FromProfile"/>.
     /// </para>
-    /// <code>
-    /// builder.RegisterCompositeHandler("pocket2e-io", b => new Pocket2eIOPage(
-    ///     b.GetComponent&lt;IOPageDispatcher&gt;(),
-    ///     b.GetComponent&lt;ISlotManager&gt;()));
-    /// </code>
     /// </remarks>
     public MachineBuilder RegisterCompositeHandler(string handlerName, Func<MachineBuilder, IBusTarget> factory)
     {

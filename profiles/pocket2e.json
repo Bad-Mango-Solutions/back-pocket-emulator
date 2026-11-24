@@ -2,7 +2,7 @@
     "$schema": "https://bad-mango-solutions.github.io/schemas/machine-profile.schema.json",
     "name": "pocket2e",
     "displayName": "Pocket2e",
-    "description": "Pocket2e system with 128KB RAM (64KB main + 64KB aux via bank switching), 80-column support, and full peripheral emulation",
+    "description": "Pocket2e system with 48KB main RAM, system ROM at $D000-$FFFF, and peripheral emulation",
 
     "cpu": {
         "type": "65C02",
@@ -57,26 +57,6 @@
                         "offset": "0x0000"
                     }
                 ]
-            },
-            {
-                "name": "language-card-d000-bank1",
-                "size": "0x1000",
-                "fill": "0x00"
-            },
-            {
-                "name": "language-card-d000-bank2",
-                "size": "0x1000",
-                "fill": "0x00"
-            },
-            {
-                "name": "language-card-e000",
-                "size": "0x2000",
-                "fill": "0x00"
-            },
-            {
-                "name": "aux-memory-64k",
-                "size": "0x10000",
-                "fill": "0x00"
             }
         ],
         "regions": [
@@ -94,74 +74,16 @@
                 "type": "composite",
                 "start": "0xC000",
                 "size": "0x1000",
-                "handler": "pocket2e-io"
-            }
-        ],
-
-        "swapGroups": [
-            {
-                "name": "language-card-d000",
-                "controller": "language-card-controller",
-                "virtualBase": "0xD000",
-                "size": "0x1000",
-                "comment": "Bank switching within 16-bit address space for $D000-$DFFF",
-                "variants": [
-                    {
-                        "name": "rom",
-                        "type": "rom",
-                        "source": "system-rom-16k",
-                        "source-offset": "0x1000",
-                        "permissions": "rx"
-                    },
-                    {
-                        "name": "bank1",
-                        "type": "ram",
-                        "source": "language-card-d000-bank1",
-                        "source-offset": "0x0000",
-                        "permissions": "rwx"
-                    },
-                    {
-                        "name": "bank2",
-                        "type": "ram",
-                        "source": "language-card-d000-bank2",
-                        "source-offset": "0x0000",
-                        "permissions": "rwx"
-                    }
-                ],
-                "defaultVariant": "rom"
+                "handler": "composite-io"
             },
             {
-                "name": "language-card-e000",
-                "controller": "language-card-controller",
-                "virtualBase": "0xE000",
-                "size": "0x2000",
-                "comment": "Bank switching within 16-bit address space for $E000-$FFFF",
-                "variants": [
-                    {
-                        "name": "rom",
-                        "type": "rom",
-                        "source": "system-rom-16k",
-                        "source-offset": "0x2000",
-                        "permissions": "rx"
-                    },
-                    {
-                        "name": "ram",
-                        "type": "ram",
-                        "source": "language-card-e000",
-                        "source-offset": "0x0000",
-                        "permissions": "rwx"
-                    }
-                ],
-                "defaultVariant": "rom"
-            }
-        ],
-
-        "controllers": [
-            {
-                "name": "aux-memory",
-                "type": "pocket2e-aux-controller",
-                "size": "0x10000",
-                "comment": "64KB auxiliary RAM, bank-switched into 16-bit address space via soft switches"
+                "name": "system-rom",
+                "type": "rom",
+                "start": "0xD000",
+                "size": "0x3000",
+                "permissions": "rx",
+                "source": "system-rom-16k",
+                "source-offset": "0x1000"
             }
         ]
     },
@@ -204,7 +126,6 @@
             }
         ],
         "slots": {
-            "io-region": "io-page",
             "enabled": true,
             "internalC3Rom": true,
             "internalCxRom": false,
@@ -230,7 +151,6 @@
     },
 
     "boot": {
-        "autoStart": true,
-        "startupSlot": 6
+        "autoStart": true
     }
 }

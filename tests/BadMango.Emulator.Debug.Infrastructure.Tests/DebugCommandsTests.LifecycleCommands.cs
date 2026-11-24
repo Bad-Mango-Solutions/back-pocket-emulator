@@ -516,7 +516,7 @@ public partial class DebugCommandsTests
             Memory = new MemoryProfileSection(),
             Boot = new BootProfile
             {
-                StartupSlot = 6,
+                AutoVideoWindowOpen = true,
             },
         };
 

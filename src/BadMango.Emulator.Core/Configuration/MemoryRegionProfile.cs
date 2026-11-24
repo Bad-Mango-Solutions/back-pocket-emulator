@@ -127,7 +127,7 @@ public sealed class MemoryRegionProfile
     /// <remarks>
     /// For "composite" type regions, this specifies the handler that manages
     /// the region. The builder looks up a handler factory by this name.
-    /// Examples: "pocket2e-io", "slot-rom-handler".
+    /// Example: "composite-io".
     /// </remarks>
     [JsonPropertyName("handler")]
     public string? Handler { get; set; }
