@@ -48,6 +48,8 @@ public sealed class LifecycleMcpClientTests
                 "disassemble",
                 "disk_list_files",
                 "disk_read_file",
+                "get_boot_log",
+                "get_guest_os",
                 "get_registers",
                 "get_screen_text",
                 "load_profile",

@@ -18,6 +18,9 @@ using Serilog;
 /// <para>
 /// Probes are ordered by <see cref="IGuestOsProbe.Order"/>: a smaller value runs first.
 /// ProDOS 8 is 0 and DOS 3.3 is 100. A layered system uses a value below its base OS.
+/// The same enabled module registers the DOS 3.3 and ProDOS 8 <see cref="IGuestOsBootProfile"/>
+/// implementations. The boot monitor walks those profiles; it is attached to a machine
+/// only when the profile sets <c>guestOs.bootLog</c> or the console runs <c>os on</c>.
 /// The default constructor leaves detection off and registers no services, no traps,
 /// and no instruction-loop callback. A host that wants detection loads
 /// <c>new GuestOsModule(enabled: true)</c> and supplies <see cref="IGuestMemoryReader"/>,
@@ -63,6 +66,12 @@ public sealed class GuestOsModule : Module
             .SingleInstance();
         builder.RegisterType<Dos33GuestOsProbe>()
             .As<IGuestOsProbe>()
+            .SingleInstance();
+        builder.RegisterType<ProDos8GuestOsBootProfile>()
+            .As<IGuestOsBootProfile>()
+            .SingleInstance();
+        builder.RegisterType<Dos33GuestOsBootProfile>()
+            .As<IGuestOsBootProfile>()
             .SingleInstance();
         builder.Register(static ctx => new GuestOsDetector(
                 Logger(ctx),

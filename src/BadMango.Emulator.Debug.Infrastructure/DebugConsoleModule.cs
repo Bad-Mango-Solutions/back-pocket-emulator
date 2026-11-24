@@ -114,6 +114,10 @@ public class DebugConsoleModule : Module
             .As<ICommandHandler>()
             .SingleInstance();
 
+        builder.Register(ctx => new OsCommand(ctx.ResolveOptional<ILogger>() ?? Serilog.Log.Logger))
+            .As<ICommandHandler>()
+            .SingleInstance();
+
         builder.RegisterType<MemCommand>()
             .As<ICommandHandler>()
             .SingleInstance();

@@ -24,10 +24,11 @@ public class GuestOsModuleTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(container.IsRegistered<IGuestOsDetector>(), Is.False);
-            Assert.That(container.IsRegistered<IGuestOsProbe>(), Is.False);
-            Assert.That(container.IsRegistered<IBootSequenceMonitor>(), Is.False);
-            Assert.That(container.IsRegistered<IGuestMemoryReader>(), Is.False);
+        Assert.That(container.IsRegistered<IGuestOsDetector>(), Is.False);
+        Assert.That(container.IsRegistered<IGuestOsProbe>(), Is.False);
+        Assert.That(container.IsRegistered<IGuestOsBootProfile>(), Is.False);
+        Assert.That(container.IsRegistered<IBootSequenceMonitor>(), Is.False);
+        Assert.That(container.IsRegistered<IGuestMemoryReader>(), Is.False);
         });
     }
 
@@ -41,6 +42,7 @@ public class GuestOsModuleTests
 
         Assert.That(container.IsRegistered<IGuestOsDetector>(), Is.False);
         Assert.That(container.IsRegistered<IGuestOsProbe>(), Is.False);
+        Assert.That(container.IsRegistered<IGuestOsBootProfile>(), Is.False);
     }
 
     /// <summary>An enabled module orders ProDOS ahead of DOS and detects through the supplied reader.</summary>
@@ -63,6 +65,7 @@ public class GuestOsModuleTests
         using var container = builder.Build();
 
         var probes = container.Resolve<IEnumerable<IGuestOsProbe>>().ToList();
+        var profiles = container.Resolve<IEnumerable<IGuestOsBootProfile>>().ToList();
         var detector = container.Resolve<IGuestOsDetector>();
         var info = detector.Detect();
 
@@ -72,6 +75,9 @@ public class GuestOsModuleTests
             Assert.That(probes[0], Is.InstanceOf<ProDos8GuestOsProbe>());
             Assert.That(probes[1], Is.InstanceOf<Dos33GuestOsProbe>());
             Assert.That(probes[0].Order, Is.LessThan(probes[1].Order));
+            Assert.That(profiles, Has.Count.EqualTo(2));
+            Assert.That(profiles[0], Is.InstanceOf<ProDos8GuestOsBootProfile>());
+            Assert.That(profiles[1], Is.InstanceOf<Dos33GuestOsBootProfile>());
             Assert.That(info.Id, Is.EqualTo(GuestOsId.ProDos8));
             Assert.That(info.VersionLabel, Is.EqualTo("ProDOS 8 2.4.x"));
             Assert.That(((ProDos8Details)info.Details!).HasClock, Is.True);

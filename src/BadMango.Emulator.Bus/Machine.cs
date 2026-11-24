@@ -687,13 +687,8 @@ public sealed class Machine : IMachine
         return components.OfType<T>().Any();
     }
 
-    /// <summary>
-    /// Adds a component to the machine's component bucket.
-    /// </summary>
-    /// <typeparam name="T">The type of component being added.</typeparam>
-    /// <param name="component">The component instance to add.</param>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="component"/> is <see langword="null"/>.</exception>
-    internal void AddComponent<T>(T component)
+    /// <inheritdoc />
+    public void AddComponent<T>(T component)
         where T : class
     {
         ArgumentNullException.ThrowIfNull(component, nameof(component));

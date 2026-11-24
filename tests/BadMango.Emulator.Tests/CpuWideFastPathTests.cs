@@ -647,6 +647,9 @@ public class CpuWideFastPathTests
 
         public bool HasComponent<T>()
             where T : class => false;
+
+        public void AddComponent<T>(T component)
+            where T : class => ArgumentNullException.ThrowIfNull(component);
     }
 
     /// <summary>

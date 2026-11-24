@@ -104,4 +104,17 @@ public interface IEventContext
     /// <returns><see langword="true"/> if a matching component exists; otherwise, <see langword="false"/>.</returns>
     bool HasComponent<T>()
         where T : class;
+
+    /// <summary>
+    /// Adds a component to the context's component bucket.
+    /// </summary>
+    /// <typeparam name="T">The type of component being added.</typeparam>
+    /// <param name="component">The component instance to add.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="component"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// Components can be retrieved later using <see cref="GetComponent{T}"/>.
+    /// Adding a component after the machine is built is how a host turns a feature on at runtime.
+    /// </remarks>
+    void AddComponent<T>(T component)
+        where T : class;
 }

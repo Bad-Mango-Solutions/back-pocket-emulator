@@ -180,6 +180,47 @@ public sealed class InspectionTools
         }
     }
 
+    /// <summary>
+    /// Reads the detected guest operating system and the boot stage.
+    /// </summary>
+    /// <returns>
+    /// An emudbg envelope whose payload is the guest OS snapshot. When the boot monitor is on and no
+    /// milestone was seen, the monitor asks the detector and may set the stage to Ready.
+    /// </returns>
+    [McpServerTool(Name = "get_guest_os", UseStructuredContent = true)]
+    [Description("Get the detected guest operating system and boot stage. When the boot monitor is on and no milestone was seen, detection can set the stage to Ready.")]
+    public object GetGuestOs()
+    {
+        try
+        {
+            GuestOsSnapshot snapshot = GuestOsInspection.ReadGuestOs(this.context.Machine);
+            return DebugEnvelope<GuestOsSnapshot>.Create(snapshot);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return this.Fail("get_guest_os", ex.Message, ex);
+        }
+    }
+
+    /// <summary>
+    /// Reads the boot milestone log.
+    /// </summary>
+    /// <returns>An emudbg envelope whose payload is the stage and the milestones, oldest first.</returns>
+    [McpServerTool(Name = "get_boot_log", UseStructuredContent = true)]
+    [Description("Get the guest boot milestone log: stage, boot-sector re-entries, and each milestone's cycle, PC, kind, OS, and detail.")]
+    public object GetBootLog()
+    {
+        try
+        {
+            BootLogSnapshot log = GuestOsInspection.ReadBootLog(this.context.Machine);
+            return DebugEnvelope<BootLogSnapshot>.Create(log);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return this.Fail("get_boot_log", ex.Message, ex);
+        }
+    }
+
     private static MemoryReadReceipt ToReceipt(MemoryBlock block)
     {
         var reports = new List<MemoryFaultLine>();

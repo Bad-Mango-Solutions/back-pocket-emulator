@@ -338,6 +338,23 @@ public class GuestOsDetectorTests
         Assert.That(GuestOsId.Dos33.CompareTo(GuestOsId.ProDos8), Is.LessThan(0));
     }
 
+    /// <summary>A zeroed id reads as <see cref="GuestOsId.None"/> and does not throw.</summary>
+    [Test]
+    public void GuestOsId_Default_IsNone()
+    {
+        var zero = default(GuestOsId);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(zero.Value, Is.EqualTo(GuestOsId.NoneValue));
+            Assert.That(zero.ToString(), Is.EqualTo("none"));
+            Assert.That(zero, Is.EqualTo(GuestOsId.None));
+            Assert.That(zero == GuestOsId.None, Is.True);
+            Assert.That(zero.CompareTo(GuestOsId.None), Is.EqualTo(0));
+            Assert.That(zero.GetHashCode(), Is.EqualTo(GuestOsId.None.GetHashCode()));
+        });
+    }
+
     /// <summary>A lower <see cref="IGuestOsProbe.Order"/> wins even when that probe is supplied last.</summary>
     [Test]
     public void Detect_LowerOrder_WinsWhenSuppliedLast()
