@@ -294,6 +294,18 @@ public int Step()
 - When translating an exception, keep the original as the `InnerException`; rethrow unchanged with `throw;`
 - Use guard helpers such as `ArgumentNullException.ThrowIfNull` instead of hand-written argument checks
 
+### Performance Guidelines
+
+- Keep the CPU/bus data plane allocation-free on hot paths. Measure allocation-sensitive changes with the existing benchmarks and tests; do not introduce per-access allocations for routine memory reads or writes.
+- The bus page table is an array: use `PageEntry[]` and direct page/byte indexes for O(1) lookup rather than dictionaries on the hot path.
+- A CPU/bus fast-path hit does not build `BusAccess`. It indexes the published live backing array and falls back to the existing checked or decomposed path only on a miss.
+- Pass large structs such as `BusAccess` with `in`; the struct itself is immutable and may be inspected without copying.
+- Keep diagnostic tracing behind its enabled check so it adds no work to the fast path when tracing is disabled.
+
+The target location for the CPU/bus fast-path implementation is `src/BadMango.Emulator.Core`; the namespaces remain `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation.Cpu`.
+
+> **Current location (until #562):** `src/BadMango.Emulator.Bus` and `src/BadMango.Emulator.Emulation`; target: `src/BadMango.Emulator.Core` (namespaces unchanged).
+
 ### Naming Conventions
 
 - Classes: `PascalCase`
