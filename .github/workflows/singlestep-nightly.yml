@@ -40,7 +40,7 @@ jobs:
         echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
     - name: Cache pinned WDC 65C02 vectors
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       with:
         path: ~/.local/share/back-pocket-emulator/singlestep/65x02/${{ steps.vectors.outputs.commit }}
         key: singlestep-wdc65c02-v1-${{ steps.vectors.outputs.commit }}

@@ -90,11 +90,11 @@ Versioned module host support is **not** claimed as implemented yet.
 
 ## Architecture pages and issue tracking
 
-The child architecture pages are tracked by issue until files land; planned paths are shown as code until each page lands, then as file links.
+The child architecture pages are tracked by issue; landed pages link to their canonical file paths, while planned pages remain status-pending.
 
 | Issue | Planned page path | Status |
 | --- | --- | --- |
-| [#539](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/539) | `specs/architecture/cpu.md` | pending |
+| [#539](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/539) | [`specs/architecture/cpu.md`](specs/architecture/cpu.md) | landed |
 | [#540](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/540) | `specs/architecture/cpu-65816.md` | pending |
 | [#541](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/541) | `specs/architecture/cpu-65832.md` | pending |
 | [#542](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/542) | `specs/architecture/bus-mmu.md` | pending |
@@ -106,7 +106,7 @@ The child architecture pages are tracked by issue until files land; planned path
 | [#548](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/548) | `specs/architecture/observability.md` | pending |
 | [#549](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/549) | `specs/architecture/machine.md` | pending |
 | [#550](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/550) | [`specs/architecture/host-ui.md`](specs/architecture/host-ui.md) | landed |
-| [#551](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/551) | `CONTRIBUTING.md` | pending |
+| [#551](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/551) | [`CONTRIBUTING.md`](CONTRIBUTING.md) | landed |
 
 ## Architecture vs. other docs
 
