@@ -93,6 +93,35 @@ public class PocketWatchClockTrapTests
     }
 
     /// <summary>
+    /// Verifies that the bytes at <c>$0200</c> survive the ProDOS 8 <c>TCLOCK.S</c> field conversion.
+    /// </summary>
+    [Test]
+    public void ClockEntries_ProDosConversion_ReadsMonthDateHourMinute()
+    {
+        using var configDocument = JsonDocument.Parse(FrozenConfigJson());
+        using var machine = MachineFactory.CreateMachine(
+            CreateProfile(configDocument.RootElement, includeExtended80: false));
+        machine.PowerOnAsync().GetAwaiter().GetResult();
+
+        var cpu = machine.Cpu;
+        WriteProgram(cpu, 0x20, 0x0B, 0xC4, 0x20, 0x08, 0xC4, 0xDB);
+        cpu.SetPC(ProgramAddress);
+        machine.Step();
+        machine.Step();
+        machine.Step();
+        machine.Step();
+
+        // TCLOCK.S: LDA inBuf,Y / AND #$07 / *10 / ADC inBuf+1,Y / SEC / SBC #"0" ($B0).
+        Assert.Multiple(() =>
+        {
+            Assert.That(ProDosField(cpu, 0), Is.EqualTo(6), "Month.");
+            Assert.That(ProDosField(cpu, 6), Is.EqualTo(15), "Date.");
+            Assert.That(ProDosField(cpu, 9), Is.EqualTo(10), "Hour.");
+            Assert.That(ProDosField(cpu, 12), Is.EqualTo(30), "Minute.");
+        });
+    }
+
+    /// <summary>
     /// Verifies that INTCXROM runs internal ROM at <c>$C408</c> and the READ trap does not fire.
     /// </summary>
     [Test]
@@ -345,10 +374,24 @@ public class PocketWatchClockTrapTests
         var bytes = new byte[length];
         for (var index = 0; index < length; index++)
         {
-            bytes[index] = cpu.Read8(address + (uint)index);
+            // TCLOCK.S stores high-bit ASCII. Compare the character with bit 7 clear.
+            bytes[index] = (byte)(cpu.Read8(address + (uint)index) & 0x7F);
         }
 
         return Encoding.ASCII.GetString(bytes);
+    }
+
+    /// <summary>
+    /// Applies the ProDOS 8 <c>TCLOCK.S</c> two-digit conversion at one field in <c>$0200</c>.
+    /// </summary>
+    /// <param name="cpu">The CPU whose memory holds the clock string.</param>
+    /// <param name="fieldOffset">Offset of the tens digit within the 14-byte string.</param>
+    /// <returns>The binary field value, <c>(tens AND 7) * 10 + units - $B0</c>.</returns>
+    private static int ProDosField(ICpu cpu, int fieldOffset)
+    {
+        int tens = cpu.Read8((Addr)(TimeBuffer + fieldOffset)) & 0x07;
+        int units = cpu.Read8((Addr)(TimeBuffer + fieldOffset + 1));
+        return (tens * 10) + units - 0xB0;
     }
 
     private static IMachine CreateOffMachine()

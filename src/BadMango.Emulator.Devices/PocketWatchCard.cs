@@ -35,10 +35,12 @@ using Serilog;
 /// </para>
 /// <para>
 /// ProDOS calls <c>JSR $Cn0B</c> (WRITE) to latch the time and <c>JSR $Cn08</c> (READ)
-/// to deposit the ASCII <c>mo,da,dt,hr,mn</c> string at <c>$0200</c>: month, weekday
-/// (Sunday is 00), day, hour, and minute, each two digits. Those entries are
-/// slot-dependent call traps, so the trap registry suppresses them while INTCXROM
-/// maps internal ROM over the slot. The slot image stays the generated stub.
+/// to deposit <c>mo,da,dt,hr,mn</c> at <c>$0200</c>: month, weekday (Sunday is 00),
+/// day, hour, and minute. Digits are high-bit ASCII <c>$B0</c>-<c>$B9</c> and commas
+/// are <c>$AC</c>, the form ProDOS 8 <c>TCLOCK.S</c> decodes (<c>AND #$07</c>, then
+/// <c>SBC #$B0</c>). Those entries are slot-dependent call traps, so the trap registry
+/// suppresses them while INTCXROM maps internal ROM over the slot. The slot image stays
+/// the generated stub.
 /// </para>
 /// </remarks>
 [DeviceType("pocketwatch")]
@@ -63,6 +65,12 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     /// Cycles charged for a handled clock entry, before the CPU's RTS.
     /// </summary>
     private const ulong ClockTrapCycles = 6;
+
+    /// <summary>
+    /// Bit 7 of Apple II high-bit ASCII. ProDOS <c>TCLOCK.S</c> expects digits <c>$B0</c>-<c>$B9</c>
+    /// and commas <c>$AC</c>.
+    /// </summary>
+    private const byte HighAsciiBit = 0x80;
 
     /// <summary>
     /// The default frozen time when no valid frozen time is specified.
@@ -249,11 +257,14 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
         readIndex = 0;
     }
 
+    private static byte ToHighAscii(byte plain)
+        => (byte)(plain | HighAsciiBit);
+
     private static void WriteTwoDigits(ICpu cpu, Addr address, int value)
     {
         int clamped = Math.Clamp(value, 0, 99);
-        cpu.Write8(address, (byte)('0' + (clamped / 10)));
-        cpu.Write8(address + 1, (byte)('0' + (clamped % 10)));
+        cpu.Write8(address, ToHighAscii((byte)('0' + (clamped / 10))));
+        cpu.Write8(address + 1, ToHighAscii((byte)('0' + (clamped % 10))));
     }
 
     private void ConfigureTimeSource()
@@ -371,7 +382,7 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
             "PW_READ",
             TrapCategory.SlotFirmware,
             HandleReadEntry,
-            "PocketWatch READ entry: write mo,da,dt,hr,mn at $0200 and return.");
+            "PocketWatch READ entry: write high-bit mo,da,dt,hr,mn at $0200 and return.");
         clockTrapsRegistered = true;
     }
 
@@ -401,13 +412,13 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     private void WriteProDosTimeString(ICpu cpu)
     {
         WriteTwoDigits(cpu, ProDosTimeBuffer, timeData[0]);
-        cpu.Write8(ProDosTimeBuffer + 2, (byte)',');
+        cpu.Write8(ProDosTimeBuffer + 2, ToHighAscii((byte)','));
         WriteTwoDigits(cpu, ProDosTimeBuffer + 3, timeData[1]);
-        cpu.Write8(ProDosTimeBuffer + 5, (byte)',');
+        cpu.Write8(ProDosTimeBuffer + 5, ToHighAscii((byte)','));
         WriteTwoDigits(cpu, ProDosTimeBuffer + 6, timeData[2]);
-        cpu.Write8(ProDosTimeBuffer + 8, (byte)',');
+        cpu.Write8(ProDosTimeBuffer + 8, ToHighAscii((byte)','));
         WriteTwoDigits(cpu, ProDosTimeBuffer + 9, timeData[3]);
-        cpu.Write8(ProDosTimeBuffer + 11, (byte)',');
+        cpu.Write8(ProDosTimeBuffer + 11, ToHighAscii((byte)','));
         WriteTwoDigits(cpu, ProDosTimeBuffer + 12, timeData[4]);
     }
 }
