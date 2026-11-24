@@ -26,7 +26,7 @@ The target layout is defined by [#478](https://github.com/Bad-Mango-Solutions/ba
 
 | Target surface | Assembly and executable | Role |
 | --- | --- | --- |
-| Desktop UI host | [`BadMango.Emulator.UI`](../../src/BadMango.Emulator.UI/) (`bpui`) | Host shell. It absorbs Configuration, Infrastructure, and UI.Abstractions; `bpui` still does not reference the machine. Existing namespaces such as `BadMango.Emulator.Configuration`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions` remain unchanged. |
+| Desktop UI host | [`BadMango.Emulator.UI`](../../src/BadMango.Emulator.UI/) (`bpui`) | Host shell. It absorbs Configuration, Infrastructure, and UI.Abstractions; `bpui` directly references `BadMango.Emulator.Core`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions`. Existing namespaces such as `BadMango.Emulator.Configuration`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions` remain unchanged. |
 | Debugger UI | [`BadMango.Emulator.Debug.UI`](../../src/BadMango.Emulator.Debug.UI/) | Debugger windows and the text editor. It absorbs TextEditor; the existing `BadMango.Emulator.TextEditor` namespace remains unchanged. |
 | Debug console | [`BadMango.Emulator.Debug`](../../src/BadMango.Emulator.Debug/) (`emudbg`) | Separate executable host for the shared debugger surface. |
 | Debug MCP host | [`BadMango.Emulator.Debug.Mcp`](../../src/BadMango.Emulator.Debug.Mcp/) (`emudbg-mcp`) | Separate stdio MCP executable. Its only direct project reference remains `BadMango.Emulator.Debug.Infrastructure`. |
