@@ -444,14 +444,11 @@ public sealed partial class MachineBuilder
     /// by name and invokes the factory to create the <see cref="IBusTarget"/>.
     /// </para>
     /// <para>
-    /// Example:
+    /// Shipped profiles name the handler <c>composite-io</c>.
+    /// <see cref="MachineBuilderExtensions.RegisterCompositeIOHandler"/> registers that
+    /// name and creates the dispatcher and slot manager inside the factory.
+    /// Call it before <see cref="FromProfile"/>.
     /// </para>
-    /// <code>
-    /// builder.RegisterCompositeHandler("composite-io", b => new CompositeIOTarget(
-    ///     "I/O Page",
-    ///     dispatcher,
-    ///     slotManager));
-    /// </code>
     /// </remarks>
     public MachineBuilder RegisterCompositeHandler(string handlerName, Func<MachineBuilder, IBusTarget> factory)
     {
