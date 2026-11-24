@@ -300,11 +300,11 @@ public int Step()
 - The bus page table is an array: use `PageEntry[]` and direct page/byte indexes for O(1) lookup rather than dictionaries on the hot path.
 - A CPU/bus fast-path hit does not build `BusAccess`. It indexes the published live backing array and falls back to the existing checked or decomposed path only on a miss.
 - Pass large structs such as `BusAccess` with `in`; the struct itself is immutable and may be inspected without copying.
-- Avoid virtual dispatch and unnecessary work inside tight loops. Keep diagnostic tracing behind its enabled check.
+- Keep diagnostic tracing behind its enabled check so it adds no work to the fast path when tracing is disabled.
 
-The CPU/bus fast-path implementation is in target `src/BadMango.Emulator.Core/`; the namespaces remain `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation.Cpu`.
+The target location for the CPU/bus fast-path implementation is `src/BadMango.Emulator.Core`; the namespaces remain `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation.Cpu`.
 
-> **Current location (until #562):** `src/BadMango.Emulator.Bus/` and `src/BadMango.Emulator.Emulation/`; target: `src/BadMango.Emulator.Core/` (namespaces `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation.Cpu` unchanged).
+> **Current location (until #562):** `src/BadMango.Emulator.Bus` and `src/BadMango.Emulator.Emulation`; target: `src/BadMango.Emulator.Core` (namespaces unchanged).
 
 ### Naming Conventions
 
