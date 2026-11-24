@@ -34,11 +34,14 @@ using Serilog.Events;
 /// enable, and write-load (FR-D5).</description></item>
 /// <item><description>On-demand spin-position recompute on <c>$C0nC</c> reads — no
 /// per-cycle polling — with a single rescheduling event preventing drift (FR-D6).</description></item>
-/// <item><description>Software motor control with no automatic timeout, ~1 ms motor
-/// settling, ~30 ms track-step settling (FR-D7).</description></item>
-/// <item><description>Sector-backed writes mark the track dirty; flush on motor-off,
-/// drive-deselect, eject, or <see cref="Flush"/>; nibble-backed writes go straight
-/// through (FR-D8). Parse failures are logged via the injected Serilog logger.</description></item>
+/// <item><description>Software motor control. <c>$C088,X</c> arms the NE556 one-second
+/// motor-off delay (Sather, p. 9-13) instead of stopping the platter at once;
+/// <c>$C089,X</c> before it expires cancels the delay with no new spin-up. ~1 ms motor
+/// settling and ~30 ms track-step settling (FR-D7).</description></item>
+/// <item><description>Sector-backed writes mark the track dirty; flush when the motor
+/// actually stops (NE556 expiry or an immediate stop), on drive-deselect, eject, or
+/// <see cref="Flush"/>; nibble-backed writes go straight through (FR-D8). Parse failures
+/// are logged via the injected Serilog logger.</description></item>
 /// <item><description>Boot ROM loaded from a user-supplied 256-byte P5A image (FR-D9).</description></item>
 /// <item><description>Per-drive debug surface via <see cref="GetDriveSnapshot"/> (FR-D10).</description></item>
 /// <item><description>Async-safe mount/eject deferred to the next scheduler turn (FR-R1);
@@ -75,6 +78,13 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     /// </summary>
     public const int DefaultTrackStepSettleCycles = 30000;
 
+    /// <summary>
+    /// Default cycle count for the NE556 motor-off hold: about one second at the same
+    /// 1 MHz clock assumed by <see cref="DefaultMotorSettleCycles"/>. Sather,
+    /// <i>Understanding the Apple IIe</i>, p. 9-13.
+    /// </summary>
+    public const int DefaultMotorOffDelayCycles = 1_000_000;
+
     private const int DriveCountValue = 2;
     private const byte FloatingByte = 0xFF;
 
@@ -98,7 +108,14 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     private readonly IBusTarget expansionRomRegion;
     private readonly int motorSettleCycles;
     private readonly int trackStepSettleCycles;
+    private readonly int motorOffDelayCycles;
     private readonly ILogger logger;
+
+    /// <summary>
+    /// Cached motor-off callback. Scheduling and cancelling the NE556 event must not
+    /// allocate a closure; the nibble path while the delay is running is the motor-on path.
+    /// </summary>
+    private readonly Action<IEventContext> motorOffDue;
 
     private IBusTarget? romRegion;
 
@@ -115,6 +132,8 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     private IEventContext? evtContext;
     private EventHandle driftHandle;
     private bool driftScheduled;
+    private EventHandle motorOffHandle;
+    private bool motorOffPending;
 
     // ─── Activity counters (FR-D10 diagnostic surface) ──────────────────
     // These are intentionally raw long fields rather than properties to keep the
@@ -152,21 +171,30 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     /// </param>
     /// <param name="motorSettleCycles">Cycles to wait after motor-on before reads return live data (defaults to ~1 ms at 1 MHz).</param>
     /// <param name="trackStepSettleCycles">Cycles a track-step adds to head settle (defaults to ~30 ms at 1 MHz).</param>
+    /// <param name="motorOffDelayCycles">
+    /// Cycles after <c>$C088,X</c> before the platter stops. Defaults to about one second
+    /// at 1 MHz (<see cref="DefaultMotorOffDelayCycles"/>; Sather, p. 9-13). Zero stops
+    /// the motor on the access.
+    /// </param>
     /// <exception cref="ArgumentNullException">If <paramref name="logger"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">If a settle-cycle parameter is negative.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">If a settle-cycle or motor-off delay parameter is negative.</exception>
     public DiskIIController(
         ILogger logger,
         DiskIIBootRom? bootRom = null,
         int motorSettleCycles = DefaultMotorSettleCycles,
-        int trackStepSettleCycles = DefaultTrackStepSettleCycles)
+        int trackStepSettleCycles = DefaultTrackStepSettleCycles,
+        int motorOffDelayCycles = DefaultMotorOffDelayCycles)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentOutOfRangeException.ThrowIfNegative(motorSettleCycles);
         ArgumentOutOfRangeException.ThrowIfNegative(trackStepSettleCycles);
+        ArgumentOutOfRangeException.ThrowIfNegative(motorOffDelayCycles);
 
         this.logger = logger.ForContext<DiskIIController>();
         this.motorSettleCycles = motorSettleCycles;
         this.trackStepSettleCycles = trackStepSettleCycles;
+        this.motorOffDelayCycles = motorOffDelayCycles;
+        motorOffDue = OnMotorOffDue;
         romRegion = bootRom;
         expansionRomRegion = new DiskIIExpansionRomStub();
 
@@ -220,7 +248,10 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     /// <summary>
     /// Gets a value indicating whether the motor is currently energised.
     /// </summary>
-    /// <value><see langword="true"/> when the motor is on (settle timer may still be active).</value>
+    /// <value>
+    /// <see langword="true"/> while the platter is spinning, including spin-up settle and the
+    /// NE556 motor-off delay.
+    /// </value>
     public bool IsMotorOn => motorOn;
 
     /// <summary>
@@ -326,6 +357,7 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
         writeShift = 0;
         lastReadSpinPosition = -1;
         CancelDriftEvent();
+        CancelPendingMotorOff();
 
         for (var i = 0; i < drives.Length; i++)
         {
@@ -345,15 +377,17 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     /// the drive never drops written data.
     /// </para>
     /// <para>
-    /// The machine flushes the scheduler on RESET, which already removed the drift event, so
-    /// it is forgotten rather than cancelled. The emulator turns the motor off immediately; it
-    /// does not model the controller's one-second NE556 motor-off delay (p. 9-13) for
-    /// <c>$C088,X</c> either.
+    /// The machine flushes the scheduler on RESET, which already removed the drift event and
+    /// any pending NE556 motor-off event, so they are forgotten rather than cancelled.
+    /// Sather, p. 9-13: the one-second turn-off delay does not apply to RESET. Pressing RESET
+    /// clears the delay timer and turns the drive off almost immediately. Power-off
+    /// (<see cref="Reset"/>) also stops the motor on the call and cancels a pending delay.
     /// </para>
     /// </remarks>
     public void OnResetAsserted(Cycle cycle)
     {
         driftScheduled = false;
+        motorOffPending = false;
         FlushAllDrives();
 
         currentDrive = 0;
@@ -736,62 +770,135 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
 
     private void SetMotor(bool on)
     {
-        if (motorOn == on)
+        if (on)
         {
-            return;
-        }
-
-        // Any motor-state transition invalidates the byte-ready spin-position
-        // record: the spin advance model restarts when the motor turns on/off.
-        lastReadSpinPosition = -1;
-
-        if (!on)
-        {
-            // FR-D8: motor-off triggers a flush.
-            if (drives[currentDrive].Flush(logger))
+            // $C089,X while the NE556 is counting: cancel the stop. The platter never
+            // stopped, so this is not a new motor-on and does not arm spin-up settle.
+            CancelPendingMotorOff();
+            if (motorOn)
             {
-                cacheFlushCount++;
+                return;
             }
 
-            motorOn = false;
-            motorOffCount++;
-            CancelDriftEvent();
+            // A real off→on transition restarts the byte-ready record.
+            lastReadSpinPosition = -1;
+            motorOn = true;
+            motorOnCount++;
+            var drive = drives[currentDrive];
+            if (evtContext is not null)
+            {
+                drive.SettleUntil = evtContext.Now + (Cycle)(ulong)motorSettleCycles;
+                drive.LastUpdateCycle = evtContext.Now;
+                ScheduleDriftEvent(drive);
+            }
+            else
+            {
+                drive.SettleUntil = (Cycle)(ulong)motorSettleCycles;
+            }
 
             if (logger.IsEnabled(LogEventLevel.Verbose))
             {
                 logger.Verbose(
-                    "DiskII (slot {Slot}): motor OFF (active drive {Drive}, qt={QuarterTrack}).",
+                    "DiskII (slot {Slot}): motor ON (active drive {Drive}, qt={QuarterTrack}, settle={SettleCycles} cycles).",
                     SlotNumber,
                     currentDrive + 1,
-                    drives[currentDrive].QuarterTrack);
+                    drive.QuarterTrack,
+                    motorSettleCycles);
             }
 
             return;
         }
 
-        motorOn = true;
-        motorOnCount++;
-        var drive = drives[currentDrive];
-        if (evtContext is not null)
+        if (!motorOn)
         {
-            drive.SettleUntil = evtContext.Now + (Cycle)(ulong)motorSettleCycles;
-            drive.LastUpdateCycle = evtContext.Now;
-            ScheduleDriftEvent(drive);
+            return;
         }
-        else
+
+        // Zero keeps the historical immediate stop. With no scheduler there is nowhere
+        // to park the NE556 event, so the stop is immediate there too.
+        if (motorOffDelayCycles == 0 || evtContext is null)
         {
-            drive.SettleUntil = (Cycle)(ulong)motorSettleCycles;
+            StopMotor();
+            return;
         }
+
+        ArmMotorOffDelay();
+    }
+
+    /// <summary>
+    /// Schedules the NE556 stop at <c>now + motorOffDelayCycles</c>. A later
+    /// <c>$C088,X</c> while the timer is already running restarts it from that access:
+    /// Sather describes the hold as one second after a reference to <c>$C088,X</c>.
+    /// </summary>
+    private void ArmMotorOffDelay()
+    {
+        if (evtContext is null)
+        {
+            StopMotor();
+            return;
+        }
+
+        if (motorOffPending)
+        {
+            evtContext.Scheduler.Cancel(motorOffHandle);
+        }
+
+        motorOffHandle = evtContext.Scheduler.ScheduleAfter(
+            (Cycle)(ulong)motorOffDelayCycles,
+            ScheduledEventKind.DeviceTimer,
+            priority: 0,
+            callback: motorOffDue,
+            tag: this);
+        motorOffPending = true;
+    }
+
+    private void OnMotorOffDue(IEventContext context)
+    {
+        motorOffPending = false;
+        if (!motorOn)
+        {
+            return;
+        }
+
+        StopMotor();
+    }
+
+    private void StopMotor()
+    {
+        // FR-D8: flush when the platter actually stops, not when $C088,X is touched.
+        if (drives[currentDrive].Flush(logger))
+        {
+            cacheFlushCount++;
+        }
+
+        motorOn = false;
+        motorOffCount++;
+        lastReadSpinPosition = -1;
+        CancelDriftEvent();
 
         if (logger.IsEnabled(LogEventLevel.Verbose))
         {
             logger.Verbose(
-                "DiskII (slot {Slot}): motor ON (active drive {Drive}, qt={QuarterTrack}, settle={SettleCycles} cycles).",
+                "DiskII (slot {Slot}): motor OFF (active drive {Drive}, qt={QuarterTrack}).",
                 SlotNumber,
                 currentDrive + 1,
-                drive.QuarterTrack,
-                motorSettleCycles);
+                drives[currentDrive].QuarterTrack);
         }
+    }
+
+    private void CancelPendingMotorOff()
+    {
+        if (!motorOffPending)
+        {
+            return;
+        }
+
+        if (evtContext is not null)
+        {
+            evtContext.Scheduler.Cancel(motorOffHandle);
+        }
+
+        motorOffPending = false;
     }
 
     private byte SelectDrive1Access(byte offset, in BusAccess ctx)

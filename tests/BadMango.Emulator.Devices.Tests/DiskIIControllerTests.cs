@@ -415,6 +415,285 @@ public class DiskIIControllerTests
     }
 
     /// <summary>
+    /// Verifies that <c>$C088,X</c> keeps the platter spinning for the NE556 hold
+    /// (Sather, p. 9-13), that a <c>$C089,X</c> inside the hold cancels the stop
+    /// with no new spin-up window, and that spin position and byte-ready stay continuous.
+    /// </summary>
+    [Test]
+    public void MotorOffDelay_ReenableBeforeExpiry_KeepsSpinningWithoutNewSettle()
+    {
+        const int Settle = 5000;
+        const int Delay = 20000;
+        var pattern = new byte[GcrEncoder.StandardTrackLength];
+        for (var i = 0; i < pattern.Length; i++)
+        {
+            pattern[i] = (byte)(0x80 | (i & 0x7F));
+        }
+
+        var (controller, dispatcher, ctx, scheduler, _) = BuildHarness(
+            motorSettleCycles: Settle,
+            motorOffDelayCycles: Delay);
+        controller.Mount(0, new RepeatingPatternMedia(pattern));
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        long motorOnCount = controller.GetActivitySnapshot().MotorOnCount;
+        scheduler.Advance(new Cycle(Settle));
+
+        var primed = dispatcher.Read(0xEC, in ctx);
+        Assert.That(primed & 0x80, Is.EqualTo(0x80), "Sanity: the spin-up window has expired and the latch is live.");
+
+        scheduler.Advance(new Cycle(DiskIIController.CyclesPerByte * 4));
+        var beforeOff = dispatcher.Read(0xEC, in ctx);
+        int beforeOffLow = beforeOff & 0x7F;
+
+        _ = dispatcher.Read(0xE8, in ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.True, "$C088 arms the NE556; the platter stays on.");
+            Assert.That(controller.GetDriveSnapshot(0).MotorOn, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+        });
+
+        // Faster than one nibble: byte-ready must clear bit 7, same as motor-on.
+        scheduler.Advance(new Cycle(4));
+        var poll = dispatcher.Read(0xEC, in ctx);
+        Assert.That(poll & 0x80, Is.EqualTo(0), "Byte-ready during the hold matches motor-on.");
+
+        scheduler.Advance(new Cycle(DiskIIController.CyclesPerByte * 3));
+        var duringHold = dispatcher.Read(0xEC, in ctx);
+        Assert.That(
+            duringHold,
+            Is.EqualTo((byte)(0x80 | ((beforeOffLow + 3) & 0x7F))),
+            "Spin position keeps advancing by elapsed cycles during the hold.");
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOnCount, Is.EqualTo(motorOnCount), "Re-enable inside the hold is not a new motor-on.");
+        });
+
+        // Well inside the spin-up window a fresh motor-on would have armed.
+        scheduler.Advance(new Cycle(DiskIIController.CyclesPerByte));
+        var afterReenable = dispatcher.Read(0xEC, in ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(afterReenable & 0x80, Is.EqualTo(0x80), "No new spin-up settle window.");
+            Assert.That(afterReenable & 0x7F, Is.EqualTo(((duringHold & 0x7F) + 1) & 0x7F), "Spin continues from the held position.");
+        });
+
+        // Past the original hold: the cancelled event must not stop the platter.
+        scheduler.Advance(new Cycle(Delay));
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that the NE556 expiry stops the motor, flushes the dirty track once,
+    /// increments <c>motorOffCount</c>, and emits the motor-off trace. A write to
+    /// <c>$C088,X</c> arms the same delay as a read.
+    /// </summary>
+    [Test]
+    public void MotorOffDelay_OnExpiry_StopsFlushesOnceAndCounts()
+    {
+        const int Delay = 250;
+        var loggerMock = NewLoggerMock();
+        loggerMock.Setup(l => l.IsEnabled(Serilog.Events.LogEventLevel.Verbose)).Returns(true);
+        var media = new CountingFlushMedia((byte)0x96);
+
+        var (controller, dispatcher, ctx, scheduler, _) = BuildHarness(
+            motorSettleCycles: 0,
+            loggerMock: loggerMock,
+            motorOffDelayCycles: Delay);
+        controller.Mount(0, media);
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        scheduler.Advance(new Cycle(DiskIIController.CyclesPerByte));
+        _ = dispatcher.Read(0xEF, in ctx);
+        _ = dispatcher.Read(0xED, in ctx);
+        WriteSoft(dispatcher, 0xED, 0xD5, ctx);
+        WriteSoft(dispatcher, 0xEC, 0xAA, ctx);
+
+        WriteSoft(dispatcher, 0xE8, 0x00, ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+            Assert.That(controller.GetActivitySnapshot().CacheFlushCount, Is.Zero);
+            Assert.That(media.FlushCount, Is.Zero);
+            Assert.That(VerboseCount(loggerMock, "motor OFF"), Is.Zero, "The motor-off trace waits for the NE556 expiry.");
+        });
+
+        scheduler.Advance(new Cycle(Delay - 1));
+        Assert.That(controller.IsMotorOn, Is.True, "One cycle before expiry the platter is still spinning.");
+
+        scheduler.Advance(new Cycle(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.False);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOn, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.EqualTo(1));
+            Assert.That(controller.GetActivitySnapshot().CacheFlushCount, Is.EqualTo(1));
+            Assert.That(media.FlushCount, Is.EqualTo(1));
+            Assert.That(VerboseCount(loggerMock, "motor OFF"), Is.EqualTo(1));
+        });
+
+        scheduler.Advance(new Cycle(Delay));
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.EqualTo(1));
+            Assert.That(media.FlushCount, Is.EqualTo(1), "Expiry flushes once.");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a second <c>$C088,X</c> while the NE556 is already counting restarts
+    /// the hold from that access (Sather: one second after a reference to <c>$C088,X</c>).
+    /// </summary>
+    [Test]
+    public void MotorOffDelay_SecondOffAccess_RestartsTheHold()
+    {
+        const int Delay = 1000;
+        var (controller, dispatcher, ctx, scheduler, media) = BuildHarness(
+            motorSettleCycles: 0,
+            motorOffDelayCycles: Delay);
+        controller.Mount(0, media.Object);
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        _ = dispatcher.Read(0xE8, in ctx);
+        scheduler.Advance(new Cycle(Delay - 1));
+        Assert.That(controller.IsMotorOn, Is.True);
+
+        _ = dispatcher.Read(0xE8, in ctx);
+        scheduler.Advance(new Cycle(Delay - 1));
+        Assert.That(controller.IsMotorOn, Is.True, "The second $C088 restarts the one-second hold.");
+
+        scheduler.Advance(new Cycle(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <c>motorOffDelayCycles</c> of 0 keeps the historical immediate stop:
+    /// the access itself turns the motor off, flushes, and counts.
+    /// </summary>
+    [Test]
+    public void MotorOffDelay_Zero_StopsOnTheAccess()
+    {
+        var media = new CountingFlushMedia((byte)0x96);
+        var (controller, dispatcher, ctx, scheduler, _) = BuildHarness(
+            motorSettleCycles: 0,
+            motorOffDelayCycles: 0);
+        controller.Mount(0, media);
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        scheduler.Advance(new Cycle(DiskIIController.CyclesPerByte));
+        _ = dispatcher.Read(0xEF, in ctx);
+        _ = dispatcher.Read(0xED, in ctx);
+        WriteSoft(dispatcher, 0xED, 0xD5, ctx);
+        WriteSoft(dispatcher, 0xEC, 0xAA, ctx);
+
+        _ = dispatcher.Read(0xE8, in ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.EqualTo(1));
+            Assert.That(media.FlushCount, Is.EqualTo(1));
+        });
+
+        scheduler.Advance(new Cycle(10_000));
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.EqualTo(1));
+            Assert.That(media.FlushCount, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that RESET during the NE556 hold stops the drive at once and drops the
+    /// pending event (Sather, pp. 9-12 and 9-13). The machine flushes the scheduler
+    /// before delivering RESET.
+    /// </summary>
+    [Test]
+    public void ResetDuringMotorOffDelay_StopsImmediatelyAndDropsTheEvent()
+    {
+        const int Delay = 5000;
+        var (controller, dispatcher, ctx, scheduler, media) = BuildHarness(
+            motorSettleCycles: 0,
+            motorOffDelayCycles: Delay);
+        controller.Mount(0, media.Object);
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        _ = dispatcher.Read(0xE8, in ctx);
+        Assume.That(controller.IsMotorOn, Is.True);
+        Assume.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+
+        scheduler.FlushPending();
+        controller.OnResetAsserted(scheduler.Now);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.False);
+            Assert.That(scheduler.PendingEventCount, Is.Zero, "The flushed motor-off event is gone.");
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero, "RESET is not an NE556 expiry.");
+        });
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        scheduler.Advance(new Cycle(Delay + 10));
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.True, "The dropped event must not stop the drive later.");
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that power-off (<see cref="DiskIIController.Reset"/>) during the NE556
+    /// hold stops the drive at once and cancels the pending event before the scheduler
+    /// flush that the machine performs on power-off.
+    /// </summary>
+    [Test]
+    public void PowerOffDuringMotorOffDelay_StopsImmediatelyAndDropsTheEvent()
+    {
+        const int Delay = 5000;
+        var (controller, dispatcher, ctx, scheduler, media) = BuildHarness(
+            motorSettleCycles: 0,
+            motorOffDelayCycles: Delay);
+        controller.Mount(0, media.Object);
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        _ = dispatcher.Read(0xE8, in ctx);
+        Assume.That(controller.IsMotorOn, Is.True);
+
+        controller.Reset();
+        scheduler.FlushPending(keepDeferredWork: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.False);
+            Assert.That(scheduler.PendingEventCount, Is.Zero);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+        });
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        scheduler.Advance(new Cycle(Delay + 10));
+        Assert.That(controller.IsMotorOn, Is.True, "The cancelled event must not stop the drive later.");
+    }
+
+    /// <summary>
     /// Verifies that <c>$C0EC</c> reads emit the GCR address-field prologue
     /// (<c>D5 AA 96</c>) for a synthetic sector image (FR-D5 / FR-T5).
     /// </summary>
@@ -660,6 +939,7 @@ public class DiskIIControllerTests
         {
             Assert.That(() => new DiskIIController(logger, motorSettleCycles: -1), Throws.TypeOf<ArgumentOutOfRangeException>());
             Assert.That(() => new DiskIIController(logger, trackStepSettleCycles: -1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => new DiskIIController(logger, motorOffDelayCycles: -1), Throws.TypeOf<ArgumentOutOfRangeException>());
         });
     }
 
@@ -1439,14 +1719,24 @@ public class DiskIIControllerTests
 
     private static Mock<ILogger> NewLoggerMock() => Generator.Log();
 
+    private static int VerboseCount(Mock<ILogger> loggerMock, string token) => loggerMock.Invocations.Count(inv =>
+        inv.Method.Name == "Verbose"
+        && inv.Arguments.Count > 0
+        && inv.Arguments[0] is string template
+        && template.Contains(token, StringComparison.Ordinal));
+
     private static (DiskIIController Controller, IOPageDispatcher Dispatcher, BusAccess Context, Scheduler Scheduler, Mock<I525Media> Media) BuildHarness(
         int motorSettleCycles = DiskIIController.DefaultMotorSettleCycles,
-        Mock<ILogger>? loggerMock = null)
+        Mock<ILogger>? loggerMock = null,
+        int motorOffDelayCycles = 0)
     {
+        // The harness defaults the NE556 hold to 0 so existing tests that turn the motor
+        // off still observe the immediate stop. Pass a positive count to arm the delay.
         var controller = new DiskIIController(
             logger: (loggerMock ?? NewLoggerMock()).Object,
             bootRom: new DiskIIBootRom(BlankBootRom),
-            motorSettleCycles: motorSettleCycles);
+            motorSettleCycles: motorSettleCycles,
+            motorOffDelayCycles: motorOffDelayCycles);
         controller.SlotNumber = 6;
 
         var dispatcher = new IOPageDispatcher();
@@ -1570,6 +1860,38 @@ public class DiskIIControllerTests
 
         public void Flush()
         {
+        }
+    }
+
+    /// <summary>
+    /// Test fake that counts <see cref="Flush"/> calls and fills every track with one nibble.
+    /// </summary>
+    private sealed class CountingFlushMedia : I525Media
+    {
+        private readonly byte fill;
+
+        public CountingFlushMedia(byte fill)
+        {
+            this.fill = fill;
+        }
+
+        public int FlushCount { get; private set; }
+
+        public DiskGeometry Geometry => DiskGeometry.Standard525Dos;
+
+        public int OptimalTrackLength => GcrEncoder.StandardTrackLength;
+
+        public bool IsReadOnly => false;
+
+        public void ReadTrack(int quarterTrack, Span<byte> destination) => destination.Fill(fill);
+
+        public void WriteTrack(int quarterTrack, ReadOnlySpan<byte> source)
+        {
+        }
+
+        public void Flush()
+        {
+            FlushCount++;
         }
     }
 }
