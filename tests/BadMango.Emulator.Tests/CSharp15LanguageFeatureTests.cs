@@ -5,13 +5,13 @@
 namespace BadMango.Emulator.Tests;
 
 /// <summary>
-/// Validates the C# 15 language feature polyfills used when targeting net10.0 with the .NET 11 SDK.
+/// Validates C# 15 union and closed-hierarchy switches on the net11.0 runtime.
 /// </summary>
 [TestFixture]
 public class CSharp15LanguageFeatureTests
 {
     /// <summary>
-    /// Verifies that a union with an exhaustive switch can compile and evaluate on the net10 runtime.
+    /// Verifies that a union with an exhaustive switch can compile and evaluate on the net11 runtime.
     /// </summary>
     [Test]
     public void Union_Switch_HandlesEveryCase()
@@ -48,8 +48,6 @@ public class CSharp15LanguageFeatureTests
         FaultedState faulted => faulted.Name,
     };
 
-#pragma warning disable CS0436 // The compiler-reserved union types are intentionally polyfilled in every assembly.
-
     [System.Runtime.CompilerServices.Union]
     private partial class TestStopReason : System.Runtime.CompilerServices.IUnion
     {
@@ -83,5 +81,4 @@ public class CSharp15LanguageFeatureTests
 
         public string Name { get; }
     }
-#pragma warning restore CS0436
 }

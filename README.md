@@ -26,7 +26,7 @@ A .NET emulator for the WDC 65C02 (Apple IIe-class "Pocket2e" machine), with an 
 
 ### Prerequisites
 
-- [.NET 10.0 SDK](https://dotnet.microsoft.com/download) or later
+- [.NET 11.0 SDK](https://dotnet.microsoft.com/download/dotnet/11.0) (pinned to 11.0.100 by `global.json`)
 
 ### Building
 
@@ -100,7 +100,7 @@ How these projects reference each other is described in [CONTRIBUTING.md](CONTRI
 
 ### Technologies Used
 
-- **.NET 10.0** - Runtime and SDK
+- **.NET 11.0** - Runtime and SDK
 - **Avalonia UI 12** - Cross-platform GUI framework (Emulator UI)
 - **Microsoft.Extensions.Hosting** - Application hosting model
 - **Serilog** - Structured logging
