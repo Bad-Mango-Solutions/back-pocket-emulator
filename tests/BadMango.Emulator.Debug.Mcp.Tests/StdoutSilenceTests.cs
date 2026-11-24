@@ -25,7 +25,7 @@ public sealed class StdoutSilenceTests
         string configuration = typeof(StdoutSilenceTests).Assembly
             .GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Debug";
         string repo = FindRepoRoot();
-        string[] segments = [repo, "src", "BadMango.Emulator.Debug.Mcp", "bin", configuration, "net10.0"];
+        string[] segments = [repo, "src", "BadMango.Emulator.Debug.Mcp", "bin", configuration, "net11.0"];
         string output = Path.Join(segments);
         string dll = Path.Join(output, "emudbg-mcp.dll");
         Assert.That(File.Exists(dll), Is.True, $"Build the host before this test. Missing {dll}");

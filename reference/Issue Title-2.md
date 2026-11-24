@@ -319,7 +319,7 @@ public class BasicInterpreter : IBasicInterpreter
 ---
 
 **Additional Instructions for Copilot:**
-- Use C# 14 and .NET 10 features where appropriate
+- Use C# 14 and .NET 11 features where appropriate
 - Follow existing code style (StyleCop compliance)
 - Ensure all public members have XML documentation comments
 - Maintain backward compatibility for tests (add extension methods if helpful)

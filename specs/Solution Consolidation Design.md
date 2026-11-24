@@ -194,7 +194,7 @@ A removal candidate meets all of these:
 - Interop. Already filed as #555.
 - `IDisplaySwitchLog` and `IVideoWriteLog`. The file remarks say they are declared for the hot-side capture work and are not installed yet. That work is #409.
 - `Cpu65816` and `Cpu65832`. Both throw `NotImplementedException` from `Step` and `Reset`. `Cpu65816` is constructed from a debug test. `Cpu65832` has no construction site. `CpuFamily` and `schemas/machine-profile.schema.json` still name both, and `MachineBuilder` rejects 65832 with `NotSupportedException`. #473's 65816 module replaces the placeholder later. Leave both classes, the enum, and the schema.
-- `src/Shared/CSharp15Polyfills.cs`. It is compiled into every project.
+- `src/Shared/CSharp15Polyfills.cs` was compiled into every project at this inventory. The net11.0 retarget removed it; the net11.0 reference assemblies define the union and closed-hierarchy types the compiler needs.
 
 ### Remove
 

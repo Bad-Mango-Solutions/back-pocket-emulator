@@ -37,7 +37,7 @@ The tool layer should expose structured operations for the most common diagnosti
 
 ## Steps
 1. Confirm `DebugContext.Output` and `Error` can be swapped per call, or add a scoped writer mechanism.
-2. Create a new `BadMango.Emulator.Debug.Agent` project targeting net10.0.
+2. Create a new `BadMango.Emulator.Debug.Agent` project targeting net11.0.
 3. Add an `AgentSession` for captured output and serialized command execution.
 4. Define a reusable tool contract and registry.
 5. Implement a generic `exec` tool for raw command dispatch.
