@@ -18,6 +18,8 @@ namespace BadMango.Emulator.Devices.GuestOs;
 /// (slotless, non-standard, or a machine restored already booted) may go straight from
 /// <see cref="None"/> to <see cref="Loader"/> or <see cref="Ready"/>.
 /// <see cref="Ready"/> can be set from <see cref="IGuestOsDetector"/> alone.
+/// An unrecognized loader at <c>$0801</c> is <see cref="CustomBoot"/>, a normal terminal state
+/// for self-booting software. <see cref="Unknown"/> is only a DOS or ProDOS boot that left the expected path.
 /// </para>
 /// </remarks>
 public enum GuestOsBootStage
@@ -43,6 +45,12 @@ public enum GuestOsBootStage
     /// <summary>The operating system has booted and is accepting commands.</summary>
     Ready = 4,
 
-    /// <summary>The first-stage loader was not recognized, or the boot left the known path.</summary>
+    /// <summary>A recognized DOS or ProDOS boot that left the expected path.</summary>
     Unknown = 5,
+
+    /// <summary>
+    /// The first-stage loader at <c>$0801</c> does not match the DOS 3.3 or ProDOS signature.
+    /// The guest is running its own loader. This is a normal terminal state, not an error.
+    /// </summary>
+    CustomBoot = 6,
 }

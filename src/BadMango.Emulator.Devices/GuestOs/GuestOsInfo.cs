@@ -10,6 +10,8 @@ namespace BadMango.Emulator.Devices.GuestOs;
 /// <remarks>
 /// Two values are equal when every property matches. <see cref="IGuestOsDetector"/>
 /// raises <see cref="IGuestOsDetector.Changed"/> only when the new value differs.
+/// A custom-booted game stays <see cref="GuestOsKind.None"/>; <see cref="GuestOsBootStage.CustomBoot"/>
+/// distinguishes it from nothing booted yet. Detection does not identify specific titles.
 /// </remarks>
 public sealed record GuestOsInfo
 {

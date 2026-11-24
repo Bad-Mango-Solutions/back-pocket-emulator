@@ -296,9 +296,15 @@ public class GuestOsDetectorTests
             nameof(GuestOsBootStage.Loader),
             nameof(GuestOsBootStage.Ready),
             nameof(GuestOsBootStage.Unknown),
+            nameof(GuestOsBootStage.CustomBoot),
         }));
+        Assert.That((int)GuestOsBootStage.Unknown, Is.EqualTo(5));
+        Assert.That((int)GuestOsBootStage.CustomBoot, Is.EqualTo(6));
         Assert.That(Enum.GetNames<BootMilestoneKind>(), Does.Contain(nameof(BootMilestoneKind.BootRomEntered)));
         Assert.That(Enum.GetNames<BootMilestoneKind>(), Does.Contain(nameof(BootMilestoneKind.FirstMliCall)));
+        Assert.That(Enum.GetNames<BootMilestoneKind>(), Does.Contain(nameof(BootMilestoneKind.CustomBootLoaderEntered)));
+        Assert.That((int)BootMilestoneKind.FirstMliCall, Is.EqualTo(7));
+        Assert.That((int)BootMilestoneKind.CustomBootLoaderEntered, Is.EqualTo(8));
     }
 
     private static GuestOsDetector CreateDetector(IGuestMemoryReader memory) =>

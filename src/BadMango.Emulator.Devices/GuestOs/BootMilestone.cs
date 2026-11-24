@@ -48,6 +48,7 @@ public sealed class BootMilestone : EventArgs
     /// <value>
     /// A non-empty detail string. <see cref="BootMilestoneKind.BootRomEntered"/> names the slot and the card,
     /// for example "slot 6: Disk II" or "slot 7: SmartPort".
+    /// <see cref="BootMilestoneKind.CustomBootLoaderEntered"/> includes the first bytes of the boot sector.
     /// </value>
     public string Detail { get; }
 }

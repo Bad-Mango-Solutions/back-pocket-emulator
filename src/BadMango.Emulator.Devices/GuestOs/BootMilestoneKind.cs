@@ -5,7 +5,7 @@
 namespace BadMango.Emulator.Devices.GuestOs;
 
 /// <summary>
-/// A point in the DOS 3.3 or ProDOS 8 boot that the boot monitor records.
+/// A point in a DOS 3.3, ProDOS 8, or self-booting guest that the boot monitor records.
 /// </summary>
 /// <remarks>
 /// The monitor that records these milestones is #685. The names are fixed here so
@@ -39,4 +39,12 @@ public enum BootMilestoneKind
 
     /// <summary>The first MLI call at <c>$BF00</c> after the kernel was ready.</summary>
     FirstMliCall = 7,
+
+    /// <summary><c>$0801</c> ran with a loader that is neither DOS 3.3 nor ProDOS.</summary>
+    /// <remarks>
+    /// Recorded when the first-stage loader's signature is unrecognized.
+    /// The detail includes the first bytes of the boot sector.
+    /// This is a normal terminal state for self-booting software, not an error.
+    /// </remarks>
+    CustomBootLoaderEntered = 8,
 }
