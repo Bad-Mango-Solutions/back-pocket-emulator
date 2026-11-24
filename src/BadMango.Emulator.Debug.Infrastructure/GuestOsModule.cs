@@ -16,8 +16,9 @@ using Serilog;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Probes are ordered by <see cref="GuestOsDetector.RecommendedProbeOrder"/>: ProDOS 8, then
-/// DOS 3.3. The default constructor leaves detection off and registers no services, no traps,
+/// Probes are ordered by <see cref="IGuestOsProbe.Order"/>: a smaller value runs first.
+/// ProDOS 8 is 0 and DOS 3.3 is 100. A layered system uses a value below its base OS.
+/// The default constructor leaves detection off and registers no services, no traps,
 /// and no instruction-loop callback. A host that wants detection loads
 /// <c>new GuestOsModule(enabled: true)</c> and supplies <see cref="IGuestMemoryReader"/>,
 /// or <see cref="ICpu"/>, which this module adapts with <see cref="CpuGuestMemoryReader"/>.
@@ -65,7 +66,7 @@ public sealed class GuestOsModule : Module
             .SingleInstance();
         builder.Register(static ctx => new GuestOsDetector(
                 Logger(ctx),
-                Order(ctx.Resolve<IEnumerable<IGuestOsProbe>>()),
+                GuestOsDetector.OrderByPriority(ctx.Resolve<IEnumerable<IGuestOsProbe>>()),
                 ctx.Resolve<IGuestMemoryReader>()))
             .As<IGuestOsDetector>()
             .SingleInstance();
@@ -77,30 +78,4 @@ public sealed class GuestOsModule : Module
 
     private static ILogger Logger(IComponentContext context) =>
         context.ResolveOptional<ILogger>() ?? Serilog.Core.Logger.None;
-
-    private static IReadOnlyList<IGuestOsProbe> Order(IEnumerable<IGuestOsProbe> probes)
-    {
-        var available = probes.ToList();
-        var ordered = new List<IGuestOsProbe>(available.Count);
-        foreach (var kind in GuestOsDetector.RecommendedProbeOrder())
-        {
-            foreach (var probe in available)
-            {
-                if (probe.Kind == kind && !ordered.Contains(probe))
-                {
-                    ordered.Add(probe);
-                }
-            }
-        }
-
-        foreach (var probe in available)
-        {
-            if (!ordered.Contains(probe))
-            {
-                ordered.Add(probe);
-            }
-        }
-
-        return ordered;
-    }
 }

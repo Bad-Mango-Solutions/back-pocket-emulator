@@ -9,13 +9,20 @@ namespace BadMango.Emulator.Devices.GuestOs;
 /// </summary>
 /// <remarks>
 /// The checks live in <see cref="ProDosGlobalPage.Inspect"/>. A matching page with an
-/// unknown <c>KVERSION</c> is reported as <see cref="GuestOsKind.Unknown"/> so a later
-/// DOS probe cannot claim the machine. The probe only reads memory.
+/// unknown <c>KVERSION</c> is reported as <see cref="GuestOsId.Unknown"/> so a later
+/// DOS probe cannot claim the machine. The page bytes are still <see cref="ProDos8Details"/>.
+/// The probe only reads memory.
 /// </remarks>
 public sealed class ProDos8GuestOsProbe : IGuestOsProbe
 {
     /// <inheritdoc />
-    public GuestOsKind Kind => GuestOsKind.ProDos8;
+    public GuestOsId Id => GuestOsId.ProDos8;
+
+    /// <inheritdoc />
+    public string DisplayName => "ProDOS 8";
+
+    /// <inheritdoc />
+    public int Order => 0;
 
     /// <inheritdoc />
     public GuestOsProbeAttempt Probe(IGuestMemoryReader memory)
@@ -24,35 +31,23 @@ public sealed class ProDos8GuestOsProbe : IGuestOsProbe
         var page = ProDosGlobalPage.Inspect(memory);
         if (page.StructuralRejection is string rejection)
         {
-            return GuestOsProbeAttempt.Reject(this.Kind, rejection);
+            return GuestOsProbeAttempt.Reject(this.Id, rejection);
         }
 
+        var details = new ProDos8Details(page.KVersion, page.IVersion, page.MachId, page.HasClock);
         if (page.VersionLabel is string label)
         {
+            const string reason = "MLI entry, DATETIME vector, and KVERSION match ProDOS 8.";
             return GuestOsProbeAttempt.Match(
-                this.Kind,
-                "MLI entry, DATETIME vector, and KVERSION match ProDOS 8.",
-                new GuestOsInfo(
-                    GuestOsKind.ProDos8,
-                    label,
-                    page.KVersion,
-                    page.IVersion,
-                    page.MachId,
-                    page.HasClock,
-                    "MLI entry, DATETIME vector, and KVERSION match ProDOS 8."));
+                this.Id,
+                reason,
+                new GuestOsInfo(GuestOsId.ProDos8, this.DisplayName, label, reason, details));
         }
 
-        var reason = $"KVERSION ${page.KVersion:X2} is not a known ProDOS 8 version.";
+        var unknownReason = $"KVERSION ${page.KVersion:X2} is not a known ProDOS 8 version.";
         return GuestOsProbeAttempt.Match(
-            this.Kind,
-            reason,
-            new GuestOsInfo(
-                GuestOsKind.Unknown,
-                "Unknown",
-                page.KVersion,
-                page.IVersion,
-                page.MachId,
-                page.HasClock,
-                reason));
+            this.Id,
+            unknownReason,
+            new GuestOsInfo(GuestOsId.Unknown, "Unknown", "Unknown", unknownReason, details));
     }
 }

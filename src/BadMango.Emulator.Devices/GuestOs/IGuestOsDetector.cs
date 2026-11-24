@@ -26,7 +26,7 @@ public interface IGuestOsDetector
     /// </summary>
     event EventHandler<GuestOsChangedEventArgs>? Changed;
 
-    /// <summary>Gets the last detection, or a not-yet-run <see cref="GuestOsKind.None"/> before the first call.</summary>
+    /// <summary>Gets the last detection, or a not-yet-run <see cref="GuestOsId.None"/> before the first call.</summary>
     /// <value>The current guest OS.</value>
     GuestOsInfo Current { get; }
 

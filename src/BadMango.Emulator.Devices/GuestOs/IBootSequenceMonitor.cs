@@ -18,6 +18,8 @@ namespace BadMango.Emulator.Devices.GuestOs;
 /// operating system is ready. <see cref="Milestones"/> is that monitor's log.
 /// The monitor arms <c>$Cn00</c> for every occupied slot whose card has boot firmware,
 /// not just Disk II, and falls back to <see cref="IGuestOsDetector"/> when no milestone was seen.
+/// OS-specific traps come from <see cref="IGuestOsBootProfile"/>. A layered system such as GEOS
+/// registers a probe with a lower <see cref="IGuestOsProbe.Order"/> than the base OS.
 /// </para>
 /// </remarks>
 public interface IBootSequenceMonitor

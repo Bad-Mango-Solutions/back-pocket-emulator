@@ -18,8 +18,18 @@ public class GuestOsDetectorTests
     [Test]
     public void GuestOsInfo_WithTheSameValues_ComparesEqual()
     {
-        var left = new GuestOsInfo(GuestOsKind.ProDos8, "ProDOS 8 2.4.x", 0x24, 7, 0x01, true, "matched");
-        var right = new GuestOsInfo(GuestOsKind.ProDos8, "ProDOS 8 2.4.x", 0x24, 7, 0x01, true, "matched");
+        var left = new GuestOsInfo(
+            GuestOsId.ProDos8,
+            "ProDOS 8",
+            "ProDOS 8 2.4.x",
+            "matched",
+            new ProDos8Details(0x24, 7, 0x01, true));
+        var right = new GuestOsInfo(
+            GuestOsId.ProDos8,
+            "ProDOS 8",
+            "ProDOS 8 2.4.x",
+            "matched",
+            new ProDos8Details(0x24, 7, 0x01, true));
 
         Assert.That(left, Is.EqualTo(right));
     }
@@ -32,10 +42,9 @@ public class GuestOsDetectorTests
 
         var info = detector.Detect();
 
-        Assert.That(info.Kind, Is.EqualTo(GuestOsKind.None));
+        Assert.That(info.Id, Is.EqualTo(GuestOsId.None));
         Assert.That(info.Reason, Is.EqualTo("No DOS 3.3 or ProDOS 8 signature."));
-        Assert.That(info.KVersion, Is.Null);
-        Assert.That(info.HasClock, Is.False);
+        Assert.That(info.Details, Is.Null);
     }
 
     /// <summary>Each known KVERSION maps to its label, and the global-page bytes are reported.</summary>
@@ -64,12 +73,14 @@ public class GuestOsDetectorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(info.Kind, Is.EqualTo(GuestOsKind.ProDos8));
+            var page = (ProDos8Details)info.Details!;
+            Assert.That(info.Id, Is.EqualTo(GuestOsId.ProDos8));
+            Assert.That(info.DisplayName, Is.EqualTo("ProDOS 8"));
             Assert.That(info.VersionLabel, Is.EqualTo(label));
-            Assert.That(info.KVersion, Is.EqualTo((byte)kVersion));
-            Assert.That(info.IVersion, Is.EqualTo(7));
-            Assert.That(info.MachId, Is.EqualTo(0x01));
-            Assert.That(info.HasClock, Is.True);
+            Assert.That(page.KVersion, Is.EqualTo((byte)kVersion));
+            Assert.That(page.IVersion, Is.EqualTo(7));
+            Assert.That(page.MachId, Is.EqualTo(0x01));
+            Assert.That(page.HasClock, Is.True);
             Assert.That(info.Reason, Does.Contain("ProDOS 8"));
         });
     }
@@ -90,9 +101,10 @@ public class GuestOsDetectorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(info.Kind, Is.EqualTo(GuestOsKind.Unknown));
+            var page = (ProDos8Details)info.Details!;
+            Assert.That(info.Id, Is.EqualTo(GuestOsId.Unknown));
             Assert.That(info.VersionLabel, Is.EqualTo("Unknown"));
-            Assert.That(info.KVersion, Is.EqualTo((byte)kVersion));
+            Assert.That(page.KVersion, Is.EqualTo((byte)kVersion));
             Assert.That(info.Reason, Does.Contain($"KVERSION ${kVersion:X2}"));
             Assert.That(info.Reason, Does.Contain("not a known ProDOS 8 version"));
         });
@@ -107,9 +119,10 @@ public class GuestOsDetectorTests
 
         var info = CreateDetector(image).Detect();
 
-        Assert.That(info.Kind, Is.EqualTo(GuestOsKind.ProDos8));
-        Assert.That(info.HasClock, Is.False);
-        Assert.That(info.MachId, Is.EqualTo(0x02));
+        var page = (ProDos8Details)info.Details!;
+        Assert.That(info.Id, Is.EqualTo(GuestOsId.ProDos8));
+        Assert.That(page.HasClock, Is.False);
+        Assert.That(page.MachId, Is.EqualTo(0x02));
     }
 
     /// <summary>Page-3 DOS vectors do not hide a ProDOS global page.</summary>
@@ -124,7 +137,7 @@ public class GuestOsDetectorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(info.Kind, Is.EqualTo(GuestOsKind.ProDos8));
+            Assert.That(info.Id, Is.EqualTo(GuestOsId.ProDos8));
             Assert.That(info.VersionLabel, Is.EqualTo("ProDOS 8 2.4.x"));
         });
     }
@@ -140,7 +153,7 @@ public class GuestOsDetectorTests
 
         var info = detector.Detect();
 
-        Assert.That(info.Kind, Is.EqualTo(GuestOsKind.ProDos8));
+        Assert.That(info.Id, Is.EqualTo(GuestOsId.ProDos8));
     }
 
     /// <summary>Standard 48K vectors are DOS 3.3.</summary>
@@ -154,11 +167,11 @@ public class GuestOsDetectorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(info.Kind, Is.EqualTo(GuestOsKind.Dos33));
+            var dos = (Dos33Details)info.Details!;
+            Assert.That(info.Id, Is.EqualTo(GuestOsId.Dos33));
             Assert.That(info.VersionLabel, Is.EqualTo("DOS 3.3"));
             Assert.That(info.Reason, Does.Contain("48K"));
-            Assert.That(info.KVersion, Is.Null);
-            Assert.That(info.HasClock, Is.False);
+            Assert.That(dos.StandardVectors, Is.True);
         });
     }
 
@@ -171,8 +184,9 @@ public class GuestOsDetectorTests
 
         var info = CreateDetector(image).Detect();
 
-        Assert.That(info.Kind, Is.EqualTo(GuestOsKind.Dos33));
+        Assert.That(info.Id, Is.EqualTo(GuestOsId.Dos33));
         Assert.That(info.VersionLabel, Is.EqualTo("DOS 3.3-compatible (nonstandard vectors)"));
+        Assert.That(((Dos33Details)info.Details!).StandardVectors, Is.False);
     }
 
     /// <summary>A page that is missing one JMP is not DOS.</summary>
@@ -185,7 +199,7 @@ public class GuestOsDetectorTests
 
         var info = CreateDetector(image).Detect();
 
-        Assert.That(info.Kind, Is.EqualTo(GuestOsKind.None));
+        Assert.That(info.Id, Is.EqualTo(GuestOsId.None));
     }
 
     /// <summary>Changed fires once per transition and not when Detect repeats the same result.</summary>
@@ -194,14 +208,14 @@ public class GuestOsDetectorTests
     {
         var image = new GuestMemoryImage();
         var detector = CreateDetector(image);
-        var transitions = new List<GuestOsKind>();
+        var transitions = new List<GuestOsId>();
         detector.Changed += (_, args) =>
         {
             Assert.That(detector.Current, Is.SameAs(args.Current));
-            transitions.Add(args.Current.Kind);
+            transitions.Add(args.Current.Id);
         };
 
-        Assert.That(detector.Current.Kind, Is.EqualTo(GuestOsKind.None));
+        Assert.That(detector.Current.Id, Is.EqualTo(GuestOsId.None));
         Assert.That(detector.Current.Reason, Is.EqualTo("Guest OS detection has not run."));
 
         detector.Detect();
@@ -219,10 +233,10 @@ public class GuestOsDetectorTests
 
         Assert.That(transitions, Is.EqualTo(new[]
         {
-            GuestOsKind.None,
-            GuestOsKind.ProDos8,
-            GuestOsKind.ProDos8,
-            GuestOsKind.Dos33,
+            GuestOsId.None,
+            GuestOsId.ProDos8,
+            GuestOsId.ProDos8,
+            GuestOsId.Dos33,
         }));
         Assert.That(detector.Current.VersionLabel, Is.EqualTo("DOS 3.3"));
     }
@@ -300,13 +314,69 @@ public class GuestOsDetectorTests
         }));
         Assert.That((int)GuestOsBootStage.Unknown, Is.EqualTo(5));
         Assert.That((int)GuestOsBootStage.CustomBoot, Is.EqualTo(6));
-        Assert.That(Enum.GetNames<BootMilestoneKind>(), Does.Contain(nameof(BootMilestoneKind.BootRomEntered)));
-        Assert.That(Enum.GetNames<BootMilestoneKind>(), Does.Contain(nameof(BootMilestoneKind.FirstMliCall)));
-        Assert.That(Enum.GetNames<BootMilestoneKind>(), Does.Contain(nameof(BootMilestoneKind.CustomBootLoaderEntered)));
-        Assert.That((int)BootMilestoneKind.FirstMliCall, Is.EqualTo(7));
-        Assert.That((int)BootMilestoneKind.CustomBootLoaderEntered, Is.EqualTo(8));
+        Assert.That(Enum.GetNames<BootMilestoneKind>(), Is.EqualTo(new[]
+        {
+            nameof(BootMilestoneKind.BootFirmwareEntered),
+            nameof(BootMilestoneKind.BootSectorLoaded),
+            nameof(BootMilestoneKind.CustomBootLoaderEntered),
+            nameof(BootMilestoneKind.LoaderEntered),
+            nameof(BootMilestoneKind.KernelReady),
+            nameof(BootMilestoneKind.SystemProgramStarted),
+            nameof(BootMilestoneKind.FirstSystemCall),
+        }));
+        Assert.That((int)BootMilestoneKind.BootFirmwareEntered, Is.EqualTo(0));
+        Assert.That((int)BootMilestoneKind.FirstSystemCall, Is.EqualTo(6));
+    }
+
+    /// <summary>An empty id is rejected. Comparison is ordinal.</summary>
+    [Test]
+    public void GuestOsId_RejectsEmpty_AndComparesOrdinal()
+    {
+        Assert.Throws<ArgumentException>(() => new GuestOsId(" "));
+        Assert.That(new GuestOsId("dos33"), Is.EqualTo(GuestOsId.Dos33));
+        Assert.That(new GuestOsId("DOS33"), Is.Not.EqualTo(GuestOsId.Dos33));
+        Assert.That(GuestOsId.Dos33.CompareTo(GuestOsId.ProDos8), Is.LessThan(0));
+    }
+
+    /// <summary>A lower <see cref="IGuestOsProbe.Order"/> wins even when that probe is supplied last.</summary>
+    [Test]
+    public void Detect_LowerOrder_WinsWhenSuppliedLast()
+    {
+        var later = new FixedProbe(new GuestOsId("base"), "Base", 100);
+        var earlier = new FixedProbe(new GuestOsId("layered"), "Layered", 0);
+        var detector = new GuestOsDetector(Logger.None, [later, earlier], new GuestMemoryImage());
+
+        var info = detector.Detect();
+
+        Assert.That(info.Id, Is.EqualTo(earlier.Id));
+        Assert.That(info.DisplayName, Is.EqualTo("Layered"));
     }
 
     private static GuestOsDetector CreateDetector(IGuestMemoryReader memory) =>
         new(Logger.None, [new ProDos8GuestOsProbe(), new Dos33GuestOsProbe()], memory);
+
+    private sealed class FixedProbe : IGuestOsProbe
+    {
+        private readonly GuestOsInfo published;
+
+        public FixedProbe(GuestOsId id, string displayName, int order)
+        {
+            this.Id = id;
+            this.DisplayName = displayName;
+            this.Order = order;
+            this.published = new GuestOsInfo(id, displayName, displayName, "matched", null);
+        }
+
+        public GuestOsId Id { get; }
+
+        public string DisplayName { get; }
+
+        public int Order { get; }
+
+        public GuestOsProbeAttempt Probe(IGuestMemoryReader memory)
+        {
+            ArgumentNullException.ThrowIfNull(memory);
+            return GuestOsProbeAttempt.Match(this.Id, "matched", this.published);
+        }
+    }
 }

@@ -71,9 +71,10 @@ public class GuestOsModuleTests
             Assert.That(probes, Has.Count.EqualTo(2));
             Assert.That(probes[0], Is.InstanceOf<ProDos8GuestOsProbe>());
             Assert.That(probes[1], Is.InstanceOf<Dos33GuestOsProbe>());
-            Assert.That(info.Kind, Is.EqualTo(GuestOsKind.ProDos8));
+            Assert.That(probes[0].Order, Is.LessThan(probes[1].Order));
+            Assert.That(info.Id, Is.EqualTo(GuestOsId.ProDos8));
             Assert.That(info.VersionLabel, Is.EqualTo("ProDOS 8 2.4.x"));
-            Assert.That(info.HasClock, Is.True);
+            Assert.That(((ProDos8Details)info.Details!).HasClock, Is.True);
         });
     }
 

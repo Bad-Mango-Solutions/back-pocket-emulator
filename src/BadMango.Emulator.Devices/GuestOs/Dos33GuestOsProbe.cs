@@ -22,7 +22,13 @@ namespace BadMango.Emulator.Devices.GuestOs;
 public sealed class Dos33GuestOsProbe : IGuestOsProbe
 {
     /// <inheritdoc />
-    public GuestOsKind Kind => GuestOsKind.Dos33;
+    public GuestOsId Id => GuestOsId.Dos33;
+
+    /// <inheritdoc />
+    public string DisplayName => "DOS 3.3";
+
+    /// <inheritdoc />
+    public int Order => 100;
 
     /// <inheritdoc />
     public GuestOsProbeAttempt Probe(IGuestMemoryReader memory)
@@ -30,26 +36,26 @@ public sealed class Dos33GuestOsProbe : IGuestOsProbe
         ArgumentNullException.ThrowIfNull(memory);
         if (ProDosGlobalPage.Inspect(memory).StructuralRejection is null)
         {
-            return GuestOsProbeAttempt.Reject(this.Kind, "ProDOS global page is present.");
+            return GuestOsProbeAttempt.Reject(this.Id, "ProDOS global page is present.");
         }
 
         var vectors = Dos33VectorPage.Inspect(memory);
         if (!vectors.AllJumps)
         {
-            return GuestOsProbeAttempt.Reject(this.Kind, Dos33VectorPage.MissingJmpReason(vectors.MissingJmp));
+            return GuestOsProbeAttempt.Reject(this.Id, Dos33VectorPage.MissingJmpReason(vectors.MissingJmp));
         }
 
         if (!vectors.StandardTargets)
         {
-            return Match(Dos33VectorPage.NonstandardLabel, "Page 3 JMPs do not use the 48K DOS 3.3 targets.");
+            return this.Match(Dos33VectorPage.NonstandardLabel, "Page 3 JMPs do not use the 48K DOS 3.3 targets.", false);
         }
 
-        return Match(Dos33VectorPage.StandardLabel, "Page 3 vectors match 48K DOS 3.3.");
+        return this.Match(Dos33VectorPage.StandardLabel, "Page 3 vectors match 48K DOS 3.3.", true);
     }
 
-    private GuestOsProbeAttempt Match(string versionLabel, string reason) =>
+    private GuestOsProbeAttempt Match(string versionLabel, string reason, bool standardVectors) =>
         GuestOsProbeAttempt.Match(
-            this.Kind,
+            this.Id,
             reason,
-            new GuestOsInfo(GuestOsKind.Dos33, versionLabel, null, null, null, false, reason));
+            new GuestOsInfo(this.Id, this.DisplayName, versionLabel, reason, new Dos33Details(standardVectors)));
 }
