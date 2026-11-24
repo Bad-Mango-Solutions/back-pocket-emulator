@@ -33,7 +33,7 @@ using Debugging;
 /// Optimized with aggressive inlining for maximum performance.
 /// </para>
 /// </remarks>
-public sealed class Cpu65C02 : CpuBase
+public sealed class Cpu65C02 : CpuBase, ITrapAwareCpu
 {
     private readonly OpcodeTable opcodeTable;
     private readonly OpcodeInfo[] opcodeInfoTable;
@@ -228,12 +228,9 @@ public sealed class Cpu65C02 : CpuBase
         // Capture state before execution for debug listener
         Addr pcBefore = Registers.PC.GetAddr();
 
-        // Check for trap at this address before fetching the opcode.
-        // First perform an O(1) address check; only if a trap exists at this
-        // address do we proceed with the more expensive context resolution
-        // and handler invocation.
-        // The lookup is skipped entirely when the registry cannot contain traps
-        // (NullTrapRegistry, or an empty concrete TrapRegistry).
+        // Check for a call trap before fetching the opcode. Read and write traps
+        // are not call traps. The lookup is skipped when the registry cannot
+        // contain call traps (NullTrapRegistry, or a concrete registry with none).
         if (MayHaveTrapAt(pcBefore))
         {
             var trapResult = trapRegistry.TryExecute(pcBefore, this, Bus, EventContext);
@@ -414,12 +411,14 @@ public sealed class Cpu65C02 : CpuBase
 
     private bool MayHaveTrapAt(Addr address)
     {
+        // Same shape as the empty-registry check: one type test, then a field test.
+        // MayHaveCallTrap stays out of line so a bare CPU does not pay for the lookup.
         if (concreteTrapRegistry is not null)
         {
-            return !concreteTrapRegistry.IsEmpty && concreteTrapRegistry.ContainsAddress(address);
+            return concreteTrapRegistry.MayHaveCallTrap(address);
         }
 
-        return !trapRegistryIsNull && trapRegistry.ContainsAddress(address);
+        return !trapRegistryIsNull && trapRegistry.HasTrap(address, TrapOperation.Call);
     }
 
     /// <summary>

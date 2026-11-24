@@ -13,9 +13,9 @@ Expansion-ROM banking is separate and does run. A read or write in
 `$C100`-`$C7FF` selects a slot, and an access to `$CFFF` deselects it so the
 default expansion ROM shows through again.
 
-The 65C02 consults the registry on instruction fetch. `Cpu65816` and
-`Cpu65832` do not step. The registry can store read and write traps, and no
-bus path invokes them.
+The 65C02 consults the registry on instruction fetch for call traps. Data
+reads and writes through `MainBus` invoke read and write traps. `Cpu65816`
+and `Cpu65832` do not step.
 
 **Status legend:** **Implemented** means the audited behavior has working
 code in the current tree. **Partly implemented** means the mechanism is
@@ -101,12 +101,11 @@ namespace. Pocket2e builder extensions stay in `BadMango.Emulator.Systems`.
 > `src/BadMango.Emulator.Core/Cpu/` (namespace `BadMango.Emulator.Emulation.Cpu`
 > unchanged).
 
-The component and the CPU property are different objects. `Build` adds an
-empty `TrapRegistry`. `Cpu65C02` keeps `NullTrapRegistry.Instance` until
-`MachineFactory.WireTrapRegistry` assigns the component.
-`NullTrapRegistry.Register` throws `NotSupportedException`. A machine built
-without that factory still has an empty component, and its CPU still holds
-the null registry.
+`Build` adds an empty `TrapRegistry` and assigns that same instance to a
+`Cpu65C02`. `NullTrapRegistry` remains the default for a CPU that was not
+built by `MachineBuilder`. `NullTrapRegistry.Register` throws
+`NotSupportedException`. `MachineFactory.WireTrapRegistry` assigns the same
+component again for the debug hosts.
 
 ## Target layout
 
@@ -505,15 +504,18 @@ handler, and neither path registers `$C600` or an RWTS trap.
 ### 8.3.11 CPU integration — Partly implemented
 
 `Cpu65C02.Step` reads the program counter and calls `MayHaveTrapAt` before
-the opcode fetch. For a concrete `TrapRegistry`, that is false when
-`IsEmpty` is true, which is the built-machine case, and otherwise it is
-`ContainsAddress`. For any other registry that is not `NullTrapRegistry`, it
-is `ContainsAddress`. `NullTrapRegistry` skips the lookup.
+the opcode fetch. For a concrete `TrapRegistry`, that is
+`MayHaveCallTrap`: false when no call traps are registered, without an
+address lookup, and otherwise an operation-specific lookup. A read-only or
+write-only trap at the program counter does not enter `TryExecute`. For any
+other registry that is not `NullTrapRegistry`, the pre-check is
+`HasTrap(address, Call)`. `NullTrapRegistry` skips the lookup.
 
-`ContainsAddress` does not know the operation or the memory context. A
-read-only or write-only registration at the program counter still enters
-`TryExecute`, which looks up a `Call` trap and falls through when there is
-none.
+`MainBus.Read8`, `TryRead8`, `Write8`, and `TryWrite8` dispatch
+`TrapOperation.Read` and `TrapOperation.Write` for data and DMA intents
+after the access. Instruction fetch and debug intents do not. Slot-dependent
+keys include the slot, so two cards can both register at `$C800`; execution
+uses the active expansion slot.
 
 When the call trap returns `Handled`:
 
@@ -527,11 +529,11 @@ When the call trap returns `Handled`:
 `Cpu65816.Step`, `Cpu65816.Reset`, `Cpu65832.Step`, and `Cpu65832.Reset`
 throw `NotImplementedException`. Those types have no trap-registry property.
 
-`MachineBuilder` does not assign the registry onto the CPU. `TrapRegistry`
-is a property of `Cpu65C02`, and the builder sits in the Bus project.
-`MachineFactory.WireTrapRegistry` performs that assignment for the debug
-hosts when the CPU is a `Cpu65C02` and the component exists. `emudbg` and
-`emudbg-mcp` both go through `MachineFactory`.
+`MachineBuilder` assigns the registry onto a CPU that implements
+`ITrapAwareCpu`. `Cpu65C02` is that CPU. `MachineFactory.WireTrapRegistry`
+assigns the same component again for the debug hosts. `emudbg` and
+`emudbg-mcp` both go through `MachineFactory`. On the `WithPocket2eIOPage`
+path the I/O page is also the registry's `IInternalRomHandler`.
 
 `BreakpointManager` registers `TrapOperation.Call` entries named
 `BP_<address>` with `TrapCategory.UserDefined` when a debugger breakpoint is

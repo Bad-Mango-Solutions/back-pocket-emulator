@@ -249,6 +249,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
             TraceSlowAccess(in access);
         }
 
+        DispatchDataTrap(in access, TrapOperation.Read);
         return value;
     }
 
@@ -291,6 +292,8 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
         {
             TraceSlowAccess(in access);
         }
+
+        DispatchDataTrap(in access, TrapOperation.Write);
     }
 
     /// <inheritdoc />
@@ -367,6 +370,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
             TraceSlowAccess(in access);
         }
 
+        DispatchDataTrap(in access, TrapOperation.Read);
         return result;
     }
 
@@ -433,6 +437,7 @@ public sealed partial class MainBus : IMemoryBus, IResetReceiver
             TraceSlowAccess(in access);
         }
 
+        DispatchDataTrap(in access, TrapOperation.Write);
         return result;
     }
 

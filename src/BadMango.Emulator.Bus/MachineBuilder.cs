@@ -996,17 +996,17 @@ public sealed partial class MachineBuilder
         // The null check allows callers (e.g., system-specific extension methods)
         // to provide a pre-configured TrapRegistry as a component before Build()
         // is called, in which case their instance is preserved.
-        if (machine.GetComponent<ITrapRegistry>() is null)
+        // The same instance is assigned to a trap-aware CPU and to the bus so
+        // call traps and read/write traps share one registry.
+        ITrapRegistry installedRegistry = EnsureTrapRegistry(machine);
+        if (cpu is ITrapAwareCpu trapAwareCpu)
         {
-            var slotManager = machine.GetComponent<ISlotManager>();
-            var languageCard = machine.GetComponent<ILanguageCardState>();
-            var internalRomHandler = machine.GetComponent<IInternalRomHandler>();
-            var trapRegistry = new TrapRegistry(
-                slotManager,
-                languageCard,
-                memoryContextResolver: null,
-                internalRomHandler: internalRomHandler);
-            machine.AddComponent<ITrapRegistry>(trapRegistry);
+            trapAwareCpu.TrapRegistry = installedRegistry;
+        }
+
+        if (installedRegistry is TrapRegistry concreteRegistry)
+        {
+            bus.AttachTrapDispatch(concreteRegistry, cpu, machine);
         }
 
         // Run before-device-init callbacks (e.g., I/O page mapping)
@@ -1014,6 +1014,10 @@ public sealed partial class MachineBuilder
         {
             callback(machine);
         }
+
+        // WithPocket2eIOPage maps CompositeIOTarget during the callback above,
+        // after the registry was constructed. Adopt that target as the overlay handler.
+        AdoptMappedInternalRomHandler(machine, bus);
 
         // Initialize devices
         machine.InitializeDevices();
@@ -1076,6 +1080,59 @@ public sealed partial class MachineBuilder
         scheduler.FlushPending(keepDeferredWork: false);
 
         return machine;
+    }
+
+    /// <summary>
+    /// Returns the machine's trap registry, creating the default one when none was supplied.
+    /// </summary>
+    /// <param name="machine">The machine being built.</param>
+    /// <returns>The registry stored on the machine.</returns>
+    private static ITrapRegistry EnsureTrapRegistry(Machine machine)
+    {
+        if (machine.GetComponent<ITrapRegistry>() is ITrapRegistry existing)
+        {
+            return existing;
+        }
+
+        var slotManager = machine.GetComponent<ISlotManager>();
+        var languageCard = machine.GetComponent<ILanguageCardState>();
+        var romHandler = machine.GetComponent<IInternalRomHandler>();
+        var created = new TrapRegistry(
+            slotManager,
+            languageCard,
+            memoryContextResolver: null,
+            internalRomHandler: romHandler);
+        machine.AddComponent<ITrapRegistry>(created);
+        return created;
+    }
+
+    /// <summary>
+    /// Registers an internal-ROM handler mapped at <c>$C000</c> after the trap registry exists.
+    /// </summary>
+    /// <param name="machine">The machine being built.</param>
+    /// <param name="bus">The machine bus.</param>
+    /// <remarks>
+    /// Profile builds register <see cref="IInternalRomHandler"/> during memory configuration,
+    /// before the registry is constructed. The Pocket2e I/O page is mapped later, in a
+    /// before-device-init callback, so the registry would otherwise keep a null handler.
+    /// </remarks>
+    private static void AdoptMappedInternalRomHandler(Machine machine, MainBus bus)
+    {
+        if (machine.GetComponent<IInternalRomHandler>() is not null)
+        {
+            return;
+        }
+
+        if (bus.GetPageEntry(0xC000).Target is not IInternalRomHandler mappedHandler)
+        {
+            return;
+        }
+
+        machine.AddComponent<IInternalRomHandler>(mappedHandler);
+        if (machine.GetComponent<ITrapRegistry>() is TrapRegistry registry && registry.InternalRomHandler is null)
+        {
+            registry.InternalRomHandler = mappedHandler;
+        }
     }
 
     private static void InstallPendingSlotCards(Machine machine)
