@@ -101,7 +101,7 @@ The child architecture pages are tracked by issue; landed pages link to their ca
 | [#543](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/543) | [`specs/architecture/signals.md`](specs/architecture/signals.md) | landed |
 | [#544](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/544) | [`specs/architecture/scheduler.md`](specs/architecture/scheduler.md) | landed |
 | [#545](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/545) | [`specs/architecture/devices.md`](specs/architecture/devices.md) | landed |
-| [#546](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/546) | `specs/architecture/rom-traps.md` | pending |
+| [#546](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/546) | [`specs/architecture/rom-traps.md`](specs/architecture/rom-traps.md) | landed |
 | [#547](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/547) | [`specs/architecture/compat.md`](specs/architecture/compat.md) | landed |
 | [#548](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/548) | [`specs/architecture/observability.md`](specs/architecture/observability.md) | landed |
 | [#549](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/549) | [`specs/architecture/machine.md`](specs/architecture/machine.md) | landed |
