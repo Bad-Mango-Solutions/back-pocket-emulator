@@ -141,10 +141,13 @@ unset.
   `ADC`, `SBC`.
 - Read and write: `ASL`, `LSR`, `ROL`, `ROR`, `INC`, `DEC`, `TRB`, `TSB`.
 
-Every other mnemonic, including `JSR` and `JMP`, returns `WatchAccess.None`.
-The class remarks also name JSR and JMP. Opcode fetch, stack push and pop, and
-interrupt-vector reads are not watchpoint hits. The manager is active while
-any watchpoint is registered, including a disabled one.
+`ClassifyAccess` returns `WatchAccess.None` for every mnemonic outside that
+list. `JSR` and `JMP` are in that unmatched set, so a step of either
+instruction does not fire a watchpoint. The class remarks on
+`WatchpointManager` still name JSR and JMP; those remarks are behind
+`ClassifyAccess`. Opcode fetch, stack push and pop, and interrupt-vector
+reads are not watchpoint hits. The manager is active while any watchpoint
+is registered, including a disabled one.
 [`WatchCommand`](../../src/BadMango.Emulator.Debug.Infrastructure/Commands/WatchCommand.cs)
 adds, removes, enables, and saves those entries.
 
