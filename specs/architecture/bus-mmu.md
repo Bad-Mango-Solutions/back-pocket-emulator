@@ -2,7 +2,7 @@
 
 ## Summary
 
-The built emulator routes 65C02 memory operations through a host page table of 4 KB `PageEntry` slots. The table selects RAM, ROM, device, or composite targets and carries permissions and routing metadata. PocketGS and PocketME address models remain aspirational.
+The built emulator routes 65C02 memory operations through a host page table of 4 KB pages represented by `PageEntry` values. The table selects RAM, ROM, device, or composite targets and carries permissions and routing metadata. PocketGS and PocketME address models remain aspirational.
 
 **Covers:** address-space models, host page-table entries, bus targets and composite dispatch, dynamic remapping, and bus access policy.
 
