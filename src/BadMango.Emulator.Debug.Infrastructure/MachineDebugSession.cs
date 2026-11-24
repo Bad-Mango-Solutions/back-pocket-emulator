@@ -943,7 +943,8 @@ public sealed class MachineDebugSession : IDebugSession, IMachineIoSession
             WriteProtect: snapshot.WriteProtect,
             HasMedia: snapshot.HasMedia,
             MountedImagePath: snapshot.MountedImagePath,
-            Geometry: geometry);
+            Geometry: geometry,
+            MotorOffPending: snapshot.MotorOffPending);
     }
 
     private static BadMango.Emulator.Debug.Abstractions.DiskDriveSnapshot UnreadableDrive(int drive, string error) =>

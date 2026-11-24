@@ -16,6 +16,9 @@ namespace BadMango.Emulator.Debug.Abstractions;
 /// <param name="HasMedia">Whether media is present.</param>
 /// <param name="MountedImagePath">Mounted image path, if available.</param>
 /// <param name="Geometry">Mounted-media geometry, if available.</param>
+/// <param name="MotorOffPending">
+/// Whether this drive holds the motor enable while the NE556 hold is still counting.
+/// </param>
 /// <param name="Error">
 /// The error reported while reading this drive, when the rest of the controller listing succeeded.
 /// </param>
@@ -29,4 +32,5 @@ public sealed record DiskDriveSnapshot(
     bool HasMedia,
     string? MountedImagePath,
     DiskGeometrySnapshot? Geometry,
+    bool MotorOffPending = false,
     string? Error = null);

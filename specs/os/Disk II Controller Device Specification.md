@@ -117,6 +117,17 @@ RESET does not use this delay. Table 9.1 note 1 (p. 9-12) says RESET' forces all
 switches off, and p. 9-13 says pressing RESET clears the delay timer and turns the drive
 off almost immediately. Power-off stops the motor immediately as well.
 
+`$C0SA` and `$C0SB` steer that same enable. The controller has one motor-enable
+output, and drive select routes it to drive 1 or drive 2 (Sather, pp. 9-12 to 9-13).
+While a motor-off delay is pending the NE556 output is still asserted, so selecting
+the other drive moves the enable: the drive that loses it flushes a dirty track and
+stops at once, and the drive that gains it spins up through the normal motor-settle
+window before byte-ready is asserted. The pending motor-off event is not cancelled,
+completed, or restarted. It stays armed for the original deadline and, on expiry,
+drops the enable on whichever drive is selected then. Selecting the drive that is
+already selected does not flush, does not start a settle window, and does not touch
+the event. `$C0S9` still cancels that same event.
+
 ### 2.5 Head Stepping and Track Position
 
 The drive uses a four-phase stepper motor. The controller interprets the phase lines as
@@ -372,7 +383,7 @@ chapter 9. Page numbers below are that edition.
 | --- | --- |
 | Time-based nibble catch-up | Already on `main` (FR-D6 on-demand spin advance in `AdvanceSpinAndLatch`). A bit cell is four MPU cycles (Sather, Figure 9.6). RWTS stores address bytes at 32-cycle intervals (Sather, pp. 9-39 to 9-42). |
 | Rapid-poll latch handling (bit 7 cleared on tight polls) | Superseded by `main`'s spin-position byte-ready gating. The READ sequence polls the data register until a complete byte is present with its MSB set (Sather, pp. 9-14 to 9-15 and 9-27 to 9-29). Exact behavior is deferred to the LSS engine (#487/#488). |
-| Motor-off spin-down | Ported as the NE556 one-second motor-off delay in #676; drive switching during the delay in #677. Access to `$C088,X` starts that one-second drive-off delay (Sather, pp. 9-13 and 9-36). |
+| Motor-off spin-down | The NE556 one-second motor-off delay (#676). A drive select during the delay moves the still-asserted enable to the new drive and leaves the pending event armed until its original deadline (#677; Sather, pp. 9-12 to 9-13 and 9-36). |
 | `Pass2Bisect` gap-14 skip (177/473), `Pass2InnerSpinDelta`, slot-6 LC-snapshot hooks, autostart-vector hooks | Dropped. These constants were fitted to one disk. |
 | Bisect / poll diagnostics logging | Dropped. Debugger visibility belongs to #333. |
 | Code derived from other emulators | Never ported. Behavior is re-derived clean-room from hardware documentation (Sather, *Understanding the Apple IIe*, ch. 9). Head steps are phase-on then the previous phase off, two phases per track, descending toward track 0 (p. 9-8; commands pp. 9-11 to 9-13). ProDOS DIIDD uses the same phase on/off tables as DOS 3.3 RWTS (pp. 9-43 to 9-44). |

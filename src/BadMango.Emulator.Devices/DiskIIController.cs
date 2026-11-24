@@ -36,8 +36,10 @@ using Serilog.Events;
 /// per-cycle polling — with a single rescheduling event preventing drift (FR-D6).</description></item>
 /// <item><description>Software motor control. <c>$C088,X</c> arms the NE556 one-second
 /// motor-off delay (Sather, p. 9-13) instead of stopping the platter at once;
-/// <c>$C089,X</c> before it expires cancels the delay with no new spin-up. ~1 ms motor
-/// settling and ~30 ms track-step settling (FR-D7).</description></item>
+/// <c>$C089,X</c> before it expires cancels the delay with no new spin-up. A drive
+/// select during the hold steers the still-asserted enable to the other drive
+/// (Sather, pp. 9-12 to 9-13) and leaves the pending stop at its original deadline.
+/// ~1 ms motor settling and ~30 ms track-step settling (FR-D7).</description></item>
 /// <item><description>Sector-backed writes mark the track dirty; flush when the motor
 /// actually stops (NE556 expiry or an immediate stop), on drive-deselect, eject, or
 /// <see cref="Flush"/>; nibble-backed writes go straight through (FR-D8). Parse failures
@@ -536,7 +538,8 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
             HasMedia: drive.Media is not null,
             MountedImagePath: drive.ImagePath,
             Geometry: drive.Media?.Geometry,
-            UnflushedChanges: drive.IsTrackDirty);
+            UnflushedChanges: drive.IsTrackDirty,
+            MotorOffPending: motorOffPending && driveIndex == currentDrive);
     }
 
     /// <inheritdoc />
@@ -586,6 +589,7 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
             driveSelectCount: driveSelectCount,
             cacheLoadCount: cacheLoadCount,
             cacheFlushCount: cacheFlushCount,
+            motorOffPending: motorOffPending,
             drives: perDrive);
     }
 
@@ -960,7 +964,17 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
 
         if (motorOn && evtContext is not null)
         {
-            drives[currentDrive].LastUpdateCycle = evtContext.Now;
+            var incoming = drives[currentDrive];
+            incoming.LastUpdateCycle = evtContext.Now;
+
+            // ENABLE' is still asserted while the NE556 counts, so the select steers it
+            // onto a drive that was stopped (Sather, pp. 9-12 to 9-13). That drive spins
+            // up through the normal settle window. The pending stop stays armed at its
+            // original deadline and drops whichever drive is selected when it fires.
+            if (motorOffPending)
+            {
+                incoming.SettleUntil = evtContext.Now + (Cycle)(ulong)motorSettleCycles;
+            }
         }
 
         if (logger.IsEnabled(LogEventLevel.Verbose))

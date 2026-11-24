@@ -261,7 +261,8 @@ public sealed class DiskRuntimeCommandsTests
             "bytesPerSector": 256,
             "sectorOrder": "Dos33",
             "totalBytes": 143360
-          }
+          },
+          "motorOffPending": false
         }
       ]
     }
@@ -1063,7 +1064,13 @@ public sealed class DiskRuntimeCommandsTests
     {
         var (card, ctl) = MakeMockController(slot: 6, driveCount: 2);
         this.slotManager.Setup(m => m.GetCard(6)).Returns(card.Object);
-        ctl.Setup(c => c.GetDriveSnapshot(It.IsAny<int>())).Returns(EmptySnapshot());
+        ctl.Setup(c => c.GetDriveSnapshot(0)).Returns(EmptySnapshot() with
+        {
+            Selected = true,
+            MotorOn = true,
+            MotorOffPending = true,
+        });
+        ctl.Setup(c => c.GetDriveSnapshot(1)).Returns(EmptySnapshot());
         ctl.Setup(c => c.GetActivitySnapshot()).Returns(new DiskActivitySnapshot(
             dataReadCount: 123,
             freshByteCount: 80,
@@ -1078,6 +1085,7 @@ public sealed class DiskRuntimeCommandsTests
             driveSelectCount: 1,
             cacheLoadCount: 6,
             cacheFlushCount: 0,
+            motorOffPending: true,
             drives: new[]
             {
                 new DiskDriveActivity(
@@ -1114,6 +1122,9 @@ public sealed class DiskRuntimeCommandsTests
             Assert.That(text, Does.Contain("phase-pulses=17"));
             Assert.That(text, Does.Contain("track-changes=4"));
             Assert.That(text, Does.Contain("motor-on=1"));
+            Assert.That(text, Does.Contain("transport : motor-on=1 motor-off=0 drive-select=1 motor-off-pending=yes"));
+            Assert.That(text, Does.Contain("Drive 1: empty selected=yes motor=yes motor-off-pending=yes qt=0 bytes-on-track=4200"));
+            Assert.That(text, Does.Contain("Drive 2: empty selected=no motor=no motor-off-pending=no qt=0 bytes-on-track=0"));
             Assert.That(text, Does.Contain("cache     : loads=6 flushes=0"));
             Assert.That(text, Does.Contain("vol=$FE"));
             Assert.That(text, Does.Contain("trk=$11"));
