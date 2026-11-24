@@ -45,6 +45,9 @@ public sealed class BootMilestone : EventArgs
     public Addr Pc { get; }
 
     /// <summary>Gets what the monitor saw.</summary>
-    /// <value>A non-empty detail string.</value>
+    /// <value>
+    /// A non-empty detail string. <see cref="BootMilestoneKind.BootRomEntered"/> names the slot and the card,
+    /// for example "slot 6: Disk II" or "slot 7: SmartPort".
+    /// </value>
     public string Detail { get; }
 }

@@ -16,6 +16,8 @@ namespace BadMango.Emulator.Devices.GuestOs;
 /// <para>
 /// Milestone traps, when #685 arms them, return not-handled and are removed once the
 /// operating system is ready. <see cref="Milestones"/> is that monitor's log.
+/// The monitor arms <c>$Cn00</c> for every occupied slot whose card has boot firmware,
+/// not just Disk II, and falls back to <see cref="IGuestOsDetector"/> when no milestone was seen.
 /// </para>
 /// </remarks>
 public interface IBootSequenceMonitor
@@ -27,7 +29,7 @@ public interface IBootSequenceMonitor
     event EventHandler<BootMilestone>? MilestoneReached;
 
     /// <summary>Gets the current boot stage.</summary>
-    /// <value><see cref="GuestOsBootStage.None"/> before the boot ROM is entered.</value>
+    /// <value><see cref="GuestOsBootStage.None"/> before any boot firmware is entered.</value>
     GuestOsBootStage Stage { get; }
 
     /// <summary>Gets the milestones recorded for this boot.</summary>

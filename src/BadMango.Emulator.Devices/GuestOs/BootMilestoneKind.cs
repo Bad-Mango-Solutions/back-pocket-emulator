@@ -13,10 +13,13 @@ namespace BadMango.Emulator.Devices.GuestOs;
 /// </remarks>
 public enum BootMilestoneKind
 {
-    /// <summary>A Disk II boot ROM was entered at <c>$Cn00</c>.</summary>
+    /// <summary>Slot boot firmware was entered at <c>$Cn00</c>, for any controller.</summary>
+    /// <remarks>
+    /// The milestone detail names the slot and the card, for example "slot 6: Disk II" or "slot 7: SmartPort".
+    /// </remarks>
     BootRomEntered = 0,
 
-    /// <summary>The boot sector at <c>$0801</c> ran and was classified.</summary>
+    /// <summary>The first-stage loader at <c>$0801</c> ran and was classified.</summary>
     BootSectorLoaded = 1,
 
     /// <summary>DOS 3.3 Boot 2 was entered at <c>$B700</c> or <c>$3700</c>.</summary>
