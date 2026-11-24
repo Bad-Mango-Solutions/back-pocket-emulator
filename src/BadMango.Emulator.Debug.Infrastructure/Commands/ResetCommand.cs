@@ -52,6 +52,7 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
 {
     private readonly IDebugSession? session;
     private readonly IDebugOutputRenderer renderer;
+    private readonly ILogger logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ResetCommand"/> class.
@@ -67,10 +68,24 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
     /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
     /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
     public ResetCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
+        : this(session, renderer, Log.Logger)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ResetCommand"/> class that resets the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    /// <param name="logger">Logger used when <c>--log</c> installs the boot monitor.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="logger"/> is <see langword="null"/>.</exception>
+    public ResetCommand(IDebugSession? session, IDebugOutputRenderer? renderer, ILogger logger)
         : base("reset", "Reset the CPU (soft or hard)")
     {
+        ArgumentNullException.ThrowIfNull(logger);
         this.session = session;
         this.renderer = renderer ?? DebugOutputRenderer.PlainText;
+        this.logger = logger;
     }
 
     /// <inheritdoc/>
@@ -175,7 +190,7 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
                 return CommandResult.Error("No machine attached to debug context.");
             }
 
-            GuestOsMonitorInstaller.Install(loggedMachine, Log.Logger, clearExistingLog: true);
+            GuestOsMonitorInstaller.Install(loggedMachine, this.logger, clearExistingLog: true);
             debugContext.Output.WriteLine("Guest OS boot log is on. Read it with 'os boot'.");
         }
 

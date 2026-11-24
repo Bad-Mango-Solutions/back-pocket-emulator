@@ -466,7 +466,7 @@ public class GuestOsBootMonitorTests
         uint pc = machine.Cpu.GetPC();
         using var context = ResetContext(machine);
 
-        var result = new ResetCommand().Execute(context, ["--log"]);
+        var result = LoggedResetCommand().Execute(context, ["--log"]);
 
         Assert.Multiple(() =>
         {
@@ -484,7 +484,7 @@ public class GuestOsBootMonitorTests
         using var machine = BootMachine(bootLog: false);
         using var context = ResetContext(machine);
 
-        var result = new ResetCommand().Execute(context, ["--closed-apple", "--log"]);
+        var result = LoggedResetCommand().Execute(context, ["--closed-apple", "--log"]);
 
         Assert.Multiple(() =>
         {
@@ -502,7 +502,7 @@ public class GuestOsBootMonitorTests
         Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.Null);
         using var context = ResetContext(machine);
 
-        var result = new ResetCommand().Execute(context, ["--hard", "--log"]);
+        var result = LoggedResetCommand().Execute(context, ["--hard", "--log"]);
         var monitor = MonitorOf(machine);
 
         Assert.That(result.Success, Is.True, result.Message);
@@ -527,7 +527,7 @@ public class GuestOsBootMonitorTests
         Poke(machine.Cpu, 0x0300, 0xEA, 0xEA, 0xEA);
         using var context = ResetContext(machine);
 
-        var result = new ResetCommand().Execute(context, ["--hard", "--log"]);
+        var result = LoggedResetCommand().Execute(context, ["--hard", "--log"]);
 
         Assert.Multiple(() =>
         {
@@ -560,7 +560,7 @@ public class GuestOsBootMonitorTests
         Poke(machine.Cpu, 0x0300, 0xEA, 0xEA, 0xEA);
         using var context = ResetContext(machine);
 
-        var result = new ResetCommand().Execute(context, ["--cold", "--log"]);
+        var result = LoggedResetCommand().Execute(context, ["--cold", "--log"]);
 
         Assert.Multiple(() =>
         {
@@ -634,7 +634,9 @@ public class GuestOsBootMonitorTests
     }
 
     private static BootCommand LoggedBootCommand() =>
-        new(null, null, bootDelayMs: 0, static (host, token) => host.PowerOnAsync(token));
+        new(null, null, bootDelayMs: 0, static (host, token) => host.PowerOnAsync(token), Logger.None);
+
+    private static ResetCommand LoggedResetCommand() => new(null, null, Logger.None);
 
     private static DebugContext ResetContext(IMachine machine)
     {

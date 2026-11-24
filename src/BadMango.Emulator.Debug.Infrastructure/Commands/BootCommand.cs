@@ -45,6 +45,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
 
     private readonly MachineProfile? profile;
     private readonly IDebugWindowManager? windowManager;
+    private readonly ILogger logger;
     private readonly int bootDelayMs;
     private readonly Func<BadMango.Emulator.Bus.Interfaces.IMachine, CancellationToken, Task> startPowerOn;
 
@@ -62,7 +63,19 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
     /// <param name="profile">The machine profile containing boot configuration.</param>
     /// <param name="windowManager">The debug window manager for opening the video window.</param>
     public BootCommand(MachineProfile? profile, IDebugWindowManager? windowManager)
-        : this(profile, windowManager, DefaultBootDelayMs, PowerOnMachineAsync)
+        : this(profile, windowManager, Log.Logger)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BootCommand"/> class with profile, window manager, and logger.
+    /// </summary>
+    /// <param name="profile">The machine profile containing boot configuration.</param>
+    /// <param name="windowManager">The debug window manager for opening the video window.</param>
+    /// <param name="logger">Logger used when <c>--log</c> installs the boot monitor.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="logger"/> is <see langword="null"/>.</exception>
+    public BootCommand(MachineProfile? profile, IDebugWindowManager? windowManager, ILogger logger)
+        : this(profile, windowManager, DefaultBootDelayMs, PowerOnMachineAsync, logger)
     {
     }
 
@@ -75,17 +88,21 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
     /// <param name="startPowerOn">
     /// Starts power-on. Production passes <see cref="PowerOnMachineAsync"/>, which also starts execution.
     /// </param>
-    /// <exception cref="ArgumentNullException">If <paramref name="startPowerOn"/> is <see langword="null"/>.</exception>
+    /// <param name="logger">Logger used when <c>--log</c> installs the boot monitor.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="startPowerOn"/> or <paramref name="logger"/> is <see langword="null"/>.</exception>
     internal BootCommand(
         MachineProfile? profile,
         IDebugWindowManager? windowManager,
         int bootDelayMs,
-        Func<BadMango.Emulator.Bus.Interfaces.IMachine, CancellationToken, Task> startPowerOn)
+        Func<BadMango.Emulator.Bus.Interfaces.IMachine, CancellationToken, Task> startPowerOn,
+        ILogger logger)
         : base("boot", "Reset and start machine running")
     {
         ArgumentNullException.ThrowIfNull(startPowerOn);
+        ArgumentNullException.ThrowIfNull(logger);
         this.profile = profile;
         this.windowManager = windowManager;
+        this.logger = logger;
         this.bootDelayMs = bootDelayMs;
         this.startPowerOn = startPowerOn;
     }
@@ -292,7 +309,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
 
         if (logBoot)
         {
-            GuestOsMonitorInstaller.Install(debugContext.Machine, Log.Logger, clearExistingLog: true);
+            GuestOsMonitorInstaller.Install(debugContext.Machine, this.logger, clearExistingLog: true);
         }
 
         bool autoOpenVideo = OpenVideoWindowIfConfigured(debugContext.Machine, profile, windowManager);
@@ -346,7 +363,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         // codeql[cs/catch-of-all-exceptions]
         catch (Exception ex)
         {
-            debugContext.Error.WriteLine($"Boot error: {ex.Message}");
+            debugContext.Error.WriteLine("Boot error: " + ex.ToString());
         }
     }
 }
