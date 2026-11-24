@@ -46,6 +46,9 @@ public class DeviceDebugCommandsModule : AutofacModule
     {
         builder.RegisterModule<AppleFileSystemModule>();
 
+        // The default module registers nothing, so guest-OS detection stays off the hot loop.
+        builder.RegisterModule(new GuestOsModule());
+
         // Scan the Debug.Infrastructure assembly for device debug commands
         var assembly = typeof(DeviceDebugCommandsModule).Assembly;
 

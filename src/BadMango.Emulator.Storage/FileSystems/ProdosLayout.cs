@@ -420,4 +420,17 @@ public static class ProdosLayout
         /// <summary>Mini-entry offset of the 24-bit fork EOF.</summary>
         public const int EofOffset = 5;
     }
+
+    /// <summary>The ProDOS boot block (block 0).</summary>
+    public static class BootBlock
+    {
+        private static readonly byte[] SignatureBytes =
+        [
+            0x01, 0x38, 0xB0, 0x03,
+        ];
+
+        /// <summary>Gets the boot-block prefix <c>01 38 B0 03</c>.</summary>
+        /// <value>The four bytes at the start of block 0.</value>
+        public static ReadOnlySpan<byte> Signature => SignatureBytes;
+    }
 }
