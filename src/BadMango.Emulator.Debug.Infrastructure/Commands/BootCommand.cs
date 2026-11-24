@@ -30,6 +30,11 @@ using Serilog;
 /// <para>
 /// If the machine profile has <c>autoVideoWindowOpen</c> set to <see langword="true"/>, the video window will be opened automatically when the machine boots.
 /// </para>
+/// <para>
+/// <c>--log</c> installs the guest OS detector and boot monitor before power-on, so the boot log
+/// includes this boot from reset. Read the log with <c>os boot</c>. <c>--log</c> with <c>--off</c>
+/// is a usage error. A monitor that is already installed is kept, and its previous milestone log is cleared.
+/// </para>
 /// </remarks>
 public sealed class BootCommand : CommandHandlerBase, ICommandHelp
 {
@@ -40,6 +45,8 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
 
     private readonly MachineProfile? profile;
     private readonly IDebugWindowManager? windowManager;
+    private readonly int bootDelayMs;
+    private readonly Func<BadMango.Emulator.Bus.Interfaces.IMachine, CancellationToken, Task> startPowerOn;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BootCommand"/> class.
@@ -55,20 +62,42 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
     /// <param name="profile">The machine profile containing boot configuration.</param>
     /// <param name="windowManager">The debug window manager for opening the video window.</param>
     public BootCommand(MachineProfile? profile, IDebugWindowManager? windowManager)
+        : this(profile, windowManager, DefaultBootDelayMs, PowerOnMachineAsync)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BootCommand"/> class with a test power-on path.
+    /// </summary>
+    /// <param name="profile">The machine profile containing boot configuration.</param>
+    /// <param name="windowManager">The debug window manager for opening the video window.</param>
+    /// <param name="bootDelayMs">Delay before power-on. Production uses <see cref="DefaultBootDelayMs"/>.</param>
+    /// <param name="startPowerOn">
+    /// Starts power-on. Production passes <see cref="PowerOnMachineAsync"/>, which also starts execution.
+    /// </param>
+    /// <exception cref="ArgumentNullException">If <paramref name="startPowerOn"/> is <see langword="null"/>.</exception>
+    internal BootCommand(
+        MachineProfile? profile,
+        IDebugWindowManager? windowManager,
+        int bootDelayMs,
+        Func<BadMango.Emulator.Bus.Interfaces.IMachine, CancellationToken, Task> startPowerOn)
         : base("boot", "Reset and start machine running")
     {
+        ArgumentNullException.ThrowIfNull(startPowerOn);
         this.profile = profile;
         this.windowManager = windowManager;
+        this.bootDelayMs = bootDelayMs;
+        this.startPowerOn = startPowerOn;
     }
 
     /// <inheritdoc/>
     public override IReadOnlyList<string> Aliases { get; } = ["startup", "power"];
 
     /// <inheritdoc/>
-    public override string Usage => "boot [--on|--off]";
+    public override string Usage => "boot [--on|--off] [--log]";
 
     /// <inheritdoc/>
-    public string Synopsis => "boot [--on|--off]";
+    public string Synopsis => "boot [--on|--off] [--log]";
 
     /// <inheritdoc/>
     public string DetailedDescription =>
@@ -79,22 +108,29 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         "Profiles with boot.autoStart set to true run this same power-on path automatically after load. " +
         "A brief delay is applied before booting to allow time to hold modifier keys " +
         "(Open Apple, Closed Apple) that affect the boot process. " +
-        "If the profile has autoVideoWindowOpen enabled, the video window opens automatically.";
+        "If the profile has autoVideoWindowOpen enabled, the video window opens automatically. " +
+        "With --log, the guest OS detector and boot monitor are installed before power-on, " +
+        "so milestones are captured from reset. Read the log with os boot. " +
+        "--log cannot be combined with --off. A monitor that is already installed is kept, " +
+        "and its previous milestone log is cleared so this boot starts fresh.";
 
     /// <inheritdoc/>
     public IReadOnlyList<CommandOption> Options { get; } =
     [
         new("--on", null, "flag", "Power on the machine and begin execution. This is the default.", "on"),
         new("--off", null, "flag", "Power off the machine, flush disks, and reset devices.", null),
+        new("--log", null, "flag", "Install the guest OS boot monitor before power-on. Read the log with os boot. Not valid with --off.", "off"),
     ];
 
     /// <inheritdoc/>
     public IReadOnlyList<string> Examples { get; } =
     [
         "boot                    Reset and start the machine",
+        "boot --log              Power on and record the guest OS boot log",
         "startup                 Alias for boot",
-        "power --off            Power off the machine",
-        "power --on             Power on the machine",
+        "power --off             Power off the machine",
+        "power --on              Power on the machine",
+        "power --on --log        Power on and record the guest OS boot log",
     ];
 
     /// <inheritdoc/>
@@ -102,10 +138,18 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         "Resets all CPU state (registers, flags, PC) and begins execution. " +
         "Memory and device state may be modified by executed code. " +
         "May open the video window if autoVideoWindowOpen is enabled in the profile. " +
-        "Profiles with boot.autoStart enabled invoke this same power-on behavior at load time.";
+        "Profiles with boot.autoStart enabled invoke this same power-on behavior at load time. " +
+        "With --log, registers observe-only boot traps before power-on. " +
+        "A monitor that is already installed is kept and its previous milestone log is cleared.";
 
     /// <inheritdoc/>
-    public IReadOnlyList<string> SeeAlso { get; } = ["reset", "pause", "resume", "halt", "video"];
+    public IReadOnlyList<string> SeeAlso { get; } = ["reset", "pause", "resume", "halt", "video", "os"];
+
+    /// <summary>
+    /// Gets the power-on task started by the last successful boot. Tests await it after <c>--log</c>.
+    /// </summary>
+    /// <value>The in-flight boot, or a completed task when boot has not been started.</value>
+    internal Task BootTask { get; private set; } = Task.CompletedTask;
 
     /// <summary>
     /// Gets a value indicating whether a profile should start automatically after load.
@@ -201,12 +245,8 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error("Debug context required for this command.");
         }
 
-        if (debugContext.Machine is null)
-        {
-            return CommandResult.Error("No machine attached to debug context.");
-        }
-
         bool powerOn = true;
+        bool logBoot = false;
         foreach (string arg in args)
         {
             if (arg.Equals("--off", StringComparison.OrdinalIgnoreCase))
@@ -217,10 +257,24 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
             {
                 powerOn = true;
             }
+            else if (arg.Equals("--log", StringComparison.OrdinalIgnoreCase))
+            {
+                logBoot = true;
+            }
             else
             {
                 return CommandResult.UsageError($"Unknown boot option '{arg}'.");
             }
+        }
+
+        if (!powerOn && logBoot)
+        {
+            return CommandResult.UsageError("--log cannot be combined with --off.");
+        }
+
+        if (debugContext.Machine is null)
+        {
+            return CommandResult.Error("No machine attached to debug context.");
         }
 
         if (!powerOn)
@@ -236,34 +290,26 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
             }
         }
 
+        if (logBoot)
+        {
+            GuestOsMonitorInstaller.Install(debugContext.Machine, Log.Logger, clearExistingLog: true);
+        }
+
         bool autoOpenVideo = OpenVideoWindowIfConfigured(debugContext.Machine, profile, windowManager);
 
-        // Start boot with delay to allow modifier keys to be pressed
-        _ = BootWithDelayAsync(debugContext, DefaultBootDelayMs);
+        // Start boot with delay to allow modifier keys to be pressed.
+        // The monitor, when requested, is already installed so this power-on is logged from reset.
+        this.BootTask = this.BootWithDelayAsync(debugContext);
 
         string message = autoOpenVideo && windowManager is not null
-            ? $"Booting in {DefaultBootDelayMs / 1000.0:F1}s... Hold modifier keys now. Video window opened."
-            : $"Booting in {DefaultBootDelayMs / 1000.0:F1}s... Hold modifier keys (Open Apple, Closed Apple) now.";
+            ? $"Booting in {this.bootDelayMs / 1000.0:F1}s... Hold modifier keys now. Video window opened."
+            : $"Booting in {this.bootDelayMs / 1000.0:F1}s... Hold modifier keys (Open Apple, Closed Apple) now.";
+        if (logBoot)
+        {
+            message += " Guest OS boot log is on. Read it with 'os boot'.";
+        }
 
         return CommandResult.Ok(message);
-    }
-
-    private static async Task BootWithDelayAsync(
-        IDebugContext debugContext,
-        int delayMs)
-    {
-        try
-        {
-            // Wait to give user time to press modifier keys
-            await Task.Delay(delayMs).ConfigureAwait(false);
-
-            // Now boot the machine
-            await PowerOnMachineAsync(debugContext.Machine!).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            debugContext.Error.WriteLine($"Boot error: {ex.Message}");
-        }
     }
 
     private static bool ShouldAutoOpenVideoWindow(MachineProfile? profile, IDebugWindowManager? windowManager) =>
@@ -281,5 +327,21 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
 
         _ = windowManager!.ShowWindowAsync("Video", machine);
         return true;
+    }
+
+    private async Task BootWithDelayAsync(IDebugContext debugContext)
+    {
+        try
+        {
+            // Wait to give user time to press modifier keys
+            await Task.Delay(this.bootDelayMs).ConfigureAwait(false);
+
+            // Now boot the machine
+            await this.startPowerOn(debugContext.Machine!, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            debugContext.Error.WriteLine($"Boot error: {ex.Message}");
+        }
     }
 }

@@ -5,7 +5,6 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using BadMango.Emulator.Bus.Interfaces;
-using BadMango.Emulator.Devices.GuestOs;
 
 using Serilog;
 
@@ -104,21 +103,6 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
 
     private void Enable(IMachine machine)
     {
-        if (machine.GetComponent<BootSequenceMonitor>() is not null)
-        {
-            return;
-        }
-
-        var detector = machine.GetComponent<IGuestOsDetector>()
-            ?? BootSequenceMonitor.CreateDetector(machine, this.logger);
-        if (!machine.HasComponent<IGuestOsDetector>())
-        {
-            machine.AddComponent(detector);
-        }
-
-        var monitor = new BootSequenceMonitor(this.logger, detector, BootSequenceMonitor.CreateStandardProfiles());
-        monitor.Attach(machine);
-        machine.AddComponent(monitor);
-        monitor.PublishFromDetector();
+        GuestOsMonitorInstaller.Install(machine, this.logger, clearExistingLog: false);
     }
 }

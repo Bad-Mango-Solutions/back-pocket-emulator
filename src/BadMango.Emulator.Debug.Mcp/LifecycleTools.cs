@@ -9,6 +9,7 @@ using System.Globalization;
 using System.Text.Json;
 
 using BadMango.Emulator.Debug.Abstractions;
+using BadMango.Emulator.Debug.Infrastructure;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using ModelContextProtocol.Server;
@@ -90,19 +91,39 @@ public sealed class LifecycleTools
     /// Resets the machine.
     /// </summary>
     /// <param name="kind">Warm, Hard, or PowerOn. Defaults to Warm.</param>
+    /// <param name="log">
+    /// When <see langword="true"/> with Hard or PowerOn, installs the guest OS boot monitor before the reset.
+    /// Warm with <paramref name="log"/> is an error.
+    /// </param>
     /// <returns>An emudbg envelope whose payload is the reset receipt.</returns>
     [McpServerTool(Name = "reset", UseStructuredContent = true)]
-    [Description("Reset the CPU (soft or hard).")]
+    [Description("Reset the CPU (soft or hard). Pass log true with Hard or PowerOn to record the guest OS boot from reset.")]
     public DebugEnvelope<ResetReceipt> Reset(
-        [Description("Warm, Hard, or PowerOn. Defaults to Warm.")] string kind = "Warm")
+        [Description("Warm, Hard, or PowerOn. Defaults to Warm.")] string kind = "Warm",
+        [Description("When true with Hard or PowerOn, install the guest OS boot monitor before the reset. Warm with log is an error.")] bool log = false)
     {
         if (!Enum.TryParse(kind, ignoreCase: true, out ResetKind resetKind))
         {
             throw new ModelContextProtocol.McpException($"Unknown reset kind '{kind}'. Expected Warm, Hard, or PowerOn.");
         }
 
+        if (log && resetKind == ResetKind.Warm)
+        {
+            throw new ModelContextProtocol.McpException("log requires a cold reset (Hard or PowerOn).");
+        }
+
         try
         {
+            if (log)
+            {
+                if (this.context.Machine is not { } host)
+                {
+                    throw new InvalidOperationException("No machine is attached to the debug context.");
+                }
+
+                GuestOsMonitorInstaller.Install(host, this.logger, clearExistingLog: true);
+            }
+
             this.session.Reset(resetKind);
             RegisterSnapshot registers = this.session.GetRegisters();
             return DebugEnvelope<ResetReceipt>.Create(new ResetReceipt(resetKind, checked((uint)registers.ProgramCounter)));

@@ -285,6 +285,24 @@ public interface ITrapRegistry
     bool UnregisterLanguageCardRam(Addr address, TrapOperation operation);
 
     /// <summary>
+    /// Unregisters one slot-dependent call trap.
+    /// </summary>
+    /// <param name="address">The address to unregister.</param>
+    /// <param name="slot">The slot whose trap is removed. The range is 1-7.</param>
+    /// <returns>
+    /// <see langword="true"/> when that slot's call trap was removed;
+    /// <see langword="false"/> when no slot-dependent call trap was registered there.
+    /// </returns>
+    /// <remarks>
+    /// <see cref="Unregister(Addr)"/> removes the slot-independent trap only.
+    /// Firmware traps registered with <c>RegisterSlotDependent</c> use this method.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="slot"/> is not in the range 1-7.
+    /// </exception>
+    bool UnregisterSlotDependent(Addr address, int slot);
+
+    /// <summary>
     /// Unregisters the slot-dependent traps for one slot.
     /// </summary>
     /// <param name="slot">The slot number (1-7).</param>

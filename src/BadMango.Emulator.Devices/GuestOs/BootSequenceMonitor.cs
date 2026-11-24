@@ -46,7 +46,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
     private readonly List<BootMilestone> milestones = [];
     private readonly Dictionary<ushort, int> nextStep = [];
     private readonly HashSet<ushort> ramTraps = [];
-    private readonly List<ushort> firmwareAddresses = [];
+    private readonly List<FirmwareTrap> firmwareTraps = [];
 
     private IMachine? machine;
     private ITrapRegistry? registry;
@@ -158,14 +158,35 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
         return info;
     }
 
-    /// <inheritdoc />
-    public void OnResetAsserted(Cycle cycle)
+    /// <summary>
+    /// Clears the milestone log and returns the boot stage machine to a fresh boot.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Drops every milestone, the active profile, and the re-entry count, and sets
+    /// <see cref="Stage"/> to <see cref="GuestOsBootStage.None"/>. Firmware traps are armed again.
+    /// A monitor that had reached a terminal stage had removed them, so the next <c>$Cn00</c> entry
+    /// is the first milestone of the new boot.
+    /// </para>
+    /// <para>
+    /// RESET calls this. A logged boot or cold reset also calls it when the monitor is already
+    /// installed, so the previous boot is dropped before the new one is recorded. The detector's
+    /// last result is left as it is.
+    /// </para>
+    /// </remarks>
+    public void PrepareForBoot()
     {
-        this.logger.Debug("Guest OS boot watch reset at cycle {Cycle}.", cycle.Value);
         this.DisarmRam();
         this.DisarmFirmware();
         this.ClearBoot();
         this.ArmFirmware();
+    }
+
+    /// <inheritdoc />
+    public void OnResetAsserted(Cycle cycle)
+    {
+        this.logger.Debug("Guest OS boot watch reset at cycle {Cycle}.", cycle.Value);
+        this.PrepareForBoot();
     }
 
     /// <inheritdoc />
@@ -243,7 +264,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
                 TrapCategory.OperatingSystem,
                 (cpu, _, context) => this.OnFirmware(capturedSlot, cardName, cpu, context),
                 "Observe-only boot firmware entry.");
-            this.firmwareAddresses.Add(address);
+            this.firmwareTraps.Add(new FirmwareTrap(address, capturedSlot));
         }
     }
 
@@ -251,13 +272,13 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
     {
         if (this.registry is not null)
         {
-            foreach (var address in this.firmwareAddresses)
+            foreach (var trap in this.firmwareTraps)
             {
-                this.registry.Unregister(address);
+                this.registry.UnregisterSlotDependent(trap.Address, trap.Slot);
             }
         }
 
-        this.firmwareAddresses.Clear();
+        this.firmwareTraps.Clear();
     }
 
     private void ArmRam(ushort address)
@@ -553,6 +574,8 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
         this.stage = next;
         this.StageChanged?.Invoke(this, new GuestOsBootStageChangedEventArgs(previous, next));
     }
+
+    private readonly record struct FirmwareTrap(ushort Address, int Slot);
 
     private readonly record struct MilestoneStep(BootMilestoneKind[] Kinds)
     {

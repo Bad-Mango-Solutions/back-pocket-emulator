@@ -178,6 +178,58 @@ public sealed class LifecycleMcpClientTests
     }
 
     /// <summary>
+    /// <c>reset</c> with <c>log</c> installs the boot monitor for a cold reset, and rejects a warm reset.
+    /// </summary>
+    /// <returns>A task that completes when the assertions finish.</returns>
+    [Test]
+    public async Task Reset_LogOnColdReset_InstallsTheBootMonitor_AndWarmLogIsAnError()
+    {
+        string sandbox = Directory.CreateTempSubdirectory("mcp-log-").FullName;
+        try
+        {
+            WriteRom(sandbox, "mcp-log.json", 0xEA, 0xEA, 0xDB);
+            await using McpSession session = await McpSession.StartAsync(sandbox);
+            await session.CallAsync("load_profile", new Dictionary<string, object?>
+            {
+                ["name"] = "mcp-log",
+            });
+
+            CallToolResult warm = await session.Client.CallToolAsync(
+                "reset",
+                new Dictionary<string, object?>
+                {
+                    ["kind"] = "Warm",
+                    ["log"] = true,
+                });
+            Assert.That(warm.IsError, Is.True);
+            Assert.That(string.Join('\n', warm.Content), Does.Contain("cold").IgnoreCase);
+
+            JsonElement before = await session.CallAsync("get_guest_os");
+            Assert.That(before.GetProperty("reason").GetString(), Is.EqualTo("Guest OS detection is off."));
+
+            await session.CallAsync("reset", new Dictionary<string, object?>
+            {
+                ["kind"] = "Hard",
+                ["log"] = true,
+            });
+            JsonElement afterHard = await session.CallAsync("get_guest_os");
+            Assert.That(afterHard.GetProperty("reason").GetString(), Is.Not.EqualTo("Guest OS detection is off."));
+
+            await session.CallAsync("reset", new Dictionary<string, object?>
+            {
+                ["kind"] = "PowerOn",
+                ["log"] = true,
+            });
+            JsonElement afterPowerOn = await session.CallAsync("get_guest_os");
+            Assert.That(afterPowerOn.GetProperty("reason").GetString(), Is.Not.EqualTo("Guest OS detection is off."));
+        }
+        finally
+        {
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// An absolute profile path outside the sandbox is rejected.
     /// </summary>
     /// <returns>A task that completes when the assertions finish.</returns>
