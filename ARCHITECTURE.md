@@ -97,7 +97,7 @@ The child architecture pages are tracked by issue; landed pages link to their ca
 | [#539](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/539) | [`specs/architecture/cpu.md`](specs/architecture/cpu.md) | landed |
 | [#540](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/540) | `specs/architecture/cpu-65816.md` | pending |
 | [#541](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/541) | `specs/architecture/cpu-65832.md` | pending |
-| [#542](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/542) | `specs/architecture/bus-mmu.md` | pending |
+| [#542](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/542) | [`specs/architecture/bus-mmu.md`](specs/architecture/bus-mmu.md) | landed |
 | [#543](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/543) | [`specs/architecture/signals.md`](specs/architecture/signals.md) | landed |
 | [#544](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/544) | `specs/architecture/scheduler.md` | pending |
 | [#545](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/545) | `specs/architecture/devices.md` | pending |
