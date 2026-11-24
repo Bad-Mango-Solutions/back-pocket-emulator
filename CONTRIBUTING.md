@@ -47,7 +47,7 @@ This project is committed to providing a welcoming and inclusive environment for
 
 ### Prerequisites
 
-- [.NET 10.0 SDK](https://dotnet.microsoft.com/download) or later
+- [.NET 11.0 SDK](https://dotnet.microsoft.com/download/dotnet/11.0) (pinned to 11.0.100 by `global.json`)
 - Git
 - A code editor (Visual Studio, VS Code, Rider, etc.)
 
@@ -83,11 +83,11 @@ This project is committed to providing a welcoming and inclusive environment for
 
 ### Dependency Management
 
-Package versions are centralized in `Directory.Packages.props` using NuGet Central Package Management (CPM). Dependabot watches the repo weekly for `nuget` and `github-actions` updates, grouping minor and patch bumps to keep PRs small while leaving major-version updates separate. We intentionally stay on the .NET 10 LTS line, so major updates for packages whose versions track the .NET release line (for example `Microsoft.Extensions.*` and `Microsoft.CodeAnalysis.NetAnalyzers`) are ignored until the project deliberately moves to a newer LTS target.
+Package versions are centralized in `Directory.Packages.props` using NuGet Central Package Management (CPM). Dependabot watches the repo weekly for `nuget` and `github-actions` updates, grouping minor and patch bumps to keep PRs small while leaving major-version updates separate. The solution targets `net11.0`. Major updates for `Microsoft.Extensions.*` and `Microsoft.CodeAnalysis.*` stay ignored in `.github/dependabot.yml` until the next deliberate framework move. `Serilog.Extensions.*` and `Serilog.Settings.Configuration` are not ignored; those packages track the runtime line.
 
 ## Project Structure
 
-`BackPocketEmulator.slnx` is the solution (.NET 10, NUnit, StyleCop). On disk, every project is a direct child of `src/` or `tests/`. The solution also groups those projects into virtual folders for the IDE (`/src/emulator/`, `/src/emulator/infrastructure/`, `/src/emulator/ui/`, and `/tests/`).
+`BackPocketEmulator.slnx` is the solution (.NET 11, NUnit, StyleCop). On disk, every project is a direct child of `src/` or `tests/`. The solution also groups those projects into virtual folders for the IDE (`/src/emulator/`, `/src/emulator/infrastructure/`, `/src/emulator/ui/`, and `/tests/`).
 
 The Applesoft BASIC interpreter (`BadMango.Basic`, `BadMango.Basic.Console`, and `BadMango.Basic.Tests`) moved to [back-pocket-basic-legacy](https://github.com/Bad-Mango-Solutions/back-pocket-basic-legacy).
 
@@ -293,6 +293,18 @@ public int Step()
 - Best-effort teardown (`Dispose`, `finally`) may continue past failures but should still log them
 - When translating an exception, keep the original as the `InnerException`; rethrow unchanged with `throw;`
 - Use guard helpers such as `ArgumentNullException.ThrowIfNull` instead of hand-written argument checks
+
+### Performance Guidelines
+
+- Keep the CPU/bus data plane allocation-free on hot paths. Measure allocation-sensitive changes with the existing benchmarks and tests; do not introduce per-access allocations for routine memory reads or writes.
+- The bus page table is an array: use `PageEntry[]` and direct page/byte indexes for O(1) lookup rather than dictionaries on the hot path.
+- A CPU/bus fast-path hit does not build `BusAccess`. It indexes the published live backing array and falls back to the existing checked or decomposed path only on a miss.
+- Pass large structs such as `BusAccess` with `in`; the struct itself is immutable and may be inspected without copying.
+- Keep diagnostic tracing behind its enabled check so it adds no work to the fast path when tracing is disabled.
+
+The target location for the CPU/bus fast-path implementation is `src/BadMango.Emulator.Core`; the namespaces remain `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation.Cpu`.
+
+> **Current location (until #562):** `src/BadMango.Emulator.Bus` and `src/BadMango.Emulator.Emulation`; target: `src/BadMango.Emulator.Core` (namespaces unchanged).
 
 ### Naming Conventions
 

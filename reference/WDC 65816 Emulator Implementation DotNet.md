@@ -1,16 +1,16 @@
-# Implementation Plan for a 65816 Emulator in C# 14 and .NET 10.0
+# Implementation Plan for a 65816 Emulator in C# 14 and .NET 11.0
 
 ------
 
 ## Introduction
 
-The Western Design Center 65816 (W65C816) is a 16-bit microprocessor renowned for its use in systems such as the Super Nintendo Entertainment System (SNES) and Apple IIGS. Emulating the 65816 presents unique challenges due to its rich instruction set, banked memory model, multiple operating modes, and cycle-accurate timing requirements. With the advent of C# 14 and .NET 10.0, developers have access to advanced language features and runtime optimizations that can significantly enhance emulator performance, maintainability, and observability.
+The Western Design Center 65816 (W65C816) is a 16-bit microprocessor renowned for its use in systems such as the Super Nintendo Entertainment System (SNES) and Apple IIGS. Emulating the 65816 presents unique challenges due to its rich instruction set, banked memory model, multiple operating modes, and cycle-accurate timing requirements. With the advent of C# 14 and .NET 11.0, developers have access to advanced language features and runtime optimizations that can significantly enhance emulator performance, maintainability, and observability.
 
-This report presents a comprehensive, technically rigorous implementation plan for building a 65816 emulator using C# 14 and .NET 10.0. It covers recommended language features, .NET APIs, architectural patterns, performance optimizations, diagnostics, interoperability, and testing strategies. The plan is tailored for experienced .NET developers and draws on both the latest platform capabilities and best practices from the emulator development community.
+This report presents a comprehensive, technically rigorous implementation plan for building a 65816 emulator using C# 14 and .NET 11.0. It covers recommended language features, .NET APIs, architectural patterns, performance optimizations, diagnostics, interoperability, and testing strategies. The plan is tailored for experienced .NET developers and draws on both the latest platform capabilities and best practices from the emulator development community.
 
 ------
 
-## 1. C# 14 and .NET 10.0 Features for 65816 Emulation
+## 1. C# 14 and .NET 11.0 Features for 65816 Emulation
 
 ### 1.1 Instruction Decoding and Dispatch
 
@@ -22,7 +22,7 @@ This report presents a comprehensive, technically rigorous implementation plan f
 - **Source Generators:** Use source generators to auto-generate instruction dispatch tables and boilerplate code, reducing manual errors and improving maintainability.
 - **Extension Members:** C# 14's extension members allow for clean separation of instruction logic and CPU state, enabling modular design.
 
-#### .NET 10.0 APIs
+#### .NET 11.0 APIs
 
 - **Span and ReadOnlySpan:** For zero-allocation, high-performance memory access during instruction fetch and decode.
 - **MemoryMarshal:** For advanced memory manipulation when decoding variable-length instructions.
@@ -63,7 +63,7 @@ The 65816 supports a 24-bit address space (16 MB) via banked memory, with comple
 - **Ref Structs and Span:** Use `ref struct` types and `Span<T>` for stack-only, high-performance memory access, especially for temporary buffers and direct page operations.
 - **Extension Members:** Implement extension methods for common memory access patterns (e.g., read/write 8/16/24-bit values).
 
-#### .NET 10.0 APIs
+#### .NET 11.0 APIs
 
 - **Memory and MemoryPool:** For pooled, reusable memory buffers, especially when emulating large RAM/ROM regions.
 - **ArrayPool:** For efficient allocation of temporary arrays, reducing GC pressure.
@@ -97,7 +97,7 @@ public sealed class MemoryMap
 ```
 
 **Analysis:**
- By organizing memory as an array of banks, address translation is efficient and direct. Using `ref byte` and `Span<byte>` enables high-performance, zero-copy access to memory regions. Memory pooling APIs in .NET 10.0 further reduce allocation overhead for temporary buffers.
+ By organizing memory as an array of banks, address translation is efficient and direct. Using `ref byte` and `Span<byte>` enables high-performance, zero-copy access to memory regions. Memory pooling APIs in .NET 11.0 further reduce allocation overhead for temporary buffers.
 
 ------
 
@@ -196,7 +196,7 @@ Cycle-accurate emulation is essential for compatibility with timing-sensitive so
 - **User-Defined Compound Assignment Operators:** For concise cycle counter updates.
 - **Partial Methods:** For optional cycle hooks (e.g., for debugging or profiling).
 
-#### .NET 10.0 APIs
+#### .NET 11.0 APIs
 
 - **High-Resolution Timer APIs:** For real-time throttling (e.g., `System.Diagnostics.Stopwatch`).
 - **Task.Delay and ValueTask:** For cooperative throttling in UI or async scenarios.
@@ -327,7 +327,7 @@ Robust exception handling is vital for emulator stability and diagnostics:
 
 **Structured logging** is essential for debugging, profiling, and user support.
 
-#### .NET 10.0 APIs
+#### .NET 11.0 APIs
 
 - **ILogger and Microsoft.Extensions.Logging:** For high-performance, structured, and configurable logging.
 - **EventSource:** For high-throughput, structured event tracing, integrates with ETW and EventPipe.
@@ -697,7 +697,7 @@ public class InstructionBenchmarks
 
 ## Conclusion
 
-Building a high-performance, accurate 65816 emulator in C# 14 and .NET 10.0 is both feasible and advantageous, thanks to modern language features, runtime optimizations, and a rich ecosystem of diagnostics and testing tools. By leveraging pattern matching, records, source generators, Span, SIMD, and structured logging, developers can create an emulator that is robust, maintainable, and extensible.
+Building a high-performance, accurate 65816 emulator in C# 14 and .NET 11.0 is both feasible and advantageous, thanks to modern language features, runtime optimizations, and a rich ecosystem of diagnostics and testing tools. By leveraging pattern matching, records, source generators, Span, SIMD, and structured logging, developers can create an emulator that is robust, maintainable, and extensible.
 
 A modular architecture, comprehensive test coverage, and integration with .NET diagnostics ensure both correctness and observability. Public APIs, scripting interfaces, and UI integration enable broad interoperability and user engagement. By following the recommendations and patterns outlined in this plan, .NET developers can deliver a state-of-the-art 65816 emulator suitable for research, preservation, and retrocomputing enthusiasts.
 
@@ -706,17 +706,17 @@ A modular architecture, comprehensive test coverage, and integration with .NET d
 **Key Takeaways:**
 
 - Use C# 14 features (pattern matching, records, extension members, source generators) for expressive, maintainable code.
-- Leverage .NET 10.0 APIs (Span, MemoryPool, SIMD, EventSource) for performance and diagnostics.
+- Leverage .NET 11.0 APIs (Span, MemoryPool, SIMD, EventSource) for performance and diagnostics.
 - Architect the emulator with clear separation of concerns: CPU, memory, bus, peripherals, diagnostics, interop.
 - Employ cycle-accurate emulation with configurable throttling for timing-sensitive applications.
 - Integrate structured logging, eventing, and diagnostics for observability and debugging.
 - Expose public APIs and scripting interfaces for extensibility and integration.
 - Rigorously test with open-source test vectors and benchmark with BenchmarkDotNet.
 
-By adhering to these principles and leveraging the latest .NET technologies, your 65816 emulator will be performant, accurate, and ready for the demands of modern retrocomputing. Absolutely — I’ll tailor the 65816 emulator implementation plan specifically for C# 14 and .NET 10.0, with a focus on:
+By adhering to these principles and leveraging the latest .NET technologies, your 65816 emulator will be performant, accurate, and ready for the demands of modern retrocomputing. Absolutely — I’ll tailor the 65816 emulator implementation plan specifically for C# 14 and .NET 11.0, with a focus on:
 
 - 🧠 **Modern C# features** like required members, primary constructors, and pattern matching
-- ⚙️ **.NET 10 APIs** for memory, diagnostics, and performance
+- ⚙️ **.NET 11 APIs** for memory, diagnostics, and performance
 - 📊 **Observability** via structured logging, eventing, and diagnostics integration
 - ⏱️ **Cycle-accurate throttling** using `System.Diagnostics.Stopwatch` and `Task.Delay`
 - 🧩 **Interoperability** with Avalonia, WinForms, or scripting via Roslyn
