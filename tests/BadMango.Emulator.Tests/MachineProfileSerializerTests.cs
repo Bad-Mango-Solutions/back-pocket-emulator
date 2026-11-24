@@ -355,7 +355,6 @@ public class MachineProfileSerializerTests
         // Assert
         Assert.That(json, Does.Contain("\"boot\""));
         Assert.That(json, Does.Contain("\"autoStart\""));
-        Assert.That(json, Does.Contain("\"startupSlot\""));
     }
 
     /// <summary>
@@ -374,7 +373,6 @@ public class MachineProfileSerializerTests
         // Assert
         Assert.That(deserialized.Boot, Is.Not.Null);
         Assert.That(deserialized.Boot!.AutoStart, Is.True);
-        Assert.That(deserialized.Boot.StartupSlot, Is.EqualTo(6));
     }
 
     /// <summary>
@@ -399,7 +397,7 @@ public class MachineProfileSerializerTests
                 ]
               },
               "boot": {
-                "startupSlot": 6
+                "autoVideoWindowOpen": true
               }
             }
             """;
@@ -408,7 +406,7 @@ public class MachineProfileSerializerTests
 
         Assert.That(deserialized.Boot, Is.Not.Null);
         Assert.That(deserialized.Boot!.AutoStart, Is.False);
-        Assert.That(deserialized.Boot.StartupSlot, Is.EqualTo(6));
+        Assert.That(deserialized.Boot.AutoVideoWindowOpen, Is.True);
     }
 
     /// <summary>
@@ -440,7 +438,7 @@ public class MachineProfileSerializerTests
         // Assert
         Assert.That(json, Does.Contain("\"composite\""));
         Assert.That(json, Does.Contain("\"handler\""));
-        Assert.That(json, Does.Contain("\"pocket2e-io\""));
+        Assert.That(json, Does.Contain("\"composite-io\""));
     }
 
     /// <summary>
@@ -460,7 +458,7 @@ public class MachineProfileSerializerTests
         Assert.That(deserialized.Memory.Regions, Has.Count.EqualTo(2));
         var ioRegion = deserialized.Memory.Regions![1];
         Assert.That(ioRegion.Type, Is.EqualTo("composite"));
-        Assert.That(ioRegion.Handler, Is.EqualTo("pocket2e-io"));
+        Assert.That(ioRegion.Handler, Is.EqualTo("composite-io"));
     }
 
     /// <summary>
@@ -753,7 +751,6 @@ public class MachineProfileSerializerTests
         profile.Boot = new()
         {
             AutoStart = true,
-            StartupSlot = 6,
         };
         return profile;
     }
@@ -767,7 +764,7 @@ public class MachineProfileSerializerTests
             Type = "composite",
             Start = "0xC000",
             Size = "0x1000",
-            Handler = "pocket2e-io",
+            Handler = "composite-io",
         });
         return profile;
     }
@@ -887,7 +884,7 @@ public class MachineProfileSerializerTests
                         Type = "composite",
                         Start = "0xC000",
                         Size = "0x1000",
-                        Handler = "pocket2e-io",
+                        Handler = "composite-io",
                     },
                 ],
                 SwapGroups =
@@ -951,7 +948,6 @@ public class MachineProfileSerializerTests
                 ],
                 Slots = new()
                 {
-                    IoRegion = "io-page",
                     Enabled = true,
                     InternalC3Rom = true,
                     InternalCxRom = false,
@@ -968,7 +964,6 @@ public class MachineProfileSerializerTests
             Boot = new()
             {
                 AutoStart = true,
-                StartupSlot = 6,
             },
         };
     }

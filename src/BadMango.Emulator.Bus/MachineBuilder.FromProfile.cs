@@ -116,18 +116,25 @@ public sealed partial class MachineBuilder
             }
         }
 
-        // Configure slot cards (from the devices.slots section)
-        if (profile.Devices?.Slots is { Enabled: true } slotProfile)
+        // Configure slot cards (from the devices.slots section).
+        // internalC3Rom / internalCxRom select the composite handler's initial overlay
+        // even when the slot system itself is disabled.
+        if (profile.Devices?.Slots is { } slotProfile)
         {
-            var (cards, runtimeState) = ResolveEffectiveSlotCards(slotProfile);
-            if (runtimeState is not null)
-            {
-                AddComponent(runtimeState);
-            }
+            AddComponent(new ProfileSlotRomSelection(slotProfile.InternalC3Rom, slotProfile.InternalCxRom));
 
-            foreach (var cardEntry in cards)
+            if (slotProfile.Enabled)
             {
-                ConfigureSlotCard(cardEntry, romImages);
+                var (cards, runtimeState) = ResolveEffectiveSlotCards(slotProfile);
+                if (runtimeState is not null)
+                {
+                    AddComponent(runtimeState);
+                }
+
+                foreach (var cardEntry in cards)
+                {
+                    ConfigureSlotCard(cardEntry, romImages);
+                }
             }
         }
 
@@ -761,9 +768,10 @@ public sealed partial class MachineBuilder
             var target = targetFactory(this);
 
             // If the target implements IInternalRomHandler, register it as a component
-            // so devices like Extended80ColumnDevice can access it
+            // so devices like Extended80ColumnDevice can access it.
             if (target is IInternalRomHandler internalRomHandler)
             {
+                ApplyProfileSlotRomSelection(internalRomHandler);
                 AddComponent<IInternalRomHandler>(internalRomHandler);
             }
 
@@ -783,6 +791,19 @@ public sealed partial class MachineBuilder
                 target: target,
                 physicalBase: 0);
         });
+    }
+
+    private void ApplyProfileSlotRomSelection(IInternalRomHandler handler)
+    {
+        foreach (object component in components)
+        {
+            if (component is ProfileSlotRomSelection selection)
+            {
+                handler.SetIntC3Rom(selection.InternalC3Rom);
+                handler.SetIntCxRom(selection.InternalCxRom);
+                return;
+            }
+        }
     }
 
     private void ConfigureRamRegion(MemoryRegionProfile region, uint start, uint size, PagePerms perms)

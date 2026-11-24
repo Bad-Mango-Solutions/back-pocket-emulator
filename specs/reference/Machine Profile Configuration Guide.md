@@ -398,7 +398,7 @@ For backward compatibility, profiles may still provide only `cards` with no name
 
 | Field | Description |
 |-------|-------------|
-| `io-region` | Name of the composite I/O region from `memory.regions` |
+| `io-region` | Accepted by the schema and not applied. The composite region's `handler` selects the I/O page |
 | `enabled` | Enable/disable slot system |
 | `internalC3Rom` | Use internal ROM at $C300 instead of slot 3 card |
 | `internalCxRom` | Use internal ROM at $C100-$CFFF instead of peripheral ROMs |
@@ -454,7 +454,7 @@ The `boot` section controls startup behavior.
 |-------|-------------|
 | `autoStart` | Start emulation automatically when profile loads (default: `false`; omitted means stay powered off) |
 | `autoVideoWindowOpen` | Open the video display window automatically |
-| `startupSlot` | (Optional) Slot number to boot from (e.g., 6 for disk) |
+| `startupSlot` | Accepted by the schema and not applied. Guest ROM autostart owns the boot slot |
 | `powerOnMemory.pattern` | Power-on RAM pattern: `zero`, `apple-iie`, `alternating-00-ff`, or `random` |
 | `powerOnMemory.seed` | (Optional) Deterministic seed; omitted uses a host-clock seed for each power-on |
 

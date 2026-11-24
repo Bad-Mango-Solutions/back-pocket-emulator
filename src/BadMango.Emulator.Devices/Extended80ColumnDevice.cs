@@ -109,6 +109,8 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
     private bool intcxrom;      // INTCXROM: Internal ROM at $C100-$CFFF
     private bool altzp;         // ALTZP: Alternate zero page/stack
     private bool slotc3rom;     // SLOTC3ROM: Slot 3 ROM (false = internal ROM at $C300)
+    private bool powerOnIntCxRom;
+    private bool powerOnSlotC3Rom;
     private bool col80;         // 80COL: 80-column display mode
     private bool page2;         // PAGE2: Page 2 selected (affects 80STORE)
     private bool hires;         // HIRES: Hi-res mode (affects 80STORE)
@@ -320,13 +322,21 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
             slotManager.RegisterInternalExpansionRom(3, GetExpansionRomTarget());
         }
 
-        // Set initial state: all switches disabled (main RAM visible)
+        // Profile selection, when present, is the power-on INTCXROM / SLOTC3ROM state.
+        // Absent selection keeps the hardware default: internal $C300 ROM on, INTCXROM off.
+        ProfileSlotRomSelection? slotRomSelection = context.GetComponent<ProfileSlotRomSelection>();
+        if (slotRomSelection is not null)
+        {
+            powerOnIntCxRom = slotRomSelection.InternalCxRom;
+            powerOnSlotC3Rom = !slotRomSelection.InternalC3Rom;
+        }
+
         store80 = false;
         ramrd = false;
         ramwrt = false;
-        intcxrom = false;
+        intcxrom = powerOnIntCxRom;
         altzp = false;
-        slotc3rom = false;
+        slotc3rom = powerOnSlotC3Rom;
         col80 = false;
         page2 = false;
         hires = false;
@@ -373,9 +383,9 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
         store80 = false;
         ramrd = false;
         ramwrt = false;
-        intcxrom = false;
+        intcxrom = powerOnIntCxRom;
         altzp = false;
-        slotc3rom = false;
+        slotc3rom = powerOnSlotC3Rom;
         col80 = false;
         page2 = false;
         hires = false;
@@ -420,9 +430,9 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
         store80 = false;
         ramrd = false;
         ramwrt = false;
-        intcxrom = false;
+        intcxrom = powerOnIntCxRom;
         altzp = false;
-        slotc3rom = false;
+        slotc3rom = powerOnSlotC3Rom;
         page2 = false;
         hires = false;
 

@@ -29,9 +29,9 @@ public sealed class SlotSystemProfile
     /// Gets or sets the name of the composite region that handles I/O.
     /// </summary>
     /// <remarks>
-    /// This references a composite region defined in the memory regions array.
-    /// The slot manager uses this to find and configure the I/O page handler.
-    /// Example: "io-page".
+    /// Retained so an existing document that still contains <c>io-region</c> deserializes.
+    /// The slot manager does not look up a region by this name. The composite region's
+    /// <c>handler</c> selects the I/O page target.
     /// </remarks>
     [JsonPropertyName("io-region")]
     public string? IoRegion { get; set; }

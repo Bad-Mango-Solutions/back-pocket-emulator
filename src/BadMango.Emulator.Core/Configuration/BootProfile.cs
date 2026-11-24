@@ -37,9 +37,9 @@ public sealed class BootProfile
     /// Gets or sets the slot to boot from.
     /// </summary>
     /// <remarks>
-    /// If specified, the machine attempts to boot from this slot (1-7).
-    /// Typically slot 6 for disk drives. If <see langword="null"/>, the machine
-    /// uses the default boot sequence.
+    /// Retained so an existing document that still contains <c>startupSlot</c> deserializes.
+    /// Profile loading, machine startup, and boot do not read it.
+    /// Disk autostart is guest ROM code reached through the reset vector.
     /// </remarks>
     [JsonPropertyName("startupSlot")]
     public int? StartupSlot { get; set; }

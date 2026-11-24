@@ -178,32 +178,32 @@ when it has a logger. Region type `io` throws `NotSupportedException`. Region
 start, size, and source offset must be 4 KB aligned.
 
 `memory.swapGroups` and `memory.controllers` deserialize onto
-`MemoryProfileSection` and have no reader in `FromProfile`.
-`devices.slots.internalC3Rom`, `internalCxRom`, and `io-region` likewise
-deserialize and are not read by the builder. The composite handler name on the
-region is what selects the I/O target.
+`MemoryProfileSection` and have no reader in `FromProfile`. Language-card
+banking and auxiliary RAM are the `languagecard` and `extended80column`
+motherboard devices, which allocate their own memory. `devices.slots.internalC3Rom`
+and `internalCxRom` are applied to the composite I/O handler, and to the extended
+80-column card's power-on state when that device is present. `devices.slots.io-region`
+deserializes and is not read; the composite region's handler name selects the I/O
+target. `boot.startupSlot` deserializes and is not read. Guest ROM autostart owns
+the boot slot.
 
 | Profile | Clock (Hz) | Regions `FromProfile` maps | Devices and slots | Boot flags |
 | --- | --- | --- | --- | --- |
-| [`pocket2e.json`](../../profiles/pocket2e.json) | 1020484 | 48 KB RAM at `$0000`; composite handler `pocket2e-io` | Keyboard, speaker, video, game I/O; slot 4 `pocketwatch`; slot 6 `disk-ii-compatible` | `autoStart` true; `startupSlot` 6 |
-| [`pocket2e-a2-enh.json`](../../profiles/pocket2e-a2-enh.json) | 1020484 | 48 KB RAM, `composite-io`, 12 KB ROM at `$D000` | Keyboard, video, character, speaker, language card, game I/O, extended 80-column; slots 4 and 6 | `autoStart` false; `autoVideoWindowOpen` true; `startupSlot` 6 |
-| [`pocket2e-a2.json`](../../profiles/pocket2e-a2.json) | 1020484 | Same shape as the enhanced profile | Same motherboard set; slots 4 and 6 | `autoStart` false; `autoVideoWindowOpen` true; `startupSlot` 6 |
+| [`pocket2e.json`](../../profiles/pocket2e.json) | 1020484 | 48 KB RAM at `$0000`, `composite-io`, 12 KB ROM at `$D000` | Keyboard, speaker, video, game I/O; slot 4 `pocketwatch`; slot 6 `disk-ii-compatible` | `autoStart` true |
+| [`pocket2e-a2-enh.json`](../../profiles/pocket2e-a2-enh.json) | 1020484 | 48 KB RAM, `composite-io`, 12 KB ROM at `$D000` | Keyboard, video, character, speaker, language card, game I/O, extended 80-column; slots 4 and 6 | `autoStart` false; `autoVideoWindowOpen` true |
+| [`pocket2e-a2.json`](../../profiles/pocket2e-a2.json) | 1020484 | Same shape as the enhanced profile | Same motherboard set; slots 4 and 6 | `autoStart` false; `autoVideoWindowOpen` true |
 | [`pocket2e-devices.json`](../../profiles/pocket2e-devices.json) | 1020484 | 48 KB RAM, `composite-io`, 12 KB ROM at `$D000` | Keyboard, speaker, video, game I/O; slot 4 `pocketwatch` | `autoStart` false |
 | [`pocket2e-lite.json`](../../profiles/pocket2e-lite.json) | 1020484 | 48 KB RAM, `composite-io`, 12 KB ROM at `$D000` | Keyboard, video, character, speaker, language card; slot 4 `pocketwatch` | `autoStart` false; `autoVideoWindowOpen` true |
 | [`pocket2e-min.json`](../../profiles/pocket2e-min.json) | 1020484 | 48 KB RAM, `composite-io`, 12 KB ROM at `$D000` | No motherboard devices; `cards` is empty | `autoStart` false |
 | [`simple-65c02.json`](../../profiles/simple-65c02.json) | 1000000 | 64 KB RAM at `$0000` | None. `MachineProfileLoader.DefaultProfileName` is `simple-65c02` | No boot section |
 | [`simple-65c02-with-rom.json`](../../profiles/simple-65c02-with-rom.json) | 1000000 | 48 KB RAM and 16 KB ROM at `$C000` | None | No boot section |
 
-`pocket2e.json` also declares language-card and auxiliary physical blocks,
-`swapGroups`, and a `pocket2e-aux-controller`. `FromProfile` does not map those
-blocks or apply those groups. `MachineFactory` registers the handler name
-`composite-io` only. Nothing in `src/` registers `pocket2e-io`, so loading
-`pocket2e.json` through `MachineFactory` fails on that handler. The profiles
-whose composite handler is `composite-io` are the ones that factory can map.
-Where a profile lists `languagecard` or `extended80column`,
+`pocket2e.json` maps the same 48 KB RAM, `composite-io` page, and `$D000` ROM
+window as `pocket2e-devices.json`. It does not declare swap groups, an auxiliary
+controller, or language-card physical blocks. `MachineFactory` registers the
+handler name `composite-io`. Where a profile lists `languagecard` or `extended80column`,
 `RegisterStandardDeviceFactories` builds that device's own RAM during
-`ConfigureMemory`. That RAM is the device's allocation, not the unused physical
-blocks in `pocket2e.json`.
+`ConfigureMemory`. `pocket2e.json` does not declare those devices.
 
 ### Named slot sets
 
@@ -300,6 +300,7 @@ the ROM image. This repository has no boot loader that scans slots or jumps to
 `boot.autoStart` is read by `BootCommand.AutoStartProfileAsync`, which calls
 `BootAsync` only while the machine is `Off`. `boot.startupSlot` is stored on
 `BootProfile` and has no reader in the builder, `Machine`, or `BootCommand`.
+Shipped profiles omit it.
 `boot.autoVideoWindowOpen` opens the debugger video window from `BootCommand`.
 `boot.powerOnMemory` is applied by `MachineFactory.CreateDebugSystem` and is not
 applied by `CreateMachine`. No file under `profiles/` sets `powerOnMemory`.
@@ -511,5 +512,6 @@ implements `IEventContext`.
 - [`host-ui.md`](host-ui.md) — `bpui` and the debugger hosts.
 - [`Machine Profile Configuration Guide`](../reference/Machine%20Profile%20Configuration%20Guide.md)
   — field-level profile guide. `FromProfile` applies regions, motherboard
-  devices, slot cards, and named slot sets. It stores `internalC3Rom`,
-  `internalCxRom`, and `io-region` and does not use them to select slot ROM.
+  devices, slot cards, named slot sets, and the initial `internalC3Rom` /
+  `internalCxRom` selection. It stores `io-region` and does not use it to select
+  slot ROM.

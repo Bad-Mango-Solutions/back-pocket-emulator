@@ -241,12 +241,10 @@ The v1.0 `DiskIIExpansionTrap` sample is not a type in the tree.
 ## 8.3 ROM routine interception — Partly implemented
 
 The registry and the 65C02 fetch check exist. A built machine registers no
-traps. [`profiles/pocket2e-a2-enh.json`](../../profiles/pocket2e-a2-enh.json)
-and the other `composite-io` profiles under `profiles/` name `memory.rom-images`.
-They do not name trap handlers. [`profiles/pocket2e.json`](../../profiles/pocket2e.json)
-still names its I/O handler `pocket2e-io`. `MachineFactory` registers
-`composite-io` only, and no `Pocket2eIOPage` type is in the tree, so that
-profile's composite region has no factory.
+traps. Shipped profiles that declare a composite I/O region name the handler
+`composite-io`, including [`profiles/pocket2e.json`](../../profiles/pocket2e.json).
+They name `memory.rom-images` and do not name trap handlers. `MachineFactory`
+registers `composite-io` only.
 
 ### 8.3.1 Why trap ROM routines? — Partly implemented
 
