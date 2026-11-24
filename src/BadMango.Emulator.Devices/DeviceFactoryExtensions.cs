@@ -67,16 +67,19 @@ public static class DeviceFactoryExtensions
         /// <para>
         /// This method registers the "pocketwatch" slot card factory. When a profile
         /// includes a PocketWatch card in its <c>devices.slots.cards</c> section, this factory
-        /// creates a <see cref="PocketWatchCard"/> instance.
+        /// creates a <see cref="PocketWatchCard"/> from that card's <c>config</c> object.
+        /// A null or missing config keeps the card defaults.
         /// </para>
         /// <para>
         /// Prefer using <see cref="RegisterStandardDeviceFactories"/> which registers all
-        /// known device factories automatically.
+        /// known device factories automatically. That path deserializes the same config.
         /// </para>
         /// </remarks>
         public MachineBuilder RegisterPocketWatchCardFactory()
         {
-            return builder.RegisterSlotCardFactory("pocketwatch", (_, _) => new PocketWatchCard());
+            return builder.RegisterSlotCardFactory(
+                "pocketwatch",
+                (_, cardConfig) => PocketWatchCard.FromProfileConfig(cardConfig));
         }
 
         /// <summary>

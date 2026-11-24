@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Devices.Tests;
 
+using System.Text.Json;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Core.Configuration;
 
@@ -213,13 +215,97 @@ public class PocketWatchCardTests
         var rom = card.ROMRegion!;
         var ctx = CreateTestContext();
 
-        // Act - read identification bytes
+        // Act - read identification bytes and the generated stub entries
         var byte0 = rom.Read8(0x00, ctx);
         var byte2 = rom.Read8(0x02, ctx);
+        var byte4 = rom.Read8(0x04, ctx);
+        var byte6 = rom.Read8(0x06, ctx);
+        var readEntry = rom.Read8(0x08, ctx);
+        var writeEntry = rom.Read8(0x0B, ctx);
+        var slideEnd = rom.Read8(0xFB, ctx);
 
-        // Assert - Thunderclock identification bytes
-        Assert.That(byte0, Is.EqualTo(0x08));
-        Assert.That(byte2, Is.EqualTo(0x28));
+        // Assert - Thunderclock identification bytes, NOP entries, RTS at $CnFB
+        Assert.Multiple(() =>
+        {
+            Assert.That(byte0, Is.EqualTo(0x08));
+            Assert.That(byte2, Is.EqualTo(0x28));
+            Assert.That(byte4, Is.EqualTo(0x58));
+            Assert.That(byte6, Is.EqualTo(0x70));
+            Assert.That(readEntry, Is.EqualTo(0xEA));
+            Assert.That(writeEntry, Is.EqualTo(0xEA));
+            Assert.That(slideEnd, Is.EqualTo(0x60));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that the discovered pocketwatch factory honors a frozen profile config.
+    /// </summary>
+    [Test]
+    public void Factory_FrozenConfig_UsesConfiguredTime()
+    {
+        DeviceFactoryRegistry.EnsureInitialized();
+        using var document = JsonDocument.Parse(
+            """{"timeSource":"frozen","frozenTime":"1986-06-15T10:30:00","timezoneOffset":-300}""");
+
+        var factory = DeviceFactoryRegistry.SlotCardFactories["pocketwatch"];
+        var card = (PocketWatchCard)factory(null!, document.RootElement);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(card.UseHostTime, Is.False);
+            Assert.That(card.CurrentTime.Year, Is.EqualTo(1986));
+            Assert.That(card.CurrentTime.Month, Is.EqualTo(6));
+            Assert.That(card.CurrentTime.Day, Is.EqualTo(15));
+            Assert.That(card.CurrentTime.Hour, Is.EqualTo(10));
+            Assert.That(card.CurrentTime.Minute, Is.EqualTo(30));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a null profile config keeps the host-time default.
+    /// </summary>
+    [Test]
+    public void Factory_NullConfig_KeepsHostDefault()
+    {
+        DeviceFactoryRegistry.EnsureInitialized();
+
+        var factory = DeviceFactoryRegistry.SlotCardFactories["pocketwatch"];
+        var card = (PocketWatchCard)factory(null!, null);
+
+        Assert.That(card.UseHostTime, Is.True);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="PocketWatchCard.FromProfileConfig"/> applies a host timezone offset.
+    /// </summary>
+    [Test]
+    public void FromProfileConfig_TimezoneOffset_AppliesOffset()
+    {
+        using var document = JsonDocument.Parse(
+            """{"timeSource":"host","timezoneOffset":60}""");
+        var card = PocketWatchCard.FromProfileConfig(document.RootElement);
+        var expected = DateTimeOffset.UtcNow.AddMinutes(60).DateTime;
+
+        Assert.That(card.UseHostTime, Is.True);
+        Assert.That(card.CurrentTime, Is.EqualTo(expected).Within(TimeSpan.FromSeconds(2)));
+    }
+
+    /// <summary>
+    /// Verifies that a missing or non-object profile config keeps the defaults.
+    /// </summary>
+    [Test]
+    public void FromProfileConfig_MissingConfig_KeepsHostDefault()
+    {
+        using var document = JsonDocument.Parse("\"frozen\"");
+
+        var missing = PocketWatchCard.FromProfileConfig(null);
+        var notAnObject = PocketWatchCard.FromProfileConfig(document.RootElement);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(missing.UseHostTime, Is.True);
+            Assert.That(notAnObject.UseHostTime, Is.True);
+        });
     }
 
     /// <summary>

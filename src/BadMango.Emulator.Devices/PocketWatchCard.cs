@@ -4,9 +4,13 @@
 
 namespace BadMango.Emulator.Devices;
 
+using System.Text.Json;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Core;
 using BadMango.Emulator.Core.Configuration;
+using BadMango.Emulator.Core.Interfaces.Cpu;
 
 using Interfaces;
 
@@ -27,10 +31,37 @@ using Interfaces;
 /// <item><description>"ntp" - Uses NTP server polling (not yet implemented)</description></item>
 /// </list>
 /// </para>
+/// <para>
+/// ProDOS calls <c>JSR $Cn0B</c> (WRITE) to latch the time and <c>JSR $Cn08</c> (READ)
+/// to deposit the ASCII <c>mo,da,dt,hr,mn</c> string at <c>$0200</c>: month, weekday
+/// (Sunday is 00), day, hour, and minute, each two digits. Those entries are
+/// slot-dependent call traps, so the trap registry suppresses them while INTCXROM
+/// maps internal ROM over the slot. The slot image stays the generated stub.
+/// </para>
 /// </remarks>
 [DeviceType("pocketwatch")]
 public sealed class PocketWatchCard : IClockDevice
 {
+    /// <summary>
+    /// Offset of the ProDOS READ entry within the slot ROM page ($Cn08).
+    /// </summary>
+    private const uint ReadEntryOffset = 0x08;
+
+    /// <summary>
+    /// Offset of the ProDOS WRITE entry within the slot ROM page ($Cn0B).
+    /// </summary>
+    private const uint WriteEntryOffset = 0x0B;
+
+    /// <summary>
+    /// ProDOS clock-driver output buffer.
+    /// </summary>
+    private const Addr ProDosTimeBuffer = 0x0200;
+
+    /// <summary>
+    /// Cycles charged for a handled clock entry, before the CPU's RTS.
+    /// </summary>
+    private const ulong ClockTrapCycles = 6;
+
     /// <summary>
     /// The default frozen time when no valid frozen time is specified.
     /// </summary>
@@ -43,9 +74,11 @@ public sealed class PocketWatchCard : IClockDevice
     private DateTime fixedTime;
     private bool useHostTime = true;
     private int timezoneOffsetMinutes;
-
-    // Watch state
+    private int slotNumber;
     private int readIndex;
+    private bool clockTrapsRegistered;
+    private bool timeLatched;
+    private IEventContext? eventContext;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PocketWatchCard"/> class with default configuration.
@@ -89,7 +122,15 @@ public sealed class PocketWatchCard : IClockDevice
     // ─── ISlotCard ──────────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public int SlotNumber { get; set; }
+    public int SlotNumber
+    {
+        get => slotNumber;
+        set
+        {
+            slotNumber = value;
+            RegisterClockTraps();
+        }
+    }
 
     /// <inheritdoc />
     public SlotIOHandlers? IOHandlers => handlers;
@@ -123,6 +164,26 @@ public sealed class PocketWatchCard : IClockDevice
         set => useHostTime = value;
     }
 
+    /// <summary>
+    /// Creates a PocketWatch card from a profile card <c>config</c> object.
+    /// </summary>
+    /// <param name="cardConfig">
+    /// The <c>devices.slots.cards[].config</c> object, or <see langword="null"/> when the profile omits it.
+    /// </param>
+    /// <returns>
+    /// A card configured from <paramref name="cardConfig"/>. A null or non-object value keeps the defaults.
+    /// </returns>
+    public static PocketWatchCard FromProfileConfig(JsonElement? cardConfig)
+    {
+        if (cardConfig is not { ValueKind: JsonValueKind.Object } element)
+        {
+            return new();
+        }
+
+        PocketWatchConfig parsed = element.Deserialize<PocketWatchConfig>() ?? new();
+        return new(parsed);
+    }
+
     /// <inheritdoc />
     public void SetFixedTime(DateTime time)
     {
@@ -135,13 +196,15 @@ public sealed class PocketWatchCard : IClockDevice
     /// <inheritdoc />
     public void Initialize(IEventContext context)
     {
-        // PocketWatch doesn't need scheduler access
+        eventContext = context;
+        RegisterClockTraps();
     }
 
     /// <inheritdoc />
     public void Reset()
     {
         readIndex = 0;
+        timeLatched = false;
     }
 
     /// <inheritdoc />
@@ -154,6 +217,13 @@ public sealed class PocketWatchCard : IClockDevice
     public void OnExpansionROMDeselected()
     {
         // No expansion ROM
+    }
+
+    private static void WriteTwoDigits(ICpu cpu, Addr address, int value)
+    {
+        int clamped = Math.Clamp(value, 0, 99);
+        cpu.Write8(address, (byte)('0' + (clamped / 10)));
+        cpu.Write8(address + 1, (byte)('0' + (clamped % 10)));
     }
 
     private void ConfigureTimeSource()
@@ -233,5 +303,81 @@ public sealed class PocketWatchCard : IClockDevice
         timeData[5] = (byte)time.Second;
         timeData[6] = (byte)(year & 0xFF);
         timeData[7] = (byte)((year >> 8) & 0xFF);
+        timeLatched = true;
+    }
+
+    /// <summary>
+    /// Registers the ProDOS READ and WRITE call traps once the slot number and machine context are both known.
+    /// </summary>
+    /// <remarks>
+    /// Profile loading calls <see cref="Initialize"/> before the slot manager assigns
+    /// <see cref="SlotNumber"/>. Runtime insertion assigns the slot first. Either order
+    /// registers exactly once.
+    /// </remarks>
+    private void RegisterClockTraps()
+    {
+        if (clockTrapsRegistered || eventContext is null || slotNumber is < 1 or > 7)
+        {
+            return;
+        }
+
+        ITrapRegistry? registry = eventContext.GetComponent<ITrapRegistry>();
+        if (registry is null)
+        {
+            return;
+        }
+
+        Addr slotBase = 0xC000u + ((uint)slotNumber << 8);
+        registry.RegisterSlotDependent(
+            slotBase + WriteEntryOffset,
+            slotNumber,
+            "PW_WRITE",
+            TrapCategory.SlotFirmware,
+            HandleWriteEntry,
+            "PocketWatch WRITE entry: latch the time and return.");
+        registry.RegisterSlotDependent(
+            slotBase + ReadEntryOffset,
+            slotNumber,
+            "PW_READ",
+            TrapCategory.SlotFirmware,
+            HandleReadEntry,
+            "PocketWatch READ entry: write mo,da,dt,hr,mn at $0200 and return.");
+        clockTrapsRegistered = true;
+    }
+
+    private TrapResult HandleWriteEntry(ICpu cpu, IMemoryBus bus, IEventContext context)
+    {
+        ArgumentNullException.ThrowIfNull(cpu);
+        ArgumentNullException.ThrowIfNull(bus);
+        ArgumentNullException.ThrowIfNull(context);
+        LatchTime();
+        return TrapResult.Success(new Cycle(ClockTrapCycles));
+    }
+
+    private TrapResult HandleReadEntry(ICpu cpu, IMemoryBus bus, IEventContext context)
+    {
+        ArgumentNullException.ThrowIfNull(cpu);
+        ArgumentNullException.ThrowIfNull(bus);
+        ArgumentNullException.ThrowIfNull(context);
+        if (!timeLatched)
+        {
+            LatchTime();
+        }
+
+        WriteProDosTimeString(cpu);
+        return TrapResult.Success(new Cycle(ClockTrapCycles));
+    }
+
+    private void WriteProDosTimeString(ICpu cpu)
+    {
+        WriteTwoDigits(cpu, ProDosTimeBuffer, timeData[0]);
+        cpu.Write8(ProDosTimeBuffer + 2, (byte)',');
+        WriteTwoDigits(cpu, ProDosTimeBuffer + 3, timeData[1]);
+        cpu.Write8(ProDosTimeBuffer + 5, (byte)',');
+        WriteTwoDigits(cpu, ProDosTimeBuffer + 6, timeData[2]);
+        cpu.Write8(ProDosTimeBuffer + 8, (byte)',');
+        WriteTwoDigits(cpu, ProDosTimeBuffer + 9, timeData[3]);
+        cpu.Write8(ProDosTimeBuffer + 11, (byte)',');
+        WriteTwoDigits(cpu, ProDosTimeBuffer + 12, timeData[4]);
     }
 }
