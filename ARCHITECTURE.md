@@ -90,7 +90,7 @@ Versioned module host support is **not** claimed as implemented yet.
 
 ## Architecture pages and issue tracking
 
-The child architecture pages are tracked by issue until files land; planned paths are shown as code (not file links yet).
+The child architecture pages are tracked by issue; landed pages link to their canonical file paths, while planned pages remain status-pending.
 
 | Issue | Planned page path | Status |
 | --- | --- | --- |

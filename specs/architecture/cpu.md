@@ -100,7 +100,8 @@ signal is separate and holds RESET while the line is asserted.
 
 **Status: Partly implemented**
 
-`CpuFamily` names `Cpu65C02`, `Cpu65816`, and `Cpu65832`. `Cpu65816` and
+`CpuFamily` names `Cpu65C02`, `Cpu65C816`, and `Cpu65832`. The implementation
+class for the 65C816 family member is named `Cpu65816`; `Cpu65816` and
 `Cpu65832` are placeholders: `Step` and `Reset` throw
 `NotImplementedException`. They must not be described as runnable CPU
 implementations.
@@ -110,7 +111,7 @@ implementations.
 
 ## 1.2 Compatibility Layers
 
-**Status: Audit: Partly implemented**
+**Status: Partly implemented**
 
 The shared mode values are a compatibility-model implementation, not nested guest
 runtimes. `RegisterHelpers.GetArchitecturalMode` derives a mode from CP and E:
@@ -124,11 +125,11 @@ the built machine and uses `Cpu65C02`.
 
 ## 2.1 CPU Family Inheritance
 
-**Status: Audit: Partly implemented**
+**Status: Partly implemented**
 
 `ICpu` is the shared family contract. It exposes capabilities, registers,
-`Step`, `Reset`, IRQ/NMI signaling, halt state, and stop coordination. The audit
-form's `Family` and `CurrentMode` properties are not present on `ICpu`.
+`Step`, `Reset`, IRQ/NMI signaling, halt state, and stop coordination. The v1.0
+spec's `Family` and `CurrentMode` properties are not present on `ICpu`.
 `CpuFamily` is available separately and lists all three chips.
 
 Only `Cpu65C02.Step` executes instructions. `Cpu65816` and `Cpu65832` remain
@@ -136,7 +137,7 @@ explicitly unimplemented.
 
 ## 2.2 Register Models
 
-**Status: Audit: Implemented**
+**Status: Implemented**
 
 Every CPU variant shares one `Registers` struct. Effective widths are selected
 from the mode flags and status flags rather than by separate per-chip register
@@ -152,7 +153,7 @@ compatibility/native behavior, M/X.
 
 ### Unified Registers Structure
 
-**Status: Audit: Partly implemented**
+**Status: Partly implemented**
 
 The shared file contains `A`, `X`, `Y`, `D`, `SP`, `PC`, `P`, `E`, `CP`, `DBR`,
 `PBR`, `R0` through `R7`, and `System`. These fields match the unified-register
@@ -190,7 +191,7 @@ The shared `RegisterHelpers` extension methods implement:
 
 ### Mode Behavior Summary
 
-**Status: Audit: Partly implemented**
+**Status: Partly implemented**
 
 The effective-width helpers implement the 65C02, 65816, and 65832 columns for
 accumulator and index sizes. This does not make the companion CPUs runnable.
@@ -199,7 +200,7 @@ mode, and no CPU executes the 65832 column.
 
 ### Initialization Examples
 
-**Status: Audit: Partly implemented**
+**Status: Partly implemented**
 
 `Registers(bool compat, Word resetVector)` sets PC to the supplied reset vector,
 P to reset flags, and CP/E to compatibility/emulation values. It sets SP to
@@ -210,7 +211,7 @@ sets native flag values but does not implement a running native CPU.
 
 ### Usage in Instructions
 
-**Status: Audit: Partly implemented**
+**Status: Partly implemented**
 
 Instruction handlers use shared mode-aware register access, including
 `GetAccumulatorSize`, and the 65C02 table is the implementation that currently
@@ -219,7 +220,7 @@ handlers.
 
 ### Privilege Levels (65832)
 
-**Status: Audit: Partly implemented**
+**Status: Partly implemented**
 
 The 65832 `PrivilegeLevel` enum defines User, Kernel, and Hypervisor values, and
 CR0 control bits are represented in `SystemRegisters`. No running CPU checks
@@ -227,7 +228,7 @@ user-mode access to system registers or traps a privileged access.
 
 ## 4.10 CPU Fault Handling Pattern
 
-**Status: Audit: Partly implemented**
+**Status: Partly implemented**
 
 The 65C02 implementation does not contain `RaiseDataAbort` or `RaiseInstructionAbort`.
 The normative bus fault and fast-path behavior is in
@@ -250,7 +251,7 @@ Reset, including machine reset, does not change `AbortReaction`.
 
 ## Gap 3: CPU Interface for PC Access
 
-**Status: Audit: Implemented**
+**Status: Implemented**
 
 The separate PC-access API considered in the v1.0 text is not needed:
 `Cpu65C02.Reset` reads `$FFFC` itself and sets PC. `ICpu` also provides `GetPC`
@@ -258,7 +259,7 @@ and `SetPC` for inspection and debugger use.
 
 ## Gap 7: CPU Construction Parameters
 
-**Status: Audit: Implemented**
+**Status: Implemented**
 
 Machine construction uses `WithCpu` / `WithCpuFactory`; Pocket2e passes the
 machine event context to `Cpu65C02(context)`. The CPU therefore receives its bus,
@@ -267,7 +268,7 @@ than a direct unrelated constructor shape.
 
 ## Gap 8: Stop/Halt Coordination
 
-**Status: Audit: Implemented**
+**Status: Implemented**
 
 `ICpu` exposes stop coordination and `Cpu65C02` honors the stop request.
 `HaltState` distinguishes `Wai` and `Stp`, and `Machine` and the CPU share stop
