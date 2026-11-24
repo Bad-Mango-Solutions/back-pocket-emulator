@@ -42,63 +42,78 @@ $2000-$9A00   User program space
 
 ## ProDOS Global Page ($BF00-$BFFF)
 
-The global page contains system status and vectors.
+The global page contains system status and vectors. Layout below is the [ProDOS 8 Technical Reference Manual, §5.2.4](https://prodos8.com/docs/techref/writing-a-prodos-system-program/). The only address a program should call is `ENTRY`.
 
-### System Vectors
+### System entry points
 
-| Address | Name        | Description |
-|---------|-------------|-------------|
-| $BF00   | JSPARE      | Spare JMP (used by quit) |
-| $BF03   | DATETIME    | JMP to date/time update |
-| $BF06   | SYSERR      | JMP to error handler |
-| $BF09   | SYSDEATH    | JMP to fatal error handler |
-| $BF0C   | SELCXROM    | JMP to select CX ROM |
-| $BF0F   | Unused      | |
+| Address | Name | Size | Description | Source |
+|---------|------|------|-------------|--------|
+| $BF00 | ENTRY | 3 | `JMP` to the MLI. Call with `JSR $BF00`, then the command byte, then the parameter-list address. | TechRef §5.2.4 |
+| $BF03 | JSPARE | 3 | `JMP` toward cold start, a selector, or `SYS.RTS`. | TechRef §5.2.4 |
+| $BF06 | DATETIME | 3 | Clock routine. `$BF06` is `$60` (`RTS`) when no driver is installed, or `$4C` (`JMP`) when one is. The routine address lives at `$BF07`–`$BF08`. | TechRef §5.2.4 and [§6.1](https://prodos8.com/docs/techref/adding-routines-to-prodos/) |
+| $BF09 | SYSERR | 3 | `JMP` to the error-reporting hook. | TechRef §5.2.4 |
+| $BF0C | SYSDEATH | 3 | `JMP` to the system-failure hook. | TechRef §5.2.4 |
+| $BF0F | SERR | 1 | Last error code. `$00` means no error. | TechRef §5.2.4 |
 
-### Machine Identification
+### Machine identification and prefix
 
-| Address | Name        | Description |
-|---------|-------------|-------------|
-| $BF96   | MACHID      | Machine identification byte |
-| $BF97   | SESSION     | Session byte |
-| $BF98   | PFIXPTR     | Prefix buffer pointer |
-| $BF9A   | MEMTAESSION | Memory size (pages) |
+| Address | Name | Description | Source |
+|---------|------|-------------|--------|
+| $BF98 | MACHID | Machine identification byte. Bit layout below. | TechRef §5.2.4; [TN #11](https://prodos8.com/docs/technote/11/) |
+| $BF99 | SLTBYT | A set bit means a ROM was found in that slot. | TechRef §5.2.4 |
+| $BF9A | PFIXPTR | Nonzero when a prefix is active. | TechRef §5.2.4 |
+| $BF9B | MLIACTV | Nonzero while an MLI call is in progress. | TechRef §5.2.4 |
 
-#### MACHID Byte ($BF96)
+`$BF96`–`$BF97` are `SPARE1`, reserved for the MLI (TechRef §5.2.4). `MACHID` is the byte at `$BF98`. The memory bitmap is `MEMTABL` at `$BF58`–`$BF6F`.
 
-| Bit | Meaning (if set) |
-|-----|------------------|
-| 7-6 | Machine type: 00=II, 01=II+, 10=IIe, 11=IIc |
-| 5   | Reserved |
-| 4   | 80-column card present |
-| 3   | Memory > 64K |
-| 2   | Clock/calendar present |
-| 1   | Reserved |
-| 0   | Reserved |
+#### MACHID byte ($BF98)
 
-### Date/Time
+| Bits | Meaning | Source |
+|------|---------|--------|
+| 7–6 | Bit 3 clear: `00` = II, `01` = II+, `10` = IIe, `11` = III in emulation. Bit 3 set: `10` = IIc. The other bit-3-set combinations are not assigned. | TechRef §5.2.4 |
+| 5–4 | Memory: `01` = 48K, `10` = 64K, `11` = 128K. `00` is not assigned. | TechRef §5.2.4 |
+| 3 | Modifier for bits 7–6. Set selects the IIc line of the table above. | TechRef §5.2.4 |
+| 2 | Reserved. | TechRef §5.2.4 |
+| 1 | 80-column card. Always set on an Apple IIc (TechRef §5.3.1.3) and on an Apple IIgs (TN #11). | TechRef §5.2.4, §5.3.1.3; TN #11 |
+| 0 | A clock card ProDOS recognized. Always set on an Apple IIgs, because that clock cannot be switched out. | TechRef §5.2.4; TN #11 |
 
-| Address | Name      | Description |
-|---------|-----------|-------------|
-| $BF90   | DATE      | Date (2 bytes, ProDOS format) |
-| $BF92   | TIME      | Time (2 bytes, ProDOS format) |
+TN #11 states that an Apple IIgs, and an Apple IIe with an 80-column card and a clock card, both read as `$B3`. The TechRef does not publish one IIc constant. `$C3` is not an IIc id under this layout: bit 3 is clear and bits 7–6 are `11`, which is the Apple III emulation encoding.
 
-#### Date Format ($BF90-$BF91)
+### Date and time
 
-```
-Bits 15-9: Year (0-127, relative to 1900)
-Bits 8-5:  Month (1-12)
-Bits 4-0:  Day (1-31)
-```
+Four bytes, low byte first. The figure is in [TechRef §4.6.1](https://prodos8.com/docs/techref/calls-to-the-mli/) and [§6.1](https://prodos8.com/docs/techref/adding-routines-to-prodos/). The §5.2.4 listing comments are `BITS 15-9=YR, 8-5=MO, 4-0=DAY` and `BITS 12-8=HR, 5-0=MIN`.
 
-#### Time Format ($BF92-$BF93)
+| Address | Name | Contents | Source |
+|---------|------|----------|--------|
+| $BF90 | DATELO | Day in bits 4–0. Low three bits of the month in bits 7–5. | TechRef §4.6.1, §5.2.4, §6.1 |
+| $BF91 | DATEHI | High bit of the month in bit 0 (word bit 8). Year in bits 7–1 (word bits 15–9). | TechRef §4.6.1, §5.2.4, §6.1 |
+| $BF92 | TIMELO | Minute in bits 5–0 (0–59). Bits 7–6 unused. | TechRef §4.6.1, §5.2.4, §6.1 |
+| $BF93 | TIMEHI | Hour in bits 4–0 (0–23). Bits 7–5 of this byte are unused (word bits 15–13). | TechRef §4.6.1, §5.2.4, §6.1 |
 
-```
-Bits 15-13: Unused
-Bits 12-8:  Hour (0-23)
-Bits 7-6:   Unused
-Bits 5-0:   Minute (0-59)
-```
+[Technical Note #28](https://prodos8.com/docs/technote/28/) (Dave Lyons, September 1990) defines the seven-bit year. Values 100–127 are invalid. 40–99 means 1940–1999. 0–39 means 2000–2039. The note says Apple II and Apple IIgs system software did not yet apply that rule.
+
+### Interpreter and kernel version
+
+| Address | Name | Description | Source |
+|---------|------|-------------|--------|
+| $BFFC | IBAKVER | Reserved. | TechRef §5.2.4 |
+| $BFFD | IVERSION | Version of the running interpreter. The interpreter writes it. BASIC.SYSTEM 1.7, shipped with ProDOS 2.4.3, stores `7` here. | TechRef §5.2.4; [ProDOS 2.4.3 release note](https://prodos8.com/releases/prodos-243/) |
+| $BFFE | KBAKVER | Reserved. | TechRef §5.2.4 |
+| $BFFF | KVERSION | ProDOS kernel release id. ProDOS writes it. | TechRef §5.2.4 |
+
+`KVERSION` values a primary source states:
+
+| Release | `$BFFF` | Source |
+|---------|---------|--------|
+| 1.1.1-era manual listing | `$02` | TechRef §5.2.4 prints `KVERSION DFB $2`. [TN #23](https://prodos8.com/docs/technote/23/) Table 1 says that manual covers 1.1.1. |
+| 1.4 image named by TN #23 | `4` | TN #23 writes `KVERSION = 4` for the 1.4 image on the Apple IIe Workstation Card server. |
+| 1.9 | `$08` | TN #23: "KVERSION is still $08." The note does not name the release that first stored `$08`. |
+| 2.0.1 | `$21` | TN #23 |
+| 2.0.3 | `$23` | [`GLOBALS.S`](https://github.com/markpmlim/ProDOS8/blob/master/MLI.SRC/GLOBALS.S): `kVersion DB $23 ;Represents release 2.03` |
+| 2.4 and 2.4.1 | `$24` | [ProDOS 2.4.1 release note](https://prodos8.com/releases/prodos-241/) |
+| 2.4.2 and 2.4.3 | `$24` | The `PRODOS` file on the official 2.4.2 and 2.4.3 disk images carries the same global-page tail as 2.4.1, `04 00 00 00 00 24`. The 2.4.1 note identifies the last byte as `KVERSION`. |
+
+TN #23 says ProDOS 1.1 incremented `KVERSION` and does not print the old or new byte. These releases are not given a `$BFFF` value in TN #23, the TechRef listing, `GLOBALS.S`, or the 2.4.x notes checked here: 1.0, 1.0.1, 1.0.2, 1.2, 1.3, 1.5, 1.6, 1.7, 1.8, 2.0.0, and 2.0.2.
 
 ---
 
@@ -692,13 +707,13 @@ BASIC.SYSTEM is loaded by ProDOS to provide BASIC commands similar to DOS 3.3.
 |---------|-----------|-----------|
 | /RAM disk | Requires 128KB | Built-in 128KB |
 | Boot slot | Usually slot 6 | Built-in |
-| Clock | Requires card | Built-in |
-| MACHID | $83 or $D3 | $C3 |
+| Clock | Clock card | No built-in clock; same card protocol |
+| MACHID | Read `$BF98`. An Apple IIe with 80 columns and a clock is `$B3` (TN #11). | Read `$BF98`. Bit 3 set and bits 7–6 = `10` means IIc. |
 | Default prefix | /slot6disk | /slot5disk |
 
 ### Clock Support
 
-The IIc has a built-in clock. ProDOS automatically uses it if present.
+The Apple IIc has no built-in clock. The [Technical Reference Manual preface](https://prodos8.com/docs/techref/preface/) lists the IIc as an Apple IIe with 128K RAM, serial ports in slots 1 and 2, 80-column firmware in slot 3, a mouse in slot 4, and a disk controller in slot 6, and that list has no clock. ProDOS reads the date and time from a clock/calendar card when one is installed ([§1.1](https://prodos8.com/docs/techref/introduction/), [§6.1](https://prodos8.com/docs/techref/adding-routines-to-prodos/)). Bit 0 of `MACHID` reports that card.
 
 For IIe, a clock card (like the ThunderClock) must be installed. ProDOS searches for clock drivers at boot.
 
@@ -789,3 +804,4 @@ ERROR:  ; Handle error in A
 | Version | Date       | Changes |
 |---------|------------|---------|
 | 1.0     | 2025-12-30 | Initial specification |
+| 1.1     | 2026-11-24 | Corrected global-page vectors, `MACHID`, date/time bytes, and `KVERSION` / `IVERSION` against the TechRef, TN #11, TN #23, and TN #28. Removed the built-in IIc clock claim. |

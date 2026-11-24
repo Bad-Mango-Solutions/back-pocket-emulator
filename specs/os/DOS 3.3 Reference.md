@@ -32,50 +32,63 @@ DOS 3.3 uses very few zero page locations to preserve compatibility:
 |---------|----------|-------------|
 | $00-$01 | Reserved | Used by BASIC USR |
 | $40-$47 | DOS work | Temporary workspace (shared) |
-| $48     | DOSESSION| DOS save byte |
+| $48     | (P save) | RWTS uses this byte. It is also where the monitor saves the status register. Set it to `$00` after each RWTS call. Beneath Apple DOS, ch. 6. |
 
 ---
 
 ## Page 3 Vectors
 
-| Address | Name    | Description |
-|---------|---------|-------------|
-| $03D0   | DOS WS  | JMP to DOS warm start ($9DBF) |
-| $03D3   | DOS CS  | JMP to DOS cold start ($9D84) |
-| $03D6   | FM ENTRY| JMP to File Manager entry ($A764) |
-| $03D9   | RWTS    | JMP to RWTS entry ($B7B5) |
-| $03DC   | LOCRPL  | JMP to locate command (unused) |
-| $03DF   | INTRRPL | JMP to interrupt handler |
-| $03E2   | RESET   | DOS reset handler |
-| $03E7   | & ENTRY | Ampersand command entry |
+DOS keeps this table at fixed addresses because the routines it points at move when DOS is relocated. Beneath Apple DOS, chapter 5, is the source for what each entry is. The absolute targets in the last column are the 48K map in chapter 8. A slave diskette or a smaller machine changes those targets. The page-3 addresses do not.
+
+| Address | Kind | Description | 48K target |
+|---------|------|-------------|------------|
+| $03D0 | `JMP` | Warm start. Re-enters DOS and keeps the BASIC program, `MAXFILES`, and the other environment. | `$9DBF` (ch. 8, `$9DBF`–`$9DE9`) |
+| $03D3 | `JMP` | Cold start. Reinitializes DOS, clears the BASIC program, and resets `HIMEM`. | `$9D84` (ch. 8, `$9D84`–`$9DBE`) |
+| $03D6 | `JMP` | File manager. Call with `JSR $03D6` after the parameter list is filled. `X = 0` allocates a file that is not found. Any other `X` does not. | `$AAFD` (ch. 8: "File manager external entry point (from `$3D6`)") |
+| $03D9 | `JMP` | RWTS. `Y` is the low byte of the IOB address and `A` is the high byte. | `$B7B5` (ch. 8 calls `$B7B5` the external RWTS entry; ch. 5 says `$03D9` is the `JMP` to RWTS) |
+| $03DC | subroutine | Returns the file-manager parameter list. `Y` is the low byte, `A` is the high byte. Not a `JMP`. | DOS's own list; ch. 6 |
+| $03E3 | subroutine | Returns the RWTS IOB the same way (`Y` low, `A` high). Not a `JMP`. | DOS's IOB at `$B7E8` on the 48K map (ch. 8) |
+| $03EA | `JMP` | Reconnects the DOS keyboard and screen intercepts. | ch. 5 does not print the target |
+| $03EF | `JMP` | `BRK` handler. Autostart ROM only. Normally the monitor's register display. | monitor ROM, unless changed |
+| $03F2 | address | Reset vector, low byte then high byte. DOS stores its restart here. | user-replaceable |
+| $03F4 | byte | Power-up byte. Exclusive-or the `$03F2` address with `$A5` and store it here, or the Autostart ROM treats the next reset as power-up and tries to boot. | — |
+| $03F5 | `JMP` | Applesoft `&` entry. | user routine |
+| $03F8 | `JMP` | Monitor Ctrl-Y entry. | user routine |
+| $03FB | `JMP` | Non-maskable interrupt. | user routine |
+| $03FE | address | Maskable-interrupt vector, low byte then high byte. | user routine |
+
+`$03DC` runs through the byte before `$03E3`. Reset is the address at `$03F2`. The Applesoft `&` vector is `$03F5`.
 
 ---
 
-## File Manager Entry ($A764)
+## File Manager Entry ($AAFD)
 
-The File Manager is the high-level disk interface. Call via JMP ($03D6).
+The file manager is the high-level disk interface. On a 48K DOS its external entry is `$AAFD`, reached by `JSR $03D6` (Beneath Apple DOS, ch. 8 and ch. 6). `$A764` is the routine that completes DOS's own parameter list (ch. 8). Callers from outside DOS enter at `$AAFD`.
 
-### File Manager Parameter List (IOB)
+Call `$03DC` once to locate that parameter list (`Y` low, `A` high). Fill it, set `X` as described under the page-3 table, then `JSR $03D6`. Carry is set when the return code is nonzero.
 
-The File Manager is called with X,A pointing to a 24-byte parameter block:
+### File Manager Parameter List
 
-| Offset | Name     | Description |
-|--------|----------|-------------|
-| $00    | CMD      | Command code (see below) |
-| $01    | SUBCMD   | Sub-command |
-| $02-$03| BUFPTR   | Buffer pointer |
-| $04    | TRACK    | Track number |
-| $05    | SECTOR   | Sector number |
-| $06    | VOLNUM   | Volume number (0 = any) |
-| $07    | DESSION  | Drive number (1 or 2) |
-| $08    | SLOT     | Slot number � 16 |
-| $09    | FTYPE    | File type |
-| $0A-$0B| FIESSION | File length |
-| $0C-$0D| LOADESSION| Load address |
-| $0E    | Unused   | |
-| $0F-$1E| FNAME    | Filename (30 bytes, space-padded) |
+General layout from Beneath Apple DOS, chapter 6. Bytes `$02`–`$09` change with the command. Addresses are low byte first.
+
+| Offset | Description |
+|--------|-------------|
+| $00 | Call type. See the command table. |
+| $01 | Sub-call for `READ` and `WRITE`: `$00` none, `$01` one byte, `$02` a range, `$03` position then one byte, `$04` position then a range. |
+| $02–$09 | Fields that depend on the call type. |
+| $0A | Return code. |
+| $0B | Unused. |
+| $0C–$0D | Address of a 45-byte file-manager workarea. The caller supplies the buffer. |
+| $0E–$0F | Address of a 256-byte track/sector-list buffer. |
+| $10–$11 | Address of a 256-byte data-sector buffer. |
+
+Three buffers together occupy 557 bytes, and each open file needs its own set (ch. 6).
+
+Return codes from that chapter: `$00` none, `$02` bad call type, `$03` bad sub-call, `$04` write protected, `$05` end of data, `$06` file not found (allocated when `X` was 0), `$07` volume mismatch, `$08` disk I/O error, `$09` disk full, `$0A` file locked. `$01` is unused. The processor carry flag is set when the code is nonzero.
 
 ### File Manager Commands
+
+Call types from Beneath Apple DOS, chapter 6.
 
 | Code | Command | Description |
 |------|---------|-------------|
@@ -94,14 +107,16 @@ The File Manager is called with X,A pointing to a 24-byte parameter block:
 
 ### File Types
 
+Types stored for a new file (Beneath Apple DOS, ch. 6). `$08` is relocatable and `$10` is an S-type file.
+
 | Code | Type | Description |
 |------|------|-------------|
 | $00  | T    | Text file |
 | $01  | I    | Integer BASIC program |
 | $02  | A    | Applesoft BASIC program |
 | $04  | B    | Binary file |
-| $08  | S    | Type S (special) |
-| $10  | R    | Relocatable |
+| $08  | R    | Relocatable |
+| $10  | S    | S type file |
 | $20  | A    | Type A (new A) |
 | $40  | B    | Type B (new B) |
 
@@ -109,74 +124,98 @@ The File Manager is called with X,A pointing to a 24-byte parameter block:
 
 ## RWTS Entry ($B7B5)
 
-RWTS (Read/Write Track/Sector) is the low-level disk driver.
+RWTS (Read/Write Track/Sector) is the low-level disk driver. Beneath Apple DOS, chapter 8, places the external entry at `$B7B5` on a 48K machine (`$B7B5`–`$B7C1`, disable interrupts and call RWTS). Call it through the page-3 vector `JSR $03D9`. `Y` holds the low byte of the IOB address and `A` holds the high byte (ch. 6). Carry is set when the return code is nonzero.
 
 ### Calling RWTS
 
 ```assembly
-        LDA #<IOB       ; Low byte of IOB address
-        LDY #>IOB       ; High byte of IOB address
-        JSR $B7B5       ; Call RWTS
+        LDY #<IOB       ; Low byte of IOB address
+        LDA #>IOB       ; High byte of IOB address
+        JSR $03D9       ; Page-3 JMP; target is $B7B5 on 48K DOS
         BCS ERROR       ; Carry set = error
 ```
 
+`JSR $03E3` returns DOS's own IOB the same way, if the caller wants that block instead of a private one.
+
 ### RWTS Input/Output Block (IOB)
 
-| Offset | Name     | Description |
-|--------|----------|-------------|
-| $00    | TBESSION | Table type ($01 = IOB) |
-| $01    | SLOT     | Slot number � 16 |
-| $02    | DRIVE    | Drive number (1 or 2) |
-| $03    | VOL      | Expected volume (0 = any) |
-| $04    | TRACK    | Track number (0-34) |
-| $05    | SECTOR   | Sector number (0-15) |
-| $06-$07| DCT      | Device characteristics table pointer |
-| $08-$09| BUFF     | Data buffer pointer (256 bytes) |
-| $0A    | Unused   | |
-| $0B    | RWEESSION| Command byte |
-| $0C    | RTVOL    | Returned volume number |
-| $0D    | RTSLOT   | Returned slot |
-| $0E    | RTDRIVE  | Returned drive |
-| $0F    | RTERR    | Error code (if carry set) |
+Offsets from Beneath Apple DOS, chapter 6. On the 48K map the same bytes sit at `$B7E8`–`$B7F8` (ch. 8). Addresses are low byte, then high byte.
 
-### RWTS Commands ($0B)
+| Offset | 48K address | Description |
+|--------|-------------|-------------|
+| $00 | $B7E8 | Table type. Must be `$01`. |
+| $01 | $B7E9 | Slot number times 16. Slot 6 is `$60`. |
+| $02 | $B7EA | Drive, `$01` or `$02`. |
+| $03 | $B7EB | Volume expected. `$00` matches any volume. |
+| $04 | $B7EC | Track, `$00` through `$22`. |
+| $05 | $B7ED | Sector, `$00` through `$0F`. |
+| $06–$07 | $B7EE | Address of the device characteristics table. |
+| $08–$09 | $B7F0 | Address of the 256-byte data buffer. |
+| $0A | $B7F2 | Unused. |
+| $0B | $B7F3 | Byte count for a partial sector. `$00` means 256 bytes. |
+| $0C | $B7F4 | Command. See below. |
+| $0D | $B7F5 | Return code. Meaningful when carry is set. |
+| $0E | $B7F6 | Volume of the last access. Must be initialized. |
+| $0F | $B7F7 | Slot times 16 of the last access. Must be initialized. |
+| $10 | $B7F8 | Drive of the last access. Must be initialized. |
+
+### Device characteristics table
+
+| Offset | Description |
+|--------|-------------|
+| $00 | Device type. `$00` for Disk II. |
+| $01 | Phases per track. `$01` for Disk II. |
+| $02–$03 | Motor-on time count. Chapter 6 gives the value `$EFD8`. Chapter 8 lists the two stored bytes as `$EF`, `$D8`. The byte order is unresolved between those two sentences. |
+
+On a 48K DOS the table DOS itself uses is at `$B7FB`–`$B7FE` (ch. 8).
+
+### RWTS commands (IOB offset `$0C`)
 
 | Value | Command | Description |
 |-------|---------|-------------|
-| $00   | SEEK    | Move to track |
-| $01   | READ    | Read sector |
-| $02   | WRITE   | Write sector |
-| $04   | FORMAT  | Format track |
+| $00 | SEEK | Move to the track |
+| $01 | READ | Read a sector |
+| $02 | WRITE | Write a sector |
+| $04 | FORMAT | Format the track. This does not write a VTOC, a catalog, or a HELLO program. |
 
-### RWTS Error Codes
+### RWTS return codes (IOB offset `$0D`)
+
+Chapter 6:
 
 | Code | Description |
 |------|-------------|
-| $00  | No error |
-| $10  | Write protected |
-| $20  | Volume mismatch |
-| $40  | Drive error |
-| $80  | Read error |
+| $00 | No error |
+| $08 | Error during initialization |
+| $10 | Write protected |
+| $20 | Volume mismatch |
+| $40 | Drive error |
+| $80 | Read error (chapter 6 marks this code obsolete) |
 
-### RWTS Usage Example
+Chapter 8's note on `$B7F5` lists `$10`, `$20`, `$40`, and `$80` and does not mention `$08`.
+
+### RWTS usage example
 
 ```assembly
-; Read sector example
-IOB:    DB $01          ; IOB type
+; Read track $11 sector 0 through the page-3 vector.
+IOB:    DB $01          ; Table type
         DB $60          ; Slot 6
-        DB $01          ; Drive 1  
+        DB $01          ; Drive 1
         DB $00          ; Any volume
         DB $11          ; Track 17
         DB $00          ; Sector 0
         DW DCTBL        ; DCT pointer
         DW BUFFER       ; 256-byte buffer
         DB $00          ; Unused
-        DB $01          ; READ command
-        DS 4            ; Return values
+        DB $00          ; Byte count: $00 = 256
+        DB $01          ; READ
+        DB $00          ; Return code
+        DB $00          ; Last volume
+        DB $60          ; Last slot
+        DB $01          ; Last drive
 
-        LDA #<IOB
-        LDY #>IOB
-        JSR $B7B5
+        LDY #<IOB
+        LDA #>IOB
+        JSR $03D9
         BCS ERROR
 ```
 
@@ -337,39 +376,39 @@ Each T/S list sector contains pointers to data sectors:
 
 ## Important RAM Locations
 
-| Address | Name | Description |
-|---------|------|-------------|
-| $9600   | DOS Start | Start of DOS |
-| $AA72   | FILNAM | Current filename buffer |
-| $AA75   | FESSION | File manager session info |
-| $AAB6   | IESSION | IOB for file operations |
-| $B3D2   | RWESSION | Current track |
-| $B3D3   | RWESSION | Current sector |
-| $B3F4   | PRESSION | Previous track position |
-| $B7E8   | SLOT     | Current slot � 16 |
-| $B7EA   | BUFPTR   | Buffer pointer |
-| $B7EB   | RESSION  | Active drive |
-| $B7EC   | TOESSION | Track number for RWTS |
-| $B7ED   | SESSION  | Sector number for RWTS |
-| $B7F0   | DESSION  | Drive (1 or 2) |
-| $B7F1   | VOL      | Volume number |
-| $B7F3   | CMDDESSION| RWTS command code |
+48K addresses from Beneath Apple DOS, chapter 8, except `$9600`, which this document's memory map uses as `HIMEM` with the default buffers. Chapter 5 describes those buffers as the region below the DOS code and does not print `$9600` itself.
+
+| Address | Description |
+|---------|-------------|
+| $9600 | Low end of the DOS image used as `HIMEM` in the memory map above. Not re-derived from chapter 8. |
+| $9D84 | Cold-start entry (`$9D84`–`$9DBE`). |
+| $9DBF | Warm-start entry (`$9DBF`–`$9DE9`). |
+| $AA72 | Parsed "address" keyword, two bytes. The filename buffer starts at `$AA75`. |
+| $AA75–$AA92 | Primary filename buffer. |
+| $AA93–$AAB0 | Secondary filename buffer, used by `RENAME`. |
+| $AAB6 | Active BASIC flag: `$00` Integer, `$40` Applesoft ROM, `$80` Applesoft RAM. |
+| $AAC1 | Address of the RWTS parameter list (`$B7E8`). |
+| $AAFD | File-manager external entry, the target of `$03D6`. |
+| $B7B5 | RWTS external entry, the target of `$03D9`. |
+| $B7E8–$B7F8 | RWTS parameter list. Fields are in the IOB table above. |
+
+`$B3D2`, `$B3D3`, and `$B3F4` are not in that chapter's map. They are left out here instead of being given a name the book does not use.
 
 ---
 
 ## Common Routines
 
-### DOS Entry ($9D84) - Cold Start
+### DOS cold start ($9D84)
 
-**Purpose:** Initialize DOS from cold start.
+**Purpose:** Initialize DOS from a cold start. Beneath Apple DOS, chapter 8, `$9D84`–`$9DBE`. The page-3 `JMP` is `$03D3`.
 
-**Called:** After boot, or by explicit JMP.
+**Called:** After boot, or by `JMP $03D3` / `JMP $9D84` on a 48K machine.
 
-### DOS Warm Start ($9DBF)
+### DOS warm start ($9DBF)
 
-**Purpose:** Re-initialize DOS vectors.
+**Purpose:** Re-enter DOS without clearing the BASIC program. Chapter 8, `$9DBF`–`$9DE9`. The page-3 `JMP` is `$03D0`.
 
-**Called:** After BASIC reset.
+**Called:** After BASIC reset, through `$03D0`.
 
 ### CATALOG ($A56E)
 
@@ -477,3 +516,4 @@ Programs using memory above $9600 will conflict with DOS. Use HIMEM: $9600 or MA
 | Version | Date       | Changes |
 |---------|------------|---------|
 | 1.0     | 2025-12-30 | Initial specification |
+| 1.1     | 2026-11-24 | Corrected page-3 vectors, the file-manager entry (`$AAFD`), and the RWTS IOB against Beneath Apple DOS, chapters 5, 6, and 8. |
