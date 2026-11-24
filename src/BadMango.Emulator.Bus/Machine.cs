@@ -605,8 +605,10 @@ public sealed class Machine : IMachine
         slotManager.Remove(slot);
         scheduledDevices.Remove(card);
 
-        // Unregister before disposal so a throwing Dispose cannot leave a stale registry entry.
+        // Unregister before disposal so a throwing Dispose cannot leave a stale registry entry
+        // or stale slot traps.
         UnregisterSlotCardFromDeviceRegistry(slot, card);
+        GetComponent<ITrapRegistry>()?.UnregisterSlotTraps(slot);
         try
         {
             DisposeSlotCard(card);

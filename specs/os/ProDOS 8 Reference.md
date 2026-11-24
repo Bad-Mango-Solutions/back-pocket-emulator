@@ -702,6 +702,8 @@ The IIc has a built-in clock. ProDOS automatically uses it if present.
 
 For IIe, a clock card (like the ThunderClock) must be installed. ProDOS searches for clock drivers at boot.
 
+The PocketWatch card answers those entries with `JSR $Cn0B` (latch) and `JSR $Cn08` (read). The read writes `mo,da,dt,hr,mn` at `$0200` in high-bit ASCII: digits `$B0`-`$B9` and commas `$AC`. ProDOS 8's built-in Thunderclock driver, `MLI.SRC/TCLOCK.S` (the same routine in 1.x, 2.0.3, and 2.4.3), converts each field with `LDA $0200,Y` / `AND #$07` / times ten / `ADC` the next byte / `SBC #"0"` (`#"0"` is `$B0`). Plain digits decode as garbage. See [TCLOCK.S](https://github.com/markpmlim/ProDOS8/blob/master/MLI.SRC/TCLOCK.S).
+
 ### RAM Disk (/RAM)
 
 Both 128KB IIe and IIc support a /RAM volume using auxiliary memory:

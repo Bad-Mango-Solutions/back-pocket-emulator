@@ -595,6 +595,19 @@ public class MachineLifecycleTests
         ((Machine)machine).AddComponent<ISlotManager>(slotManager);
 
         machine.InsertSlotCard(4, card);
+        var registry = machine.GetComponent<ITrapRegistry>();
+        Assert.That(registry, Is.Not.Null);
+        registry!.RegisterSlotDependent(
+            0xC408,
+            4,
+            "SLOT4",
+            TrapCategory.SlotFirmware,
+            (cpu, bus, ctx) => TrapResult.NotHandled);
+        registry.Register(
+            0xFDED,
+            "COUT",
+            TrapCategory.MonitorRom,
+            (cpu, bus, ctx) => TrapResult.NotHandled);
         Assume.That(machine.Devices.GetAll().Any(device => device.WiringPath == "Slot/4/throwing-dispose-slot-card"), Is.True);
         Assume.That(machine.Scheduler.PendingEventCount, Is.Zero);
 
@@ -609,6 +622,8 @@ public class MachineLifecycleTests
             Assert.That(
                 machine.Devices.GetAll().Any(device => device.WiringPath == "Slot/4/throwing-dispose-slot-card"),
                 Is.False);
+            Assert.That(registry.HasTrap(0xC408), Is.False);
+            Assert.That(registry.HasTrap(0xFDED), Is.True);
             Assert.That(machine.Scheduler.PendingEventCount, Is.Zero);
             Assert.That(machine.Scheduler.JumpToNextEventAndDispatch(), Is.False);
             Assert.That(card.DeferredFired, Is.False);

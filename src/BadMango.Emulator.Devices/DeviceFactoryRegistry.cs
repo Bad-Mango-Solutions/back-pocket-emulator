@@ -64,6 +64,11 @@ using Serilog;
 /// the registry refuses to overwrite an existing registration and records the duplicate
 /// in <see cref="SkippedDeviceTypes"/>.
 /// </para>
+/// <para>
+/// The discovered <c>pocketwatch</c> factory passes the profile card <c>config</c> object to
+/// <see cref="PocketWatchCard.FromProfileConfig"/>. A null, non-object, or unreadable config
+/// keeps the card defaults. Other discovered slot cards still ignore the config element.
+/// </para>
 /// </remarks>
 public static class DeviceFactoryRegistry
 {
@@ -120,8 +125,9 @@ public static class DeviceFactoryRegistry
     /// A dictionary mapping type IDs to slot card factory delegates of shape
     /// <c>Func&lt;MachineBuilder, JsonElement?, ISlotCard&gt;</c>. The second argument is the
     /// optional per-card <see cref="JsonElement"/> taken from
-    /// <see cref="Core.Configuration.SlotCardProfile.Config"/>; auto-discovered factories that
-    /// do not require configuration ignore it.
+    /// <see cref="Core.Configuration.SlotCardProfile.Config"/>. The pocketwatch factory
+    /// deserializes that object and keeps the defaults when the object cannot be read.
+    /// Other auto-discovered factories ignore it.
     /// </value>
     public static IReadOnlyDictionary<string, Func<MachineBuilder, JsonElement?, ISlotCard>> SlotCardFactories
         => slotCardFactories;
@@ -275,6 +281,14 @@ public static class DeviceFactoryRegistry
         if (slotCardFactories.ContainsKey(typeId))
         {
             RecordSkip(deviceType, $"duplicate slot card type id '{typeId}'; another type is already registered");
+            return;
+        }
+
+        if (deviceType == typeof(PocketWatchCard))
+        {
+            slotCardFactories[typeId] = (_, cardConfig) => PocketWatchCard.FromProfileConfig(
+                cardConfig,
+                ResolveLogger(typeof(PocketWatchCard)));
             return;
         }
 

@@ -18,6 +18,13 @@ using BadMango.Emulator.Bus.Interfaces;
 /// </para>
 /// <para>
 /// The 256-byte slot ROM is located at $Cn00-$CnFF (where n is the slot number).
+/// The image is generated. It is not loaded from a ROM file.
+/// </para>
+/// <para>
+/// ProDOS recognizes the card from the signature bytes at $Cn00, $Cn02, $Cn04, and $Cn06.
+/// The rest of the page is a NOP slide into RTS at $CnFB. $Cn08 (READ) and $Cn0B (WRITE)
+/// stay NOP in this image. <see cref="PocketWatchCard"/> answers those calls with
+/// slot-dependent traps.
 /// </para>
 /// </remarks>
 internal sealed class PocketWatchRom : IBusTarget
@@ -55,7 +62,8 @@ internal sealed class PocketWatchRom : IBusTarget
         romData[0x05] = 0x00; // Card type (0 = Thunderclock Plus compatible)
         romData[0x07] = 0x00; // Revision
 
-        // Simple RTS at common entry points
+        // $Cn08 and $Cn0B remain NOP. PocketWatchCard traps those ProDOS entries.
+        // Simple RTS at the end of the NOP slide.
         romData[0xFB] = RtsInstruction; // RTS at $CnFB
         romData[0xFC] = RtsInstruction; // RTS at $CnFC
         romData[0xFD] = RtsInstruction; // RTS at $CnFD
