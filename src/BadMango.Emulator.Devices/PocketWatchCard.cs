@@ -14,6 +14,8 @@ using BadMango.Emulator.Core.Interfaces.Cpu;
 
 using Interfaces;
 
+using Serilog;
+
 /// <summary>
 /// PocketWatch slot card - a Thunderclock-compatible real-time clock.
 /// </summary>
@@ -170,18 +172,31 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     /// <param name="cardConfig">
     /// The <c>devices.slots.cards[].config</c> object, or <see langword="null"/> when the profile omits it.
     /// </param>
+    /// <param name="logger">
+    /// Optional logger for a config object that cannot be read. Null and non-object values are not logged.
+    /// </param>
     /// <returns>
-    /// A card configured from <paramref name="cardConfig"/>. A null or non-object value keeps the defaults.
+    /// A card configured from <paramref name="cardConfig"/>. A null, non-object, or unreadable value keeps the defaults.
     /// </returns>
-    public static PocketWatchCard FromProfileConfig(JsonElement? cardConfig)
+    public static PocketWatchCard FromProfileConfig(JsonElement? cardConfig, ILogger? logger = null)
     {
         if (cardConfig is not { ValueKind: JsonValueKind.Object } element)
         {
             return new();
         }
 
-        PocketWatchConfig parsed = element.Deserialize<PocketWatchConfig>() ?? new();
-        return new(parsed);
+        try
+        {
+            PocketWatchConfig parsed = element.Deserialize<PocketWatchConfig>() ?? new();
+            return new(parsed);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
+        {
+            logger?.Warning(
+                ex,
+                "PocketWatch card config could not be read. Using the default clock settings.");
+            return new();
+        }
     }
 
     /// <inheritdoc />

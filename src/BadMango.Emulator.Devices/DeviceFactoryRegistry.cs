@@ -66,8 +66,8 @@ using Serilog;
 /// </para>
 /// <para>
 /// The discovered <c>pocketwatch</c> factory passes the profile card <c>config</c> object to
-/// <see cref="PocketWatchCard.FromProfileConfig"/>. A null or non-object config keeps the
-/// card defaults. Other discovered slot cards still ignore the config element.
+/// <see cref="PocketWatchCard.FromProfileConfig"/>. A null, non-object, or unreadable config
+/// keeps the card defaults. Other discovered slot cards still ignore the config element.
 /// </para>
 /// </remarks>
 public static class DeviceFactoryRegistry
@@ -126,7 +126,8 @@ public static class DeviceFactoryRegistry
     /// <c>Func&lt;MachineBuilder, JsonElement?, ISlotCard&gt;</c>. The second argument is the
     /// optional per-card <see cref="JsonElement"/> taken from
     /// <see cref="Core.Configuration.SlotCardProfile.Config"/>. The pocketwatch factory
-    /// deserializes that object. Other auto-discovered factories ignore it.
+    /// deserializes that object and keeps the defaults when the object cannot be read.
+    /// Other auto-discovered factories ignore it.
     /// </value>
     public static IReadOnlyDictionary<string, Func<MachineBuilder, JsonElement?, ISlotCard>> SlotCardFactories
         => slotCardFactories;
@@ -285,7 +286,9 @@ public static class DeviceFactoryRegistry
 
         if (deviceType == typeof(PocketWatchCard))
         {
-            slotCardFactories[typeId] = (_, cardConfig) => PocketWatchCard.FromProfileConfig(cardConfig);
+            slotCardFactories[typeId] = (_, cardConfig) => PocketWatchCard.FromProfileConfig(
+                cardConfig,
+                ResolveLogger(typeof(PocketWatchCard)));
             return;
         }
 

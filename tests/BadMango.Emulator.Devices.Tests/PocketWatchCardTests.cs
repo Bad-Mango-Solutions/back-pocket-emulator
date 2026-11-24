@@ -9,6 +9,10 @@ using System.Text.Json;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Core.Configuration;
 
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
+
 /// <summary>
 /// Unit tests for <see cref="PocketWatchCard"/>.
 /// </summary>
@@ -309,6 +313,59 @@ public class PocketWatchCardTests
     }
 
     /// <summary>
+    /// Verifies that a config object with the wrong property types keeps the defaults.
+    /// </summary>
+    [Test]
+    public void FromProfileConfig_WrongTypedConfig_UsesDefaults()
+    {
+        using var offsetDocument = JsonDocument.Parse(
+            """{"timeSource":"frozen","frozenTime":"1986-06-15T10:30:00","timezoneOffset":"five"}""");
+        using var frozenDocument = JsonDocument.Parse(
+            """{"timeSource":"frozen","frozenTime":15}""");
+
+        var offsetCard = PocketWatchCard.FromProfileConfig(offsetDocument.RootElement);
+        var frozenCard = PocketWatchCard.FromProfileConfig(frozenDocument.RootElement);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(offsetCard.UseHostTime, Is.True);
+            Assert.That(frozenCard.UseHostTime, Is.True);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that the discovered factory logs a warning and keeps the defaults for an unreadable config.
+    /// </summary>
+    [Test]
+    public void Factory_WrongTypedConfig_LogsWarningAndUsesDefaults()
+    {
+        DeviceFactoryRegistry.EnsureInitialized();
+        var events = new List<LogEvent>();
+        var logger = new LoggerConfiguration().WriteTo.Sink(new ListSink(events)).CreateLogger();
+        var previous = DeviceFactoryRegistry.LoggerFactory;
+        DeviceFactoryRegistry.LoggerFactory = _ => logger;
+        try
+        {
+            using var document = JsonDocument.Parse(
+                """{"timeSource":"frozen","timezoneOffset":"five"}""");
+            var factory = DeviceFactoryRegistry.SlotCardFactories["pocketwatch"];
+            var card = (PocketWatchCard)factory(null!, document.RootElement);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(card.UseHostTime, Is.True);
+                Assert.That(events, Has.Count.EqualTo(1));
+                Assert.That(events[0].Level, Is.EqualTo(LogEventLevel.Warning));
+                Assert.That(events[0].Exception, Is.InstanceOf<JsonException>());
+            });
+        }
+        finally
+        {
+            DeviceFactoryRegistry.LoggerFactory = previous;
+        }
+    }
+
+    /// <summary>
     /// Tests that I/O handlers are configured.
     /// </summary>
     [Test]
@@ -347,5 +404,10 @@ public class PocketWatchCardTests
             SourceId: 0,
             Cycle: 0,
             Flags: AccessFlags.None);
+    }
+
+    private sealed class ListSink(List<LogEvent> events) : ILogEventSink
+    {
+        public void Emit(LogEvent logEvent) => events.Add(logEvent);
     }
 }

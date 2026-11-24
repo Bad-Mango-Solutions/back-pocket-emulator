@@ -68,7 +68,8 @@ public static class DeviceFactoryExtensions
         /// This method registers the "pocketwatch" slot card factory. When a profile
         /// includes a PocketWatch card in its <c>devices.slots.cards</c> section, this factory
         /// creates a <see cref="PocketWatchCard"/> from that card's <c>config</c> object.
-        /// A null or missing config keeps the card defaults.
+        /// A null, missing, or unreadable config keeps the card defaults. A read failure is logged
+        /// when <see cref="DeviceFactoryRegistry.LoggerFactory"/> is configured.
         /// </para>
         /// <para>
         /// Prefer using <see cref="RegisterStandardDeviceFactories"/> which registers all
@@ -79,7 +80,9 @@ public static class DeviceFactoryExtensions
         {
             return builder.RegisterSlotCardFactory(
                 "pocketwatch",
-                (_, cardConfig) => PocketWatchCard.FromProfileConfig(cardConfig));
+                (_, cardConfig) => PocketWatchCard.FromProfileConfig(
+                    cardConfig,
+                    DeviceFactoryRegistry.ResolveLogger(typeof(PocketWatchCard))));
         }
 
         /// <summary>
