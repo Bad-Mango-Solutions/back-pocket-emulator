@@ -23,9 +23,10 @@ using BadMango.Emulator.Storage.Media;
 /// Renders a compact panel showing per-drive motor / head state alongside the
 /// controller-wide counters returned by <see cref="IDiskController.GetActivitySnapshot"/>:
 /// data-path reads (fresh / stale / settle-suppressed), phase pulses, track
-/// changes, motor / drive-select transitions, cache loads and flushes, plus the
-/// most recently observed address-field (volume / track / sector / checksum)
-/// parsed from the live byte stream served to the CPU.
+/// changes, motor / drive-select transitions, whether a motor-off delay is
+/// pending, cache loads and flushes, plus the most recently observed
+/// address-field (volume / track / sector / checksum) parsed from the live
+/// byte stream served to the CPU.
 /// </para>
 /// <para>
 /// The extension is registered per-controller in
@@ -132,7 +133,7 @@ public sealed class DiskIIStatusExtension : IStatusWindowExtension
 
         counterDisplay.Text = string.Format(
             CultureInfo.InvariantCulture,
-            "reads={0} fresh={1} stale={2} settle={3} writes={4}\nstep-pulses={5} track-changes={6} motor={7}/{8} cache-load={9} flush={10}",
+            "reads={0} fresh={1} stale={2} settle={3} writes={4}\nstep-pulses={5} track-changes={6} motor={7}/{8} motor-off-pending={9} cache-load={10} flush={11}",
             snapshot.DataReadCount,
             snapshot.FreshByteCount,
             snapshot.StaleByteCount,
@@ -142,6 +143,7 @@ public sealed class DiskIIStatusExtension : IStatusWindowExtension
             snapshot.TrackChangeCount,
             snapshot.MotorOnCount,
             snapshot.MotorOffCount,
+            snapshot.MotorOffPending ? "yes" : "no",
             snapshot.CacheLoadCount,
             snapshot.CacheFlushCount);
 
@@ -216,10 +218,11 @@ public sealed class DiskIIStatusExtension : IStatusWindowExtension
 
             block.Text = string.Format(
                 CultureInfo.InvariantCulture,
-                "Drive {0}: {1} motor={2} qt={3} on-track={4}b addr-fields={5} ({6} bad)\n  {7}\n  {8}",
+                "Drive {0}: {1} motor={2} motor-off-pending={3} qt={4} on-track={5}b addr-fields={6} ({7} bad)\n  {8}\n  {9}",
                 i + 1,
                 drive.HasMedia ? "mounted" : "empty",
                 drive.MotorOn ? "on" : "off",
+                drive.MotorOffPending ? "yes" : "no",
                 drive.QuarterTrack,
                 activity.BytesServedOnCurrentTrack,
                 activity.ObservedAddressFields,

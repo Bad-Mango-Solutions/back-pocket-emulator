@@ -58,8 +58,9 @@ public sealed class DiskMonCommand : CommandHandlerBase, ICommandHelp
     public string DetailedDescription =>
         "Snapshots every installed disk controller and prints its activity counters: " +
         "data-path reads (fresh / stale / settle-suppressed), phase pulses, track " +
-        "changes, motor and drive-select transitions, cache loads and flushes, plus, " +
-        "for each drive, the most recently observed sector-address field (volume, " +
+        "changes, motor and drive-select transitions, whether a motor-off delay is " +
+        "pending, cache loads and flushes, plus, for each drive, the most recently " +
+        "observed sector-address field (volume, " +
         "track, sector, checksum-valid) and a full data-field accounting " +
         "(prologues seen, XOR-chain decode successes, checksum / decode / epilogue " +
         "failures, and the address→data byte gap) as decoded from the live byte " +
@@ -152,10 +153,11 @@ public sealed class DiskMonCommand : CommandHandlerBase, ICommandHelp
                 snapshot.TrackChangeCount));
             output.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "    transport : motor-on={0} motor-off={1} drive-select={2}",
+                "    transport : motor-on={0} motor-off={1} drive-select={2} motor-off-pending={3}",
                 snapshot.MotorOnCount,
                 snapshot.MotorOffCount,
-                snapshot.DriveSelectCount));
+                snapshot.DriveSelectCount,
+                YesNo(snapshot.MotorOffPending)));
             output.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
                 "    cache     : loads={0} flushes={1}",
@@ -185,11 +187,12 @@ public sealed class DiskMonCommand : CommandHandlerBase, ICommandHelp
 
                 output.WriteLine(string.Format(
                     CultureInfo.InvariantCulture,
-                    "    Drive {0}: {1} selected={2} motor={3} qt={4} bytes-on-track={5}",
+                    "    Drive {0}: {1} selected={2} motor={3} motor-off-pending={4} qt={5} bytes-on-track={6}",
                     d + 1,
                     drive.HasMedia ? "mounted" : "empty",
                     YesNo(drive.Selected),
                     YesNo(drive.MotorOn),
+                    YesNo(drive.MotorOffPending),
                     drive.QuarterTrack,
                     activity.BytesServedOnCurrentTrack));
                 output.WriteLine(string.Format(

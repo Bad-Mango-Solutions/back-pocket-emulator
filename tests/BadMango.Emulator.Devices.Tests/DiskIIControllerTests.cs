@@ -452,7 +452,10 @@ public class DiskIIControllerTests
         {
             Assert.That(controller.IsMotorOn, Is.True, "$C088 arms the NE556; the platter stays on.");
             Assert.That(controller.GetDriveSnapshot(0).MotorOn, Is.True);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.True);
+            Assert.That(controller.GetDriveSnapshot(1).MotorOffPending, Is.False);
             Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.True);
         });
 
         // Faster than one nibble: byte-ready must clear bit 7, same as motor-on.
@@ -472,6 +475,8 @@ public class DiskIIControllerTests
         {
             Assert.That(controller.IsMotorOn, Is.True);
             Assert.That(controller.GetActivitySnapshot().MotorOnCount, Is.EqualTo(motorOnCount), "Re-enable inside the hold is not a new motor-on.");
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.False);
         });
 
         // Well inside the spin-up window a fresh motor-on would have armed.
@@ -523,6 +528,8 @@ public class DiskIIControllerTests
         Assert.Multiple(() =>
         {
             Assert.That(controller.IsMotorOn, Is.True);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.True);
             Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
             Assert.That(controller.GetActivitySnapshot().CacheFlushCount, Is.Zero);
             Assert.That(media.FlushCount, Is.Zero);
@@ -537,6 +544,8 @@ public class DiskIIControllerTests
         {
             Assert.That(controller.IsMotorOn, Is.False);
             Assert.That(controller.GetDriveSnapshot(0).MotorOn, Is.False);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.False);
             Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.EqualTo(1));
             Assert.That(controller.GetActivitySnapshot().CacheFlushCount, Is.EqualTo(1));
             Assert.That(media.FlushCount, Is.EqualTo(1));
@@ -691,6 +700,219 @@ public class DiskIIControllerTests
         _ = dispatcher.Read(0xE9, in ctx);
         scheduler.Advance(new Cycle(Delay + 10));
         Assert.That(controller.IsMotorOn, Is.True, "The cancelled event must not stop the drive later.");
+    }
+
+    /// <summary>
+    /// Verifies that a drive select during the NE556 hold steers the enable to the new
+    /// drive (Sather, pp. 9-12 to 9-13): the old drive flushes and stops, the new drive
+    /// spins up through the normal settle window, and the pending stop stays armed until
+    /// the original deadline, when it stops the newly selected drive.
+    /// </summary>
+    [Test]
+    public void DriveSelectDuringMotorOffDelay_MovesEnableAndKeepsTheOriginalDeadline()
+    {
+        const int Settle = 400;
+        const int Delay = 2000;
+        var drive1 = new CountingFlushMedia(0x96);
+        var drive2 = new CountingFlushMedia(0xD5);
+        var (controller, dispatcher, ctx, scheduler, _) = BuildHarness(
+            motorSettleCycles: Settle,
+            motorOffDelayCycles: Delay);
+        controller.Mount(0, drive1);
+        controller.Mount(1, drive2);
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        scheduler.Advance(new Cycle(Settle));
+        DirtyCurrentTrack(dispatcher, ctx);
+        DropWriteMode(dispatcher, ctx);
+        _ = dispatcher.Read(0xE8, in ctx);
+        var deadline = scheduler.Now + new Cycle((ulong)Delay);
+        int eventsWhileArmed = scheduler.PendingEventCount;
+
+        scheduler.Advance(new Cycle(Delay / 4));
+        long settleBeforeSelect = controller.GetActivitySnapshot().SettleSuppressedReadCount;
+        _ = dispatcher.Read(0xEB, in ctx);
+
+        var duringSettle = dispatcher.Read(0xEC, in ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.True, "ENABLE' is still asserted; only its destination changed.");
+            Assert.That(controller.GetDriveSnapshot(0).MotorOn, Is.False);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.False);
+            Assert.That(controller.GetDriveSnapshot(0).Selected, Is.False);
+            Assert.That(controller.GetDriveSnapshot(0).UnflushedChanges, Is.False);
+            Assert.That(controller.GetDriveSnapshot(1).MotorOn, Is.True);
+            Assert.That(controller.GetDriveSnapshot(1).MotorOffPending, Is.True);
+            Assert.That(controller.GetDriveSnapshot(1).Selected, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero, "Steering the enable is not an NE556 expiry.");
+            Assert.That(controller.GetActivitySnapshot().DriveSelectCount, Is.EqualTo(1));
+            Assert.That(controller.GetActivitySnapshot().CacheFlushCount, Is.EqualTo(1));
+            Assert.That(drive1.FlushCount, Is.EqualTo(1), "The drive that lost ENABLE' flushed.");
+            Assert.That(drive2.FlushCount, Is.Zero);
+            Assert.That(scheduler.PendingEventCount, Is.EqualTo(eventsWhileArmed), "The pending stop was not rescheduled.");
+            Assert.That(duringSettle & 0x80, Is.EqualTo(0), "The new drive is inside its spin-up settle window.");
+            Assert.That(
+                controller.GetActivitySnapshot().SettleSuppressedReadCount,
+                Is.EqualTo(settleBeforeSelect + 2),
+                "The select access and the following data read both fall inside the new spin-up window.");
+        });
+
+        scheduler.Advance(new Cycle(Settle));
+        var live = dispatcher.Read(0xEC, in ctx);
+        Assert.That(live, Is.EqualTo(0xD5), "After settle, byte-ready serves the newly selected drive.");
+
+        DirtyCurrentTrack(dispatcher, ctx);
+
+        var remaining = deadline - scheduler.Now;
+        scheduler.Advance(new Cycle(remaining.Value - 1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.True, "One cycle before the original deadline the new drive is still spinning.");
+            Assert.That(controller.GetDriveSnapshot(1).MotorOffPending, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+        });
+
+        scheduler.Advance(Cycle.One);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.False);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOn, Is.False);
+            Assert.That(controller.GetDriveSnapshot(1).MotorOn, Is.False);
+            Assert.That(controller.GetDriveSnapshot(1).MotorOffPending, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.EqualTo(1));
+            Assert.That(controller.GetActivitySnapshot().CacheFlushCount, Is.EqualTo(2));
+            Assert.That(drive1.FlushCount, Is.EqualTo(1), "Expiry does not flush the drive that already stopped.");
+            Assert.That(drive2.FlushCount, Is.EqualTo(1), "Expiry flushes the drive that still held ENABLE'.");
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a write to <c>$C08B,X</c> during the hold moves the enable the same
+    /// way a read does, and that <c>$C089,X</c> afterwards cancels the original event:
+    /// the new drive stays spinning past that deadline with no second settle window.
+    /// </summary>
+    [Test]
+    public void DriveSelectDuringMotorOffDelay_WriteSelectThenCancelDropsTheEvent()
+    {
+        const int Settle = 300;
+        const int Delay = 1500;
+        var drive2 = new CountingFlushMedia(0xD5);
+        var (controller, dispatcher, ctx, scheduler, media) = BuildHarness(
+            motorSettleCycles: Settle,
+            motorOffDelayCycles: Delay);
+        controller.Mount(0, media.Object);
+        controller.Mount(1, drive2);
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        scheduler.Advance(new Cycle(Settle));
+        _ = dispatcher.Read(0xE8, in ctx);
+        var deadline = scheduler.Now + new Cycle((ulong)Delay);
+
+        scheduler.Advance(new Cycle(Delay / 5));
+        WriteSoft(dispatcher, 0xEB, 0x00, ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.GetDriveSnapshot(1).MotorOn, Is.True);
+            Assert.That(controller.GetDriveSnapshot(1).MotorOffPending, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+        });
+
+        scheduler.Advance(new Cycle(Settle));
+        var settled = dispatcher.Read(0xEC, in ctx);
+        Assert.That(settled, Is.EqualTo(0xD5));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        scheduler.Advance(new Cycle(DiskIIController.CyclesPerByte));
+        var afterCancel = dispatcher.Read(0xEC, in ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.GetDriveSnapshot(1).MotorOffPending, Is.False);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.False);
+            Assert.That(afterCancel & 0x80, Is.EqualTo(0x80), "Cancelling the hold does not arm a new spin-up window.");
+        });
+
+        scheduler.Advance(deadline - scheduler.Now + new Cycle(10));
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.True, "The cancelled event must not stop the newly selected drive.");
+            Assert.That(controller.GetDriveSnapshot(1).MotorOn, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.False);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that selecting the drive which already holds the enable does not flush,
+    /// does not restart spin-up, and leaves the pending stop armed, and that switching
+    /// away and back arms a fresh settle window without moving the original deadline.
+    /// </summary>
+    [Test]
+    public void DriveSelectDuringMotorOffDelay_SameDriveIsANoOpAndSwitchBackKeepsTheDeadline()
+    {
+        const int Settle = 500;
+        const int Delay = 4000;
+        var drive1 = new CountingFlushMedia(0x96);
+        var drive2 = new CountingFlushMedia(0xAA);
+        var (controller, dispatcher, ctx, scheduler, _) = BuildHarness(
+            motorSettleCycles: Settle,
+            motorOffDelayCycles: Delay);
+        controller.Mount(0, drive1);
+        controller.Mount(1, drive2);
+        scheduler.Advance(new Cycle(2));
+
+        _ = dispatcher.Read(0xE9, in ctx);
+        scheduler.Advance(new Cycle(Settle));
+        var primed = dispatcher.Read(0xEC, in ctx);
+        Assert.That(primed & 0x80, Is.EqualTo(0x80));
+
+        _ = dispatcher.Read(0xE8, in ctx);
+        var deadline = scheduler.Now + new Cycle((ulong)Delay);
+        _ = dispatcher.Read(0xEA, in ctx);
+        scheduler.Advance(new Cycle(DiskIIController.CyclesPerByte));
+        var resend = dispatcher.Read(0xEC, in ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(resend & 0x80, Is.EqualTo(0x80), "Reselecting the active drive does not arm spin-up.");
+            Assert.That(controller.GetActivitySnapshot().DriveSelectCount, Is.Zero);
+            Assert.That(controller.GetActivitySnapshot().CacheFlushCount, Is.Zero);
+            Assert.That(drive1.FlushCount, Is.Zero);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.True);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.True);
+        });
+
+        _ = dispatcher.Read(0xEB, in ctx);
+        scheduler.Advance(new Cycle(50));
+        _ = dispatcher.Read(0xEA, in ctx);
+        var duringReturnSettle = dispatcher.Read(0xEC, in ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(duringReturnSettle & 0x80, Is.EqualTo(0), "Returning the enable arms a new spin-up window.");
+            Assert.That(controller.GetDriveSnapshot(0).MotorOn, Is.True);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.True);
+            Assert.That(controller.GetDriveSnapshot(1).MotorOn, Is.False);
+            Assert.That(controller.GetDriveSnapshot(1).MotorOffPending, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.Zero);
+            Assert.That(controller.GetActivitySnapshot().DriveSelectCount, Is.EqualTo(2));
+        });
+
+        var remaining = deadline - scheduler.Now;
+        scheduler.Advance(new Cycle(remaining.Value - 1));
+        Assert.That(controller.IsMotorOn, Is.True, "Switching back does not restart the one-second hold.");
+
+        scheduler.Advance(Cycle.One);
+        Assert.Multiple(() =>
+        {
+            Assert.That(controller.IsMotorOn, Is.False);
+            Assert.That(controller.GetDriveSnapshot(0).MotorOffPending, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffPending, Is.False);
+            Assert.That(controller.GetActivitySnapshot().MotorOffCount, Is.EqualTo(1));
+        });
     }
 
     /// <summary>
@@ -1139,6 +1361,7 @@ public class DiskIIControllerTests
             Assert.That(snap.DriveSelectCount, Is.Zero);
             Assert.That(snap.CacheLoadCount, Is.Zero);
             Assert.That(snap.CacheFlushCount, Is.Zero);
+            Assert.That(snap.MotorOffPending, Is.False);
             Assert.That(snap.Drives, Has.Count.EqualTo(2));
             Assert.That(snap.Drives[0].ObservedAddressFields, Is.Zero);
             Assert.That(snap.Drives[0].LastObservedVolume, Is.Null);
@@ -1773,6 +1996,25 @@ public class DiskIIControllerTests
     {
         var writeCtx = templateCtx with { Intent = AccessIntent.DataWrite };
         dispatcher.Write(addr, value, in writeCtx);
+    }
+
+    /// <summary>
+    /// Loads the write latch and shifts one byte so the selected drive's track is dirty.
+    /// </summary>
+    private static void DirtyCurrentTrack(IOPageDispatcher dispatcher, in BusAccess ctx)
+    {
+        _ = dispatcher.Read(0xEF, in ctx);
+        _ = dispatcher.Read(0xED, in ctx);
+        WriteSoft(dispatcher, 0xED, 0xD5, ctx);
+        WriteSoft(dispatcher, 0xEC, 0xAA, ctx);
+    }
+
+    /// <summary>
+    /// Returns Q7 to read mode so the next <c>$C0EC</c> access is a data read.
+    /// </summary>
+    private static void DropWriteMode(IOPageDispatcher dispatcher, in BusAccess ctx)
+    {
+        _ = dispatcher.Read(0xEE, in ctx);
     }
 
     /// <summary>

@@ -27,6 +27,11 @@ namespace BadMango.Emulator.Storage.Media;
 /// <see cref="I525Media.Geometry"/> report a populated value.
 /// </param>
 /// <param name="UnflushedChanges">Whether dirty cached track changes have not been flushed.</param>
+/// <param name="MotorOffPending">
+/// Whether this drive holds the motor enable while the NE556 hold is still counting.
+/// The deselected drive reports <see langword="false"/>. The flag clears when the hold
+/// expires, when <c>$C089,X</c> cancels it, or when RESET or power-off drops it.
+/// </param>
 public readonly record struct DriveSnapshot(
     bool Selected,
     bool MotorOn,
@@ -36,4 +41,5 @@ public readonly record struct DriveSnapshot(
     bool HasMedia,
     string? MountedImagePath,
     DiskGeometry? Geometry = null,
-    bool UnflushedChanges = false);
+    bool UnflushedChanges = false,
+    bool MotorOffPending = false);

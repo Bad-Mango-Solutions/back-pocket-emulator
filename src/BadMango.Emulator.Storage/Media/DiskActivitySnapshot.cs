@@ -40,6 +40,7 @@ public sealed class DiskActivitySnapshot
     /// <param name="driveSelectCount">Drive-select transitions where the active drive actually changed.</param>
     /// <param name="cacheLoadCount">Number of times a quarter-track was loaded into the controller's nibble cache.</param>
     /// <param name="cacheFlushCount">Number of times a dirty cached track was flushed back to the medium.</param>
+    /// <param name="motorOffPending">Whether the NE556 motor-off hold is still counting.</param>
     /// <param name="drives">Per-drive activity records, in drive-index order.</param>
     public DiskActivitySnapshot(
         long dataReadCount,
@@ -55,6 +56,7 @@ public sealed class DiskActivitySnapshot
         long driveSelectCount,
         long cacheLoadCount,
         long cacheFlushCount,
+        bool motorOffPending,
         IReadOnlyList<DiskDriveActivity> drives)
     {
         ArgumentNullException.ThrowIfNull(drives);
@@ -71,6 +73,7 @@ public sealed class DiskActivitySnapshot
         this.DriveSelectCount = driveSelectCount;
         this.CacheLoadCount = cacheLoadCount;
         this.CacheFlushCount = cacheFlushCount;
+        this.MotorOffPending = motorOffPending;
         this.Drives = drives;
     }
 
@@ -112,6 +115,13 @@ public sealed class DiskActivitySnapshot
 
     /// <summary>Gets the number of times a dirty cached track was flushed back to the medium.</summary>
     public long CacheFlushCount { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the NE556 motor-off hold is still counting.
+    /// A drive select leaves this true. It becomes false when the hold expires, when
+    /// <c>$C089,X</c> cancels it, or when RESET or power-off drops it.
+    /// </summary>
+    public bool MotorOffPending { get; }
 
     /// <summary>Gets the per-drive activity records, in drive-index order.</summary>
     public IReadOnlyList<DiskDriveActivity> Drives { get; }
