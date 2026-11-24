@@ -22,13 +22,13 @@ This repository is a .NET emulator for the WDC 65C02 (an Apple IIe-class Pocket2
 
 ### Target Framework
 
-**This project uses .NET 10.0** as its target framework. All new code and projects must target `net10.0`. Do not question or suggest changes to the framework version - .NET 10.0 is the established standard for this repository as documented in the README and all project files.
+**This project uses .NET 11.0** as its target framework. All new code and projects must target `net11.0`. Do not question or suggest changes to the framework version - .NET 11.0 is the established standard for this repository as documented in the README and all project files.
 
-### C# 15 on net10.0
+### C# 15 on net11.0
 
-- The repo pins the .NET SDK to `11.0.100` in `global.json` and sets `<LangVersion>15</LangVersion>` on every project while keeping `TargetFramework` at `net10.0`.
-- The application still runs on the .NET 10 LTS runtime; the .NET 11 SDK is used only as the compiler toolchain for the newer language features.
-- Use `union`/`closed` only for internal result and state models such as debugger stop reasons, bus-fault kinds, or halt reasons. Do not use them for JSON DTOs because `System.Text.Json` on net10 is not union-aware and silently treats `Value` as a regular property.
+- The repo pins the .NET SDK to `11.0.100` in `global.json`. `<LangVersion>15</LangVersion>` stays explicit. C# 15 is already the default language version for `net11.0`, so the property does not select a newer preview language.
+- The application runs on the .NET 11 runtime. `System.Runtime` supplies the compiler's union and closed-hierarchy types, so the old net10 polyfill is not compiled.
+- Use `union`/`closed` only for internal result and state models such as debugger stop reasons, bus-fault kinds, or halt reasons. .NET 11's `System.Text.Json` can serialize unions, but do not use them for JSON DTOs unless a serializer contract is intentional.
 - Do not use `closed` on extensibility points such as CPU, bus-target, or device hierarchies that are expected to be extended by future 65816/65832 work or plugin cards; `closed` intentionally forbids derivation outside the declaring assembly.
 - Developers need the .NET 11 SDK and a current Visual Studio 2026 / C# Dev Kit build when working locally.
 
@@ -127,7 +127,7 @@ This repository is a .NET emulator for the WDC 65C02 (an Apple IIe-class Pocket2
 
 ## Dependencies and Libraries
 - **Well-maintained libraries.** Use libraries that are actively maintained and have a strong community support.
-- **Compatible with the target framework.** Ensure that all dependencies are compatible with .NET 10.0 (net10.0). The project may also accept packages compatible with net6.0 or netstandard2.0 as they are compatible with net10.0, but prefer net10.0-specific packages when available.
+- **Compatible with the target framework.** Ensure that all dependencies are compatible with .NET 11.0 (net11.0). The project may also accept packages compatible with net8.0 or netstandard2.0 as they are compatible with net11.0, but prefer net11.0-specific packages when available.
 - **Properly licensed.** Verify that all third-party libraries comply with the project's licensing requirements. The repository in general should only use libraries that are licensed under permissive licenses (e.g., MIT, Apache 2.0). We use the MIT License for this repository, so any compatible license is acceptable.
   - **Narrow exception for LGPL native libraries.** An LGPL-licensed *native* library may be used only when it is shipped unmodified and loaded dynamically at runtime as a separate shared library (`.dll`/`.so`/`.dylib`) that users can replace with their own build. It must never be statically linked, compiled into our assemblies, or have its source copied into this repository, and every such library must be listed in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md). The current (and only) case is OpenAL Soft, bundled through `Silk.NET.OpenAL.Soft.Native` and loaded by OpenTK. Managed (.NET) dependencies must still use permissive licenses.
   - **Keep the notices current.** When adding, removing, or upgrading a dependency that ships with the application, update [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).

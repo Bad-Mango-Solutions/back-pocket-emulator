@@ -89,7 +89,7 @@ There is no MCP server in the tree. `emudbg-agent-plan.md` and `PRD-emudbg-agent
 
 Implementations of this spec follow the repository rules:
 
-- .NET 10.
+- .NET 11.
 - Locks are `System.Threading.Lock`. The fast path MUST NOT take `MainBus`'s `swapGroupLock` or any other lock. That lock already surrounds `SelectSwapVariant`.
 - No static mutable state. Fast-path arrays are instance fields of the memory the target already owns.
 - No empty catch. A failed fast-path eligibility check is a slow-path call, not a swallowed exception.

@@ -96,7 +96,7 @@ See `reference/Emulator Evolution Plan.md` for full context of the 11-stage evol
 ---
 
 **Additional Instructions for Copilot:**
-- Use C# 14 and .NET 10 features where appropriate
+- Use C# 14 and .NET 11 features where appropriate
 - Follow existing code style (StyleCop compliance)
 - Ensure all public members have XML documentation comments
 - Use `InstancePerLifetimeScope` for DI registration

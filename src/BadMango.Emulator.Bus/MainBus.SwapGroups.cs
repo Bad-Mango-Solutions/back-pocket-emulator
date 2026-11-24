@@ -88,8 +88,9 @@ public sealed partial class MainBus
                 throw new KeyNotFoundException($"Swap group with ID '{groupId}' not found.");
             }
 
-            // Get the variant to select (this validates the variant exists)
-            var variant = swapGroup.GetVariant(variantName);
+            // Get the variant to select (this validates the variant exists).
+            // swapGroupLock already excludes other bus mutators, so the group's own lock is redundant here.
+            SwapVariant variant = swapGroup.GetVariantNoLock(variantName);
 
             // Atomically update all page entries for the swap group's address range.
             // One snapshot covers every page this rebuild stores.
@@ -123,8 +124,8 @@ public sealed partial class MainBus
                 EndTraceBatch(batch);
             }
 
-            // Update the active variant in the swap group
-            swapGroup.SetActiveVariant(variantName);
+            // Update the active variant in the swap group.
+            swapGroup.SetActiveVariantNoLock(variantName);
         }
     }
 

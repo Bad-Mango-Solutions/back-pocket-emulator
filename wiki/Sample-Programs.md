@@ -20,7 +20,7 @@ dotnet run --project src/BadMango.Basic.Console/BadMango.Basic.Console.csproj --
 Or with the built executable:
 
 ```bash
-./src/BadMango.Basic.Console/bin/Debug/net10.0/bpbasic samples/<filename>.bas
+./src/BadMango.Basic.Console/bin/Debug/net11.0/bpbasic samples/<filename>.bas
 ```
 
 ## Available Samples
