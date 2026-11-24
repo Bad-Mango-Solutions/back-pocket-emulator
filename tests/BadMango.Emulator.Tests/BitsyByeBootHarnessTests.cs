@@ -74,10 +74,10 @@ using BadMango.Emulator.Storage.Media;
 /// signature and dumps <c>$0800..$08FF</c> for forensic analysis.
 /// </para>
 /// <para>
-/// Important: the trap registry's <c>TrapOperation.Write</c> is invoked
-/// at instruction fetch, not on bus writes — so it cannot be used as a
-/// memory watchpoint. Instead, the harness shadows the watched range
-/// between CPU instructions and reports diffs.
+/// Write traps run on data writes through <c>IMemoryBus.Write8</c> and
+/// <c>TryWrite8</c>. They do not run on instruction fetch. The CPU array
+/// fast path does not enter those methods, so this harness still shadows
+/// the watched RAM range between CPU instructions and reports diffs.
 /// </para>
 /// </remarks>
 [TestFixture]

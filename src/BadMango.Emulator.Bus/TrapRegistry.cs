@@ -30,6 +30,11 @@ using Interfaces;
 public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
 {
     /// <summary>
+    /// Slot value for a trap that is not slot-dependent. Slots 1-7 are expansion slots.
+    /// </summary>
+    private const int SlotIndependent = 0;
+
+    /// <summary>
     /// O(1) lookup for traps by address, operation, and memory context.
     /// </summary>
     private readonly Dictionary<TrapKey, TrapEntry> traps = [];
@@ -40,6 +45,11 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     /// enabling reference-counted maintenance during register/unregister operations.
     /// </summary>
     private readonly Dictionary<Addr, int> trappedAddresses = [];
+
+    /// <summary>
+    /// Reference counts of traps by address and operation, ignoring slot and memory context.
+    /// </summary>
+    private readonly Dictionary<OperationAddressKey, int> operationCounts = [];
 
     /// <summary>
     /// Category enable/disable state. Contains disabled categories.
@@ -63,8 +73,24 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
 
     /// <summary>
     /// Internal ROM overlay state for slot ROM trap gating.
+    /// Assigned again when the I/O page is mapped after this registry is constructed.
     /// </summary>
-    private readonly IInternalRomHandler? internalRomHandler;
+    private IInternalRomHandler? internalRomHandler;
+
+    /// <summary>
+    /// How many read traps are registered. The bus checks this before any address lookup.
+    /// </summary>
+    private int readTrapCount;
+
+    /// <summary>
+    /// How many write traps are registered. The bus checks this before any address lookup.
+    /// </summary>
+    private int writeTrapCount;
+
+    /// <summary>
+    /// How many call traps are registered. The CPU fetch path checks this before any address lookup.
+    /// </summary>
+    private int callTrapCount;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TrapRegistry"/> class.
@@ -147,6 +173,29 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         get => trappedAddresses.Count == 0;
     }
 
+    /// <summary>
+    /// Gets or sets the internal ROM handler that suppresses slot-ROM traps while an overlay is active.
+    /// </summary>
+    /// <value>
+    /// The handler captured at construction, or the I/O page assigned after
+    /// <c>WithPocket2eIOPage</c> maps it. <see langword="null"/> when the machine has no overlay.
+    /// </value>
+    public IInternalRomHandler? InternalRomHandler
+    {
+        get => internalRomHandler;
+        set => internalRomHandler = value;
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether any read trap is registered.
+    /// </summary>
+    internal bool HasReadTraps => readTrapCount != 0;
+
+    /// <summary>
+    /// Gets a value indicating whether any write trap is registered.
+    /// </summary>
+    internal bool HasWriteTraps => writeTrapCount != 0;
+
     /// <inheritdoc />
     public void Register(
         Addr address,
@@ -195,7 +244,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(handler);
 
-        var key = new TrapKey(address, operation, memoryContext);
+        var key = new TrapKey(address, operation, memoryContext, SlotIndependent);
         if (traps.ContainsKey(key))
         {
             throw new InvalidOperationException(
@@ -216,7 +265,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         traps[key] = entry;
 
         // Update address index
-        AddToAddressIndex(address);
+        NoteRegistered(address, operation);
 
         // Notify observers
         TrapRegistered?.Invoke(entry.ToTrapInfo());
@@ -248,11 +297,11 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         ArgumentNullException.ThrowIfNull(handler);
         ValidateSlotNumber(slot);
 
-        var key = new TrapKey(address, operation, MemoryContexts.Rom);
+        var key = new TrapKey(address, operation, MemoryContexts.Rom, slot);
         if (traps.ContainsKey(key))
         {
             throw new InvalidOperationException(
-                $"A trap for operation '{operation}' is already registered at address ${address:X4}.");
+                $"A trap for operation '{operation}' in slot {slot} is already registered at address ${address:X4}.");
         }
 
         // Determine if this is in expansion ROM space ($C800-$CFFF)
@@ -274,7 +323,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         traps[key] = entry;
 
         // Update address index
-        AddToAddressIndex(address);
+        NoteRegistered(address, operation);
 
         // Notify observers
         TrapRegistered?.Invoke(entry.ToTrapInfo());
@@ -322,17 +371,21 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Removes the slot-independent trap only. Slot-dependent traps stay until
+    /// <see cref="UnregisterSlotTraps"/>.
+    /// </remarks>
     public bool UnregisterWithContext(Addr address, TrapOperation operation, MemoryContext memoryContext)
     {
-        var key = new TrapKey(address, operation, memoryContext);
-        var removed = traps.Remove(key);
-        if (removed)
+        var key = new TrapKey(address, operation, memoryContext, SlotIndependent);
+        if (!traps.Remove(key))
         {
-            RemoveFromAddressIndex(address);
-            TrapUnregistered?.Invoke(address, operation, memoryContext);
+            return false;
         }
 
-        return removed;
+        NoteRemoved(address, operation);
+        TrapUnregistered?.Invoke(address, operation, memoryContext);
+        return true;
     }
 
     /// <inheritdoc />
@@ -361,7 +414,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         foreach (var key in keysToRemove)
         {
             traps.Remove(key);
-            RemoveFromAddressIndex(key.Address);
+            NoteRemoved(key.Address, key.Operation);
             TrapUnregistered?.Invoke(key.Address, key.Operation, key.MemoryContext);
         }
     }
@@ -377,7 +430,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         foreach (var key in keysToRemove)
         {
             traps.Remove(key);
-            RemoveFromAddressIndex(key.Address);
+            NoteRemoved(key.Address, key.Operation);
             TrapUnregistered?.Invoke(key.Address, key.Operation, key.MemoryContext);
         }
     }
@@ -394,9 +447,9 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         // Determine which memory context is active
         var activeContext = ResolveMemoryContext(address);
 
-        // Try the appropriate trap based on memory context
-        var key = new TrapKey(address, operation, activeContext);
-        if (!traps.TryGetValue(key, out var entry))
+        // Slot-dependent entries are keyed by slot so two cards can share $C800.
+        // The active slot (expansion ROM) or the slot page ($Cnxx) selects which one runs.
+        if (!TrySelectEntry(address, operation, activeContext, out var entry))
         {
             return TrapResult.NotHandled;
         }
@@ -443,14 +496,31 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     /// <inheritdoc />
     public bool HasTrap(Addr address, TrapOperation operation)
     {
-        // Fast pre-check: if no trap exists at this address at all, skip the key scan
-        if (!trappedAddresses.ContainsKey(address))
+        if (!IsOperationRegistered(operation))
         {
             return false;
         }
 
-        // Check if any trap exists at this address for the specific operation
-        return traps.Keys.Any(k => k.Address == address && k.Operation == operation);
+        return operationCounts.ContainsKey(new OperationAddressKey(address, operation));
+    }
+
+    /// <summary>
+    /// Checks whether a call trap is registered at <paramref name="address"/>.
+    /// </summary>
+    /// <param name="address">The instruction fetch address.</param>
+    /// <returns>
+    /// <see langword="false"/> when no call traps are registered, without an address lookup.
+    /// Otherwise <see langword="true"/> when a call trap exists at the address in any context or slot.
+    /// </returns>
+    /// <remarks>
+    /// The CPU fetch path calls this so a read-only or write-only trap at the program counter
+    /// is not treated as a call trap. An empty registry, or one with only read and write traps,
+    /// returns after reading <see cref="callTrapCount"/>.
+    /// </remarks>
+    public bool MayHaveCallTrap(Addr address)
+    {
+        return callTrapCount != 0
+            && operationCounts.ContainsKey(new OperationAddressKey(address, TrapOperation.Call));
     }
 
     /// <inheritdoc />
@@ -466,15 +536,18 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Returns the trap <see cref="TryExecute(Addr, TrapOperation, ICpu, IMemoryBus, IEventContext)"/>
+    /// would select: the active slot for slot and expansion ROM, otherwise the slot-independent trap.
+    /// </remarks>
     public TrapInfo? GetTrapInfo(Addr address, TrapOperation operation, MemoryContext memoryContext)
     {
-        var key = new TrapKey(address, operation, memoryContext);
-        if (traps.TryGetValue(key, out var entry))
+        if (!TrySelectEntry(address, operation, memoryContext, out TrapEntry entry))
         {
-            return entry.ToTrapInfo();
+            return null;
         }
 
-        return null;
+        return entry.ToTrapInfo();
     }
 
     /// <inheritdoc />
@@ -504,24 +577,25 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Updates the slot-independent trap only. Slot-dependent traps are unchanged.
+    /// </remarks>
     public bool SetEnabled(Addr address, TrapOperation operation, bool enabled, MemoryContext memoryContext)
     {
-        var key = new TrapKey(address, operation, memoryContext);
-        if (traps.TryGetValue(key, out var entry))
+        var key = new TrapKey(address, operation, memoryContext, SlotIndependent);
+        if (!traps.TryGetValue(key, out TrapEntry? entry) || entry is null)
         {
-            var previousState = entry.IsEnabled;
-            entry.IsEnabled = enabled;
-
-            // Notify observers if state changed
-            if (previousState != enabled)
-            {
-                TrapEnabledChanged?.Invoke(address, operation, memoryContext, enabled);
-            }
-
-            return true;
+            return false;
         }
 
-        return false;
+        bool previousState = entry.IsEnabled;
+        entry.IsEnabled = enabled;
+        if (previousState != enabled)
+        {
+            TrapEnabledChanged?.Invoke(address, operation, memoryContext, enabled);
+        }
+
+        return true;
     }
 
     /// <inheritdoc />
@@ -574,7 +648,24 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     {
         traps.Clear();
         trappedAddresses.Clear();
+        operationCounts.Clear();
         disabledCategories.Clear();
+        readTrapCount = 0;
+        writeTrapCount = 0;
+        callTrapCount = 0;
+    }
+
+    /// <summary>
+    /// Checks whether a trap for <paramref name="operation"/> is registered at <paramref name="address"/>.
+    /// </summary>
+    /// <param name="address">The address to check.</param>
+    /// <param name="operation">The operation to check.</param>
+    /// <returns>
+    /// <see langword="true"/> when at least one trap for that operation exists at the address.
+    /// </returns>
+    internal bool ContainsOperation(Addr address, TrapOperation operation)
+    {
+        return operationCounts.ContainsKey(new OperationAddressKey(address, operation));
     }
 
     /// <summary>
@@ -593,6 +684,67 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
                 slot,
                 "Slot number must be between 1 and 7.");
         }
+    }
+
+    /// <summary>
+    /// Selects the trap for an address. A slot-dependent entry for the active slot wins
+    /// over a slot-independent entry at the same address.
+    /// </summary>
+    /// <param name="address">The address being executed or accessed.</param>
+    /// <param name="operation">The operation being performed.</param>
+    /// <param name="activeContext">The memory context resolved for <paramref name="address"/>.</param>
+    /// <param name="entry">The selected entry when this method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when an entry is registered for the active slot or for no slot.</returns>
+    private bool TrySelectEntry(
+        Addr address,
+        TrapOperation operation,
+        MemoryContext activeContext,
+        out TrapEntry entry)
+    {
+        int? activeSlot = ResolveActiveSlot(address);
+        if (activeSlot is int slot
+            && traps.TryGetValue(new TrapKey(address, operation, activeContext, slot), out TrapEntry? slotEntry)
+            && slotEntry is not null)
+        {
+            entry = slotEntry;
+            return true;
+        }
+
+        if (traps.TryGetValue(
+                new TrapKey(address, operation, activeContext, SlotIndependent),
+                out TrapEntry? fixedEntry)
+            && fixedEntry is not null)
+        {
+            entry = fixedEntry;
+            return true;
+        }
+
+        entry = null!;
+        return false;
+    }
+
+    /// <summary>
+    /// Resolves which slot's trap is visible at <paramref name="address"/>.
+    /// </summary>
+    /// <param name="address">The address being executed or accessed.</param>
+    /// <returns>
+    /// The active expansion slot for <c>$C800-$CFFF</c>, the slot encoded in a
+    /// <c>$C100-$C7FF</c> address, or <see langword="null"/> when no slot applies.
+    /// </returns>
+    private int? ResolveActiveSlot(Addr address)
+    {
+        if (slotManager is null || address < 0xC100 || address > 0xCFFF)
+        {
+            return null;
+        }
+
+        if (address >= 0xC800)
+        {
+            return slotManager.ActiveExpansionSlot;
+        }
+
+        int slotFromPage = (int)((address >> 8) & 0x0F);
+        return slotFromPage is >= 1 and <= 7 ? slotFromPage : null;
     }
 
     /// <summary>
@@ -715,12 +867,134 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     }
 
     /// <summary>
-    /// Key for the trap dictionary combining address, operation type, and memory context.
+    /// Records one new trap in the address and operation indexes.
+    /// </summary>
+    /// <param name="address">The trap address.</param>
+    /// <param name="operation">The operation that triggers the trap.</param>
+    private void NoteRegistered(Addr address, TrapOperation operation)
+    {
+        AddToAddressIndex(address);
+        AddOperation(address, operation);
+    }
+
+    /// <summary>
+    /// Drops one trap from the address and operation indexes.
+    /// </summary>
+    /// <param name="address">The trap address.</param>
+    /// <param name="operation">The operation that triggered the trap.</param>
+    private void NoteRemoved(Addr address, TrapOperation operation)
+    {
+        RemoveFromAddressIndex(address);
+        RemoveOperation(address, operation);
+    }
+
+    /// <summary>
+    /// Increments the operation index and the per-operation counter.
+    /// </summary>
+    /// <param name="address">The trap address.</param>
+    /// <param name="operation">The operation that triggers the trap.</param>
+    private void AddOperation(Addr address, TrapOperation operation)
+    {
+        var operationKey = new OperationAddressKey(address, operation);
+        operationCounts[operationKey] = operationCounts.TryGetValue(operationKey, out int count)
+            ? count + 1
+            : 1;
+
+        switch (operation)
+        {
+            case TrapOperation.Read:
+                readTrapCount++;
+                break;
+            case TrapOperation.Write:
+                writeTrapCount++;
+                break;
+            case TrapOperation.Call:
+                callTrapCount++;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Decrements the operation index and the per-operation counter.
+    /// </summary>
+    /// <param name="address">The trap address.</param>
+    /// <param name="operation">The operation that triggered the trap.</param>
+    private void RemoveOperation(Addr address, TrapOperation operation)
+    {
+        var operationKey = new OperationAddressKey(address, operation);
+        if (!operationCounts.TryGetValue(operationKey, out int count))
+        {
+            return;
+        }
+
+        if (count <= 1)
+        {
+            operationCounts.Remove(operationKey);
+        }
+        else
+        {
+            operationCounts[operationKey] = count - 1;
+        }
+
+        switch (operation)
+        {
+            case TrapOperation.Read:
+                if (readTrapCount > 0)
+                {
+                    readTrapCount--;
+                }
+
+                break;
+            case TrapOperation.Write:
+                if (writeTrapCount > 0)
+                {
+                    writeTrapCount--;
+                }
+
+                break;
+            case TrapOperation.Call:
+                if (callTrapCount > 0)
+                {
+                    callTrapCount--;
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Reports whether any trap of <paramref name="operation"/> is registered.
+    /// </summary>
+    /// <param name="operation">The operation to check.</param>
+    /// <returns><see langword="true"/> when the matching counter is non-zero.</returns>
+    private bool IsOperationRegistered(TrapOperation operation)
+    {
+        return operation switch
+        {
+            TrapOperation.Read => readTrapCount != 0,
+            TrapOperation.Write => writeTrapCount != 0,
+            TrapOperation.Call => callTrapCount != 0,
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// Key for the operation index. Slot and memory context are resolved later.
+    /// </summary>
+    /// <param name="Address">The memory address.</param>
+    /// <param name="Operation">The operation type (read, write, call).</param>
+    private readonly record struct OperationAddressKey(Addr Address, TrapOperation Operation);
+
+    /// <summary>
+    /// Key for the trap dictionary combining address, operation, memory context, and slot.
     /// </summary>
     /// <param name="Address">The memory address.</param>
     /// <param name="Operation">The operation type (read, write, call).</param>
     /// <param name="MemoryContext">The memory context this trap targets.</param>
-    private readonly record struct TrapKey(Addr Address, TrapOperation Operation, MemoryContext MemoryContext);
+    /// <param name="Slot">
+    /// The expansion slot for a slot-dependent trap, or <see cref="SlotIndependent"/> otherwise.
+    /// </param>
+    private readonly record struct TrapKey(Addr Address, TrapOperation Operation, MemoryContext MemoryContext, int Slot);
 
     /// <summary>
     /// Internal storage for a registered trap entry.

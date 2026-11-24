@@ -197,9 +197,8 @@ public class TrapRegistryTests
 
         registry.RegisterSlotDependent(0xC803, 6, "DISK_ENTRY", TrapCategory.SlotFirmware, handler);
 
-        var info = registry.GetTrapInfo(0xC803);
-        Assert.That(info, Is.Not.Null);
-        Assert.That(info!.Value.SlotNumber, Is.EqualTo(6));
+        TrapInfo info = registry.GetTrapsAtAddress(0xC803).Single();
+        Assert.That(info.SlotNumber, Is.EqualTo(6));
     }
 
     /// <summary>
