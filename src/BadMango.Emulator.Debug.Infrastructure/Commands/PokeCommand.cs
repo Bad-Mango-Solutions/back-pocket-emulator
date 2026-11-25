@@ -604,7 +604,7 @@ public sealed class PokeCommand : CommandHandlerBase, ICommandHelp
             Intent: AccessIntent.DebugWrite,
             SourceId: 0,
             Cycle: 0,
-            Flags: AccessFlags.None);
+            Flags: AccessFlags.NoSideEffects);
 
         return bus.TryWrite8(access, value);
     }
