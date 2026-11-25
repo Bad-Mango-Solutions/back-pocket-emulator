@@ -140,14 +140,22 @@ public static class MachineFactory
     /// <param name="builder">The builder that is about to build.</param>
     /// <param name="profile">The profile whose <c>guestOs</c> section is read.</param>
     /// <remarks>
-    /// Both flags off registers nothing, so the instruction loop gains no boot trap.
-    /// <c>bootLog</c> attaches <see cref="BootSequenceMonitor"/> with the DOS 3.3 and ProDOS 8 profiles,
-    /// and the ProDOS file-load tracker that listens to that monitor.
+    /// Detection and the boot log both off, with <c>callLog</c> off, registers nothing, so the
+    /// instruction loop gains no boot trap. <c>bootLog</c> attaches <see cref="BootSequenceMonitor"/>
+    /// with the DOS 3.3 and ProDOS 8 profiles, and the ProDOS file-load tracker that listens to it.
+    /// <c>callLog</c> other than <c>off</c> attaches that monitor as well, and an <see cref="OsCallLog"/>
+    /// that subscribes to its observe-only hooks.
     /// </remarks>
     private static void AttachGuestOs(MachineBuilder builder, MachineProfile profile)
     {
         bool detect = profile.GuestOs?.Detect == true;
-        bool bootLog = profile.GuestOs?.BootLog == true;
+        OsCallLogMode callMode = OsCallLogMode.Off;
+        if (OsCallLog.TryParseMode(profile.GuestOs?.CallLog, out OsCallLogMode parsed))
+        {
+            callMode = parsed;
+        }
+
+        bool bootLog = profile.GuestOs?.BootLog == true || callMode != OsCallLogMode.Off;
         if (!detect && !bootLog)
         {
             return;
@@ -174,6 +182,13 @@ public static class MachineFactory
                 BootSequenceMonitor.CreateStandardProfiles());
             monitor.Attach(machine);
             ProDosFileLoadTracker.Install(machine, monitor);
+            if (callMode != OsCallLogMode.Off)
+            {
+                var calls = new OsCallLog(guestLogger);
+                calls.Attach(machine, callMode, monitor);
+                machine.AddComponent(calls);
+            }
+
             return monitor;
         });
     }

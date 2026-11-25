@@ -36,6 +36,12 @@ public static class Dos33VectorPage
     /// <summary>48K file-manager target <c>$AAFD</c>.</summary>
     public const ushort FileManagerTarget = 0xAAFD;
 
+    /// <summary>
+    /// File-manager parameter-list pointer at <c>$9D0E</c>. Low byte, then high byte.
+    /// The <c>$03DC</c> locate routine returns this address.
+    /// </summary>
+    public const ushort FileManagerParameterList = 0x9D0E;
+
     /// <summary>RWTS vector at <c>$03D9</c>.</summary>
     public const ushort Rwts = 0x03D9;
 

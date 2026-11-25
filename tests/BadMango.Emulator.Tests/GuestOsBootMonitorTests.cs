@@ -18,6 +18,8 @@ using BadMango.Emulator.Debug.Mcp;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.GuestOs;
 
+using ModelContextProtocol.Protocol;
+
 using Moq;
 
 using Serilog;
@@ -1213,6 +1215,184 @@ public class GuestOsBootMonitorTests
         });
     }
 
+    /// <summary>The call log is absent until the profile or <c>os calls</c> turns it on.</summary>
+    [Test]
+    public void CallLog_IsOffByDefault()
+    {
+        using var machine = BootMachine();
+        using var output = new StringWriter();
+        Assert.That(new OsCommand(Logger.None).Execute(Context(machine, output), ["calls", "off"]).Success, Is.True);
+        Assert.That(machine.GetComponent<IOsCallLog>(), Is.Null);
+        Assert.That(output.ToString(), Does.Contain("off"));
+    }
+
+    /// <summary>
+    /// A ProDOS MLI call is decoded from the stack, an unknown command is named, and the guest matches a machine with the log off.
+    /// </summary>
+    [Test]
+    public void ProDosCalls_AreDecoded_AndMatchTheLogOffMachine()
+    {
+        using var logged = BootMachine(callLog: "all");
+        using var quiet = BootMachine();
+        BootProDosToReady(logged);
+        BootProDosToReady(quiet);
+        var log = logged.GetComponent<OsCallLog>()!;
+
+        PlantMli(logged.Cpu, 0x0300, 0xC8, 0x0400, "/HELLO");
+        PlantMli(quiet.Cpu, 0x0300, 0xC8, 0x0400, "/HELLO");
+        Enter(logged, 0x0300);
+        Enter(quiet, 0x0300);
+
+        PlantMli(logged.Cpu, 0x0310, 0xCA, 0x0500, null);
+        PlantMli(quiet.Cpu, 0x0310, 0xCA, 0x0500, null);
+        Enter(logged, 0x0310);
+        Enter(quiet, 0x0310);
+
+        PlantMli(logged.Cpu, 0x0320, 0x1A, 0x0000, null);
+        PlantMli(quiet.Cpu, 0x0320, 0x1A, 0x0000, null);
+        Enter(logged, 0x0320);
+        Enter(quiet, 0x0320);
+
+        AssertSameGuest(logged.Cpu, quiet.Cpu);
+        IReadOnlyList<OsCall> entries = log.Entries;
+        Assert.Multiple(() =>
+        {
+            Assert.That(entries, Has.Count.EqualTo(3));
+            Assert.That(entries[0].Os, Is.EqualTo(GuestOsId.ProDos8));
+            Assert.That(entries[0].Code, Is.EqualTo(0xC8));
+            Assert.That(entries[0].Name, Is.EqualTo("OPEN"));
+            Assert.That(entries[0].Caller, Is.EqualTo(0x0300u));
+            Assert.That(entries[0].ParamList, Is.EqualTo(0x0400u));
+            Assert.That(entries[0].Summary, Is.EqualTo("/HELLO"));
+            Assert.That(entries[1].Name, Is.EqualTo("READ"));
+            Assert.That(entries[1].Summary, Is.Null);
+            Assert.That(entries[2].Name, Is.EqualTo("$1A (unknown)"));
+            Assert.That(entries[2].Code, Is.EqualTo(0x1A));
+            Assert.That(entries[0].At.Value, Is.LessThan(entries[1].At.Value));
+            Assert.That(entries[1].At.Value, Is.LessThan(entries[2].At.Value));
+        });
+    }
+
+    /// <summary>DOS file-manager and RWTS calls are decoded, and the guest matches a machine with the log off.</summary>
+    [Test]
+    public void DosCalls_AreDecoded_AndMatchTheLogOffMachine()
+    {
+        using var logged = BootMachine(callLog: "all");
+        using var quiet = BootMachine();
+        BootDosToReady(logged);
+        BootDosToReady(quiet);
+        var log = logged.GetComponent<OsCallLog>()!;
+
+        PlantFileManager(logged.Cpu, 1);
+        PlantFileManager(quiet.Cpu, 1);
+        Enter(logged, 0x0320);
+        Enter(quiet, 0x0320);
+
+        PlantRwts(logged.Cpu, 1);
+        PlantRwts(quiet.Cpu, 1);
+        Enter(logged, 0x0330);
+        Enter(quiet, 0x0330);
+
+        AssertSameGuest(logged.Cpu, quiet.Cpu);
+        IReadOnlyList<OsCall> entries = log.Entries;
+        Assert.Multiple(() =>
+        {
+            Assert.That(entries, Has.Count.EqualTo(2));
+            Assert.That(entries[0].Os, Is.EqualTo(GuestOsId.Dos33));
+            Assert.That(entries[0].Code, Is.EqualTo(0x01));
+            Assert.That(entries[0].Name, Is.EqualTo("OPEN"));
+            Assert.That(entries[0].Caller, Is.EqualTo(0x0320u));
+            Assert.That(entries[0].ParamList, Is.EqualTo(0x0900u));
+            Assert.That(entries[1].Name, Is.EqualTo("READ"));
+            Assert.That(entries[1].Code, Is.EqualTo(0x01));
+            Assert.That(entries[1].Caller, Is.EqualTo(0x0330u));
+            Assert.That(entries[1].ParamList, Is.EqualTo(0x0A00u));
+            Assert.That(entries[1].Summary, Is.EqualTo("slot 6 drive 1 track $11 sector $05"));
+        });
+    }
+
+    /// <summary><c>mli</c> ignores DOS, <c>dos</c> ignores MLI, and <c>off</c> stops recording.</summary>
+    [Test]
+    public void CallLogModes_FilterMliAndDos()
+    {
+        using var mli = BootMachine(callLog: "mli");
+        BootDosToReady(mli);
+        PlantFileManager(mli.Cpu, 6);
+        Enter(mli, 0x0320);
+        Assert.That(mli.GetComponent<OsCallLog>()!.Entries, Is.Empty);
+
+        using var dos = BootMachine(callLog: "dos");
+        BootProDosToReady(dos);
+        PlantMli(dos.Cpu, 0x0300, 0xC8, 0x0400, "/HELLO");
+        Enter(dos, 0x0300);
+        Assert.That(dos.GetComponent<OsCallLog>()!.Entries, Is.Empty);
+
+        using var machine = BootMachine(callLog: "all");
+        BootProDosToReady(machine);
+        PlantMli(machine.Cpu, 0x0300, 0xC8, 0x0400, "/HELLO");
+        Enter(machine, 0x0300);
+        using var output = new StringWriter();
+        Assert.That(new OsCommand(Logger.None).Execute(Context(machine, output), ["calls", "off"]).Success, Is.True);
+        PlantMli(machine.Cpu, 0x0310, 0x65, 0x0000, null);
+        Enter(machine, 0x0310);
+        IReadOnlyList<OsCall> entries = machine.GetComponent<OsCallLog>()!.Entries;
+        Assert.That(entries, Has.Count.EqualTo(1));
+        Assert.That(entries[0].Name, Is.EqualTo("OPEN"));
+    }
+
+    /// <summary><c>os calls</c> and <c>get_os_calls</c> return the ring, including a pathname.</summary>
+    [Test]
+    public void OsCallsCommand_AndMcp_ReturnTheDecodedCall()
+    {
+        var sink = new CaptureSink();
+        var logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(sink).CreateLogger();
+        using var machine = BootMachine();
+        BootProDosToReady(machine);
+        using var output = new StringWriter();
+        var command = new OsCommand(logger);
+        Assert.That(command.Execute(Context(machine, output), ["calls", "on"]).Success, Is.True);
+
+        PlantMli(machine.Cpu, 0x0300, 0xC2, 0x0400, "/OLD", "/NEW");
+        Enter(machine, 0x0300);
+
+        output.GetStringBuilder().Clear();
+        Assert.That(command.Execute(Context(machine, output), ["calls"]).Success, Is.True);
+        Assert.That(output.ToString(), Does.Contain("RENAME"));
+        Assert.That(output.ToString(), Does.Contain("/OLD -> /NEW"));
+        Assert.That(sink.Lines, Has.Some.Contains("RENAME").And.Some.Contains("/OLD -> /NEW"));
+
+        var tools = new InspectionTools(new Mock<IDebugSession>().Object, Context(machine, output), Logger.None);
+        var envelope = (DebugEnvelope<OsCallLogSnapshot>)tools.GetOsCalls(1);
+        Assert.Multiple(() =>
+        {
+            Assert.That(envelope.Payload.Mode, Is.EqualTo("all"));
+            Assert.That(envelope.Payload.Calls, Has.Count.EqualTo(1));
+            Assert.That(envelope.Payload.Calls[0].Name, Is.EqualTo("RENAME"));
+            Assert.That(envelope.Payload.Calls[0].Summary, Is.EqualTo("/OLD -> /NEW"));
+        });
+        Assert.That(tools.GetOsCalls(0), Is.InstanceOf<CallToolResult>());
+    }
+
+    /// <summary>The ring keeps the newest calls and drops the oldest.</summary>
+    [Test]
+    public void CallLog_DropsTheOldestWhenFull()
+    {
+        using var machine = BootMachine(callLog: "mli");
+        BootProDosToReady(machine);
+        var log = machine.GetComponent<OsCallLog>()!;
+        PlantMli(machine.Cpu, 0x0300, 0x01, 0x0000, null);
+        Enter(machine, 0x0300);
+        machine.Cpu.Poke8(0x0303, 0xCA);
+        for (int index = 0; index < OsCallLog.Capacity; index++)
+        {
+            Enter(machine, 0x0300);
+        }
+
+        IReadOnlyList<OsCall> entries = log.Entries;
+        Assert.That(entries, Has.Count.EqualTo(OsCallLog.Capacity));
+        Assert.That(entries.All(call => call.Name == "READ"), Is.True);
+    }
+
     private static async Task AssertLoggedBootStartsAtFirmware(Action<ICpu> plant, GuestOsId os, string bootSectorDetail)
     {
         using var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: false));
@@ -1255,9 +1435,9 @@ public class GuestOsBootMonitorTests
         return context;
     }
 
-    private static IMachine BootMachine(bool bootLog = true)
+    private static IMachine BootMachine(bool bootLog = true, string callLog = "off")
     {
-        var machine = MachineFactory.CreateMachine(CreateProfile(bootLog));
+        var machine = MachineFactory.CreateMachine(CreateProfile(bootLog, callLog: callLog));
         machine.InsertSlotCard(Slot, new BlockDeviceCard());
         Power(machine);
         return machine;
@@ -1440,6 +1620,86 @@ public class GuestOsBootMonitorTests
         Poke(cpu, address, 0x4C, (byte)target, (byte)(target >> 8));
     }
 
+    private static void Enter(IMachine machine, ushort address)
+    {
+        machine.Cpu.SetPC(address);
+        machine.Step();
+        machine.Step();
+    }
+
+    private static void PlantMli(ICpu cpu, ushort at, byte command, ushort parms, string? path, string? newPath = null)
+    {
+        cpu.Poke8(ProDosGlobalPage.MliEntry, 0x60);
+        Poke(cpu, at, 0x20, 0x00, 0xBF, command, (byte)parms, (byte)(parms >> 8));
+        if (path is null)
+        {
+            return;
+        }
+
+        ushort text = (ushort)(parms + 16);
+        PlantPath(cpu, text, path);
+        cpu.Poke8(parms, 0x03);
+        cpu.Poke8((ushort)(parms + 1), (byte)text);
+        cpu.Poke8((ushort)(parms + 2), (byte)(text >> 8));
+        if (newPath is null)
+        {
+            return;
+        }
+
+        ushort renamed = (ushort)(text + path.Length + 2);
+        PlantPath(cpu, renamed, newPath);
+        cpu.Poke8((ushort)(parms + 3), (byte)renamed);
+        cpu.Poke8((ushort)(parms + 4), (byte)(renamed >> 8));
+    }
+
+    private static void PlantFileManager(ICpu cpu, byte opcode)
+    {
+        cpu.Poke8(Dos33VectorPage.FileManagerTarget, 0x60);
+        ushort list = 0x0900;
+        cpu.Poke8(Dos33VectorPage.FileManagerParameterList, (byte)list);
+        cpu.Poke8((ushort)(Dos33VectorPage.FileManagerParameterList + 1), (byte)(list >> 8));
+        cpu.Poke8(list, opcode);
+        Poke(cpu, 0x0320, 0x20, 0xFD, 0xAA);
+    }
+
+    private static void PlantRwts(ICpu cpu, byte command)
+    {
+        cpu.Poke8(Dos33VectorPage.RwtsTarget, 0x60);
+        ushort iob = 0x0A00;
+        cpu.Poke8(iob, 0x01);
+        cpu.Poke8((ushort)(iob + 1), 0x60);
+        cpu.Poke8((ushort)(iob + 2), 0x01);
+        cpu.Poke8((ushort)(iob + 4), 0x11);
+        cpu.Poke8((ushort)(iob + 5), 0x05);
+        cpu.Poke8((ushort)(iob + 0x0C), command);
+        cpu.Registers.A.SetByte((byte)(iob >> 8));
+        cpu.Registers.Y.SetByte((byte)iob);
+        Poke(cpu, 0x0330, 0x20, 0xB5, 0xB7);
+    }
+
+    private static void AssertSameGuest(ICpu logged, ICpu quiet)
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(logged.Registers.A.GetByte(), Is.EqualTo(quiet.Registers.A.GetByte()));
+            Assert.That(logged.Registers.X.GetByte(), Is.EqualTo(quiet.Registers.X.GetByte()));
+            Assert.That(logged.Registers.Y.GetByte(), Is.EqualTo(quiet.Registers.Y.GetByte()));
+            Assert.That(logged.Registers.SP.GetByte(), Is.EqualTo(quiet.Registers.SP.GetByte()));
+            Assert.That((byte)logged.Registers.P, Is.EqualTo((byte)quiet.Registers.P));
+            Assert.That(logged.GetPC(), Is.EqualTo(quiet.GetPC()));
+        });
+
+        for (uint address = 0; address < 0xC000; address++)
+        {
+            byte left = logged.Peek8(address);
+            byte right = quiet.Peek8(address);
+            if (left != right)
+            {
+                Assert.Fail($"${address:X4} is ${left:X2} with the log and ${right:X2} without it.");
+            }
+        }
+    }
+
     private static void Poke(ICpu cpu, ushort address, params byte[] bytes)
     {
         for (var i = 0; i < bytes.Length; i++)
@@ -1448,7 +1708,7 @@ public class GuestOsBootMonitorTests
         }
     }
 
-    private static MachineProfile CreateProfile(bool bootLog, bool highRom = false)
+    private static MachineProfile CreateProfile(bool bootLog, bool highRom = false, string callLog = "off")
     {
         var highMemory = new List<MemoryRegionProfile>();
         if (highRom)
@@ -1531,7 +1791,7 @@ public class GuestOsBootMonitorTests
             {
                 Slots = new SlotSystemProfile { Enabled = true, Cards = [] },
             },
-            GuestOs = new GuestOsProfile { Detect = bootLog, BootLog = bootLog },
+            GuestOs = new GuestOsProfile { Detect = bootLog, BootLog = bootLog, CallLog = callLog },
         };
     }
 

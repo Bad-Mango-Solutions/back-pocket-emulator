@@ -547,7 +547,7 @@
         },
         "guestOsSection": {
             "type": "object",
-            "description": "Guest OS detection and boot milestone log. Both switches are off by default.",
+            "description": "Guest OS detection, boot milestone log, and OS call log. All are off by default.",
             "properties": {
                 "detect": {
                     "type": "boolean",
@@ -558,6 +558,12 @@
                     "type": "boolean",
                     "description": "Install the boot-sequence monitor. Off registers no boot traps. The console command os on can also enable it.",
                     "default": false
+                },
+                "callLog": {
+                    "type": "string",
+                    "enum": ["off", "mli", "dos", "all", "on"],
+                    "description": "OS call log. off records nothing. mli logs ProDOS MLI calls, dos logs DOS 3.3 file manager and RWTS calls, and all or on logs both. Any value other than off also installs the boot monitor.",
+                    "default": "off"
                 }
             },
             "additionalProperties": false

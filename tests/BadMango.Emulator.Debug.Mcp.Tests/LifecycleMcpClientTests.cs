@@ -51,6 +51,7 @@ public sealed class LifecycleMcpClientTests
                 "get_boot_log",
                 "get_file_activity",
                 "get_guest_os",
+                "get_os_calls",
                 "get_registers",
                 "get_screen_text",
                 "load_profile",
