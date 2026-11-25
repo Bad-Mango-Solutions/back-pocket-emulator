@@ -286,6 +286,7 @@ The `devices.motherboard` section configures built-in devices that are always pr
 | `speaker` | Speaker toggle ($C030) |
 | `languagecard` | Language Card 16KB RAM ($C080-$C08F) |
 | `extended80column` | Extended 80-Column Card with 64KB auxiliary RAM |
+| `prodos-clock` | Slotless ProDOS 8 clock. Off unless listed. Answers `DATETIME` at `$BF06` when no clock card is installed |
 
 #### Device Configuration: Character Generator
 
@@ -336,6 +337,37 @@ The Extended 80-Column Card controls these soft switches:
 | $C008/$C009 | ALTZP | Alternate zero page and stack |
 | $C00A/$C00B | SLOTC3ROM | Slot 3 ROM control |
 | $C00C/$C00D | 80COL | 80-column display mode |
+
+#### Device Configuration: ProDOS Clock
+
+`prodos-clock` is a motherboard device. It is absent unless the profile lists it. When guest-OS detection reports a ProDOS 8 session, and ProDOS left `RTS` (`$60`) at `$BF06` because it found no clock card, a call to `DATETIME` writes ProDOS `DATE`/`TIME` at `$BF90`–`$BF93`. The year byte is `year % 100`. A clock card stays in charge when ProDOS installs `JMP` (`$4C`) there.
+
+The trap is installed only after a ProDOS session is detected, so the profile also turns on `guestOs.detect` or `guestOs.bootLog`. A cold start drops the trap until the next ProDOS session.
+
+Time uses the same fields as a PocketWatch card. `timezoneOffset` null, the default, is the host's local time, including daylight saving time. A number, including zero, is UTC plus that many minutes and does not follow daylight saving time. `frozen` uses `frozenTime` and ignores the offset.
+
+```json
+{
+    "type": "prodos-clock",
+    "name": "ProDOS Clock",
+    "enabled": true,
+    "config": {
+        "timeSource": "host",
+        "timezoneOffset": null,
+        "frozenTime": null
+    }
+}
+```
+
+| Config Field | Description |
+|--------------|-------------|
+| `timeSource` | `host` (default), `frozen`, or `ntp` (`ntp` uses the host clock) |
+| `timezoneOffset` | Minutes from UTC. Null uses local time. A value, including 0, is a fixed UTC offset |
+| `frozenTime` | ISO 8601 time used when `timeSource` is `frozen` |
+
+```json
+"guestOs": { "detect": true, "bootLog": true }
+```
 
 ---
 

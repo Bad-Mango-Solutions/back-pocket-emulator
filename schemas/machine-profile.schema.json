@@ -379,7 +379,7 @@
             "properties": {
                 "type": {
                     "type": "string",
-                    "description": "Device type identifier (e.g., 'speaker', 'keyboard', 'video', 'gameio')"
+                    "description": "Device type identifier (e.g., 'speaker', 'keyboard', 'video', 'gameio', 'prodos-clock')"
                 },
                 "name": {
                     "type": "string",

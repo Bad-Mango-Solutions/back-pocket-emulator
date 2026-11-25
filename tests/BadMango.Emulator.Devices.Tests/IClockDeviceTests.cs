@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Devices.Tests;
 
+using System.Reflection;
+
 using BadMango.Emulator.Bus.Interfaces;
 
 /// <summary>
@@ -13,12 +15,16 @@ using BadMango.Emulator.Bus.Interfaces;
 public class IClockDeviceTests
 {
     /// <summary>
-    /// Verifies that IClockDevice interface inherits from ISlotCard.
+    /// Verifies that IClockDevice interface inherits from ISlotCard and IClockSource.
     /// </summary>
     [Test]
     public void Interface_InheritsFromISlotCard()
     {
-        Assert.That(typeof(ISlotCard).IsAssignableFrom(typeof(IClockDevice)), Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(typeof(ISlotCard).IsAssignableFrom(typeof(IClockDevice)), Is.True);
+            Assert.That(typeof(IClockSource).IsAssignableFrom(typeof(IClockDevice)), Is.True);
+        });
     }
 
     /// <summary>
@@ -27,9 +33,9 @@ public class IClockDeviceTests
     [Test]
     public void Interface_HasCurrentTimeProperty()
     {
-        var property = typeof(IClockDevice).GetProperty(nameof(IClockDevice.CurrentTime));
+        var property = FindProperty(nameof(IClockSource.CurrentTime));
         Assert.That(property, Is.Not.Null);
-        Assert.That(property.PropertyType, Is.EqualTo(typeof(DateTime)));
+        Assert.That(property!.PropertyType, Is.EqualTo(typeof(DateTime)));
     }
 
     /// <summary>
@@ -38,7 +44,7 @@ public class IClockDeviceTests
     [Test]
     public void Interface_HasUseHostTimePropertyWithGetAndSet()
     {
-        var property = typeof(IClockDevice).GetProperty(nameof(IClockDevice.UseHostTime));
+        var property = FindProperty(nameof(IClockSource.UseHostTime));
         Assert.That(property, Is.Not.Null);
         Assert.Multiple(() =>
         {
@@ -54,7 +60,7 @@ public class IClockDeviceTests
     [Test]
     public void Interface_HasSetFixedTimeMethod()
     {
-        var method = typeof(IClockDevice).GetMethod(nameof(IClockDevice.SetFixedTime));
+        var method = FindMethod(nameof(IClockSource.SetFixedTime));
         Assert.That(method, Is.Not.Null);
         Assert.Multiple(() =>
         {
@@ -63,5 +69,45 @@ public class IClockDeviceTests
             Assert.That(parameters, Has.Length.EqualTo(1));
             Assert.That(parameters[0].ParameterType, Is.EqualTo(typeof(DateTime)));
         });
+    }
+
+    private static PropertyInfo? FindProperty(string name)
+    {
+        PropertyInfo? property = typeof(IClockDevice).GetProperty(name);
+        if (property is not null)
+        {
+            return property;
+        }
+
+        foreach (Type implemented in typeof(IClockDevice).GetInterfaces())
+        {
+            property = implemented.GetProperty(name);
+            if (property is not null)
+            {
+                return property;
+            }
+        }
+
+        return null;
+    }
+
+    private static MethodInfo? FindMethod(string name)
+    {
+        MethodInfo? method = typeof(IClockDevice).GetMethod(name);
+        if (method is not null)
+        {
+            return method;
+        }
+
+        foreach (Type implemented in typeof(IClockDevice).GetInterfaces())
+        {
+            method = implemented.GetMethod(name);
+            if (method is not null)
+            {
+                return method;
+            }
+        }
+
+        return null;
     }
 }

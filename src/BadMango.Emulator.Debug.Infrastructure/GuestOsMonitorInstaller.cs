@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Debug.Infrastructure;
 
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.GuestOs;
 
 using Serilog;
@@ -54,6 +55,7 @@ public static class GuestOsMonitorInstaller
         var monitor = new BootSequenceMonitor(logger, detector, BootSequenceMonitor.CreateStandardProfiles());
         monitor.Attach(machine);
         machine.AddComponent(monitor);
+        machine.GetComponent<ProDosClockDevice>()?.Bind(machine);
         monitor.PublishFromDetector();
     }
 }

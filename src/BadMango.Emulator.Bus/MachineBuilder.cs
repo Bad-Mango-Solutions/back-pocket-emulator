@@ -1073,6 +1073,12 @@ public sealed partial class MachineBuilder
             }
         }
 
+        // Devices initialized before component factories bind to those components here.
+        foreach (IMachineBuiltCallback callback in machine.GetComponents<IMachineBuiltCallback>())
+        {
+            callback.OnMachineBuilt(machine);
+        }
+
         // Machines start Off, so startup scheduling from device initialization must not
         // leave runnable work queued until a later power-on.
         scheduler.FlushPending(keepDeferredWork: false);

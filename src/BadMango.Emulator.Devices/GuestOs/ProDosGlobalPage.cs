@@ -39,6 +39,12 @@ public static class ProDosGlobalPage
     /// <summary>Little-endian <c>DATETIME</c> vector at <c>$BF07</c>.</summary>
     public const ushort DateTimeVector = 0xBF07;
 
+    /// <summary><c>DATELO</c> at <c>$BF90</c>.</summary>
+    public const ushort DateLo = 0xBF90;
+
+    /// <summary><c>TIMELO</c> at <c>$BF92</c>.</summary>
+    public const ushort TimeLo = 0xBF92;
+
     /// <summary><c>MACHID</c> at <c>$BF98</c>.</summary>
     public const ushort MachIdAddress = 0xBF98;
 
@@ -75,6 +81,13 @@ public static class ProDosGlobalPage
             memory.Read(MachIdAddress),
             VersionLabelFor(kVersion));
     }
+
+    /// <summary>
+    /// Reports whether <paramref name="kVersion"/> is a ProDOS 8 release through 2.4.3.
+    /// </summary>
+    /// <param name="kVersion">The byte at <c>$BFFF</c>.</param>
+    /// <returns><see langword="true"/> when <see cref="VersionLabelFor"/> has a label.</returns>
+    public static bool IsKnownVersion(byte kVersion) => VersionLabelFor(kVersion) is not null;
 
     /// <summary>
     /// Maps a known <c>KVERSION</c> byte onto its label.

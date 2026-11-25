@@ -953,6 +953,10 @@ public sealed partial class MachineBuilder
 
         // Create the device instance
         var device = factory(this);
+        if (device is IProfileConfiguredDevice configured)
+        {
+            configured.ApplyProfileConfig(deviceEntry.Config);
+        }
 
         // Load device-specific ROMs (e.g., character ROM for video device)
         LoadDeviceRoms(device, deviceEntry, romImages);
