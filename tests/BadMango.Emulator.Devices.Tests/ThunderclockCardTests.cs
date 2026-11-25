@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Devices.Tests;
 
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Unit.Components;
 
 using Moq;
 
@@ -110,6 +111,20 @@ public class ThunderclockCardTests
 
         Assert.That(cardTime, Is.GreaterThanOrEqualTo(before));
         Assert.That(cardTime, Is.LessThanOrEqualTo(after));
+    }
+
+    /// <summary>
+    /// Verifies that host time follows the injected provider's local zone, including daylight saving time.
+    /// </summary>
+    [Test]
+    public void CurrentTime_WhenUseHostTime_UsesProviderLocalTime()
+    {
+        var provider = new FixedTimeProvider(
+            new DateTimeOffset(2026, 7, 15, 17, 30, 0, TimeSpan.Zero),
+            FixedTimeProvider.CreatePacificLikeZone());
+        var timed = new ThunderclockCard(provider);
+
+        Assert.That(timed.CurrentTime, Is.EqualTo(new DateTime(2026, 7, 15, 10, 30, 0)));
     }
 
     /// <summary>

@@ -14,7 +14,7 @@ using System.Text.Json.Serialization;
 /// PocketWatch is a Thunderclock-compatible real-time clock card that provides
 /// time services to the emulated system. It supports multiple time sources:
 /// <list type="bullet">
-/// <item><description>"host" - Uses the host system's clock (UTC with timezone offset)</description></item>
+/// <item><description>"host" - Uses the host system's local clock, including daylight saving time. A timezone offset, when set, uses UTC plus that offset instead.</description></item>
 /// <item><description>"frozen" - Uses a static datetime specified in the profile</description></item>
 /// <item><description>"ntp" - Uses NTP server polling with offset from host clock</description></item>
 /// </list>
@@ -37,14 +37,20 @@ public sealed class PocketWatchConfig
     public string TimeSource { get; set; } = "host";
 
     /// <summary>
-    /// Gets or sets the timezone offset in minutes from UTC.
+    /// Gets or sets an optional timezone offset in minutes from UTC.
     /// </summary>
     /// <remarks>
-    /// Used with "host" and "ntp" time sources. For example, -300 for EST (UTC-5),
-    /// +60 for CET (UTC+1). Defaults to 0 (UTC).
+    /// <para>
+    /// A null offset, which is the default, uses the host's local time, including daylight saving time.
+    /// A set value, including zero, uses UTC plus that many minutes and does not follow daylight saving time.
+    /// For example, -300 is a fixed UTC-5 and 60 is a fixed UTC+1.
+    /// </para>
+    /// <para>
+    /// Used with the "host" and "ntp" time sources. Frozen time ignores this value.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("timezoneOffset")]
-    public int TimezoneOffset { get; set; } = 0;
+    public int? TimezoneOffset { get; set; }
 
     /// <summary>
     /// Gets or sets the frozen time value for "frozen" time source.

@@ -18,15 +18,17 @@ using Interfaces;
 /// time services. It uses a simple protocol through slot I/O space.
 /// </para>
 /// <para>
-/// This stub implementation surfaces DateTime.Now (or a fixed time) to the
+/// This stub implementation surfaces the host's local time (or a fixed time) to the
 /// emulated system, providing basic clock functionality without full
-/// Thunderclock hardware emulation.
+/// Thunderclock hardware emulation. Host time comes from <see cref="TimeProvider.GetLocalNow"/>,
+/// including daylight saving time.
 /// </para>
 /// </remarks>
 public sealed class ThunderclockCard : IClockDevice
 {
     private readonly SlotIOHandlers handlers = new();
     private readonly IBusTarget romRegion;
+    private readonly TimeProvider timeProvider;
     private readonly byte[] timeData = new byte[8];
     private DateTime fixedTime;
     private bool useHostTime = true;
@@ -37,8 +39,13 @@ public sealed class ThunderclockCard : IClockDevice
     /// <summary>
     /// Initializes a new instance of the <see cref="ThunderclockCard"/> class.
     /// </summary>
-    public ThunderclockCard()
+    /// <param name="timeProvider">
+    /// Clock used for host time. <see langword="null"/> uses <see cref="TimeProvider.System"/>.
+    /// </param>
+    public ThunderclockCard(TimeProvider? timeProvider = null)
     {
+        this.timeProvider = timeProvider ?? TimeProvider.System;
+
         // Set up I/O handlers
         // Thunderclock uses a few specific offsets for clock access
         handlers.Set(0x00, ReadClockData, WriteClockControl);
@@ -76,7 +83,7 @@ public sealed class ThunderclockCard : IClockDevice
     // ─── IClockDevice ───────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public DateTime CurrentTime => useHostTime ? DateTime.Now : fixedTime;
+    public DateTime CurrentTime => useHostTime ? timeProvider.GetLocalNow().DateTime : fixedTime;
 
     /// <inheritdoc />
     public bool UseHostTime

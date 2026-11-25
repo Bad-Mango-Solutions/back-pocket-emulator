@@ -8,6 +8,7 @@ using System.Text.Json;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Core.Configuration;
+using BadMango.Unit.Components;
 
 using Serilog;
 using Serilog.Core;
@@ -51,22 +52,45 @@ public class PocketWatchCardTests
     }
 
     /// <summary>
-    /// Tests that CurrentTime returns host time when configured.
+    /// Tests that the system clock default returns host local time.
     /// </summary>
     [Test]
-    public void CurrentTime_UseHostTime_ReturnsCurrentTime()
+    public void CurrentTime_UseHostTime_ReturnsHostLocalTime()
     {
         // Arrange
         var card = new PocketWatchCard();
-        var before = DateTime.UtcNow;
+        var before = DateTime.Now;
 
         // Act
         var time = card.CurrentTime;
-        var after = DateTime.UtcNow;
+        var after = DateTime.Now;
 
         // Assert (allow some tolerance for test execution time)
         Assert.That(time, Is.GreaterThanOrEqualTo(before.AddSeconds(-1)));
         Assert.That(time, Is.LessThanOrEqualTo(after.AddSeconds(1)));
+    }
+
+    /// <summary>
+    /// Verifies that a missing offset follows the provider's local zone, including daylight saving time.
+    /// </summary>
+    [Test]
+    public void CurrentTime_NoOffset_UsesProviderLocalTimeIncludingDaylightSaving()
+    {
+        TimeZoneInfo zone = FixedTimeProvider.CreatePacificLikeZone();
+        var summerUtc = new DateTimeOffset(2026, 7, 15, 17, 30, 0, TimeSpan.Zero);
+        var winterUtc = new DateTimeOffset(2026, 1, 15, 18, 30, 0, TimeSpan.Zero);
+        var summerProvider = new FixedTimeProvider(summerUtc, zone);
+        var winterProvider = new FixedTimeProvider(winterUtc, zone);
+        var summer = new PocketWatchCard(new PocketWatchConfig(), summerProvider);
+        var winter = new PocketWatchCard(new PocketWatchConfig(), winterProvider);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summerProvider.GetLocalNow().Offset, Is.EqualTo(TimeSpan.FromHours(-7)));
+            Assert.That(winterProvider.GetLocalNow().Offset, Is.EqualTo(TimeSpan.FromHours(-8)));
+            Assert.That(summer.CurrentTime, Is.EqualTo(new DateTime(2026, 7, 15, 10, 30, 0)));
+            Assert.That(winter.CurrentTime, Is.EqualTo(new DateTime(2026, 1, 15, 10, 30, 0)));
+        });
     }
 
     /// <summary>
@@ -134,26 +158,63 @@ public class PocketWatchCardTests
     }
 
     /// <summary>
-    /// Tests that timezone offset is applied to host time.
+    /// Tests that an explicit timezone offset, including zero, is applied to UTC and ignores the local zone.
     /// </summary>
     [Test]
     public void CurrentTime_WithTimezoneOffset_AppliesOffset()
     {
-        // Arrange
-        var config = new PocketWatchConfig
+        var provider = new FixedTimeProvider(
+            new DateTimeOffset(2026, 7, 15, 17, 30, 0, TimeSpan.Zero),
+            FixedTimeProvider.CreatePacificLikeZone());
+        var plusOneHour = new PocketWatchCard(
+            new PocketWatchConfig
+            {
+                TimeSource = "host",
+                TimezoneOffset = 60,
+            },
+            provider);
+        var utc = new PocketWatchCard(
+            new PocketWatchConfig
+            {
+                TimeSource = "host",
+                TimezoneOffset = 0,
+            },
+            provider);
+
+        Assert.Multiple(() =>
         {
-            TimeSource = "host",
-            TimezoneOffset = 60, // +1 hour
-        };
-        var card = new PocketWatchCard(config);
-        var utcNow = DateTimeOffset.UtcNow;
+            Assert.That(plusOneHour.CurrentTime, Is.EqualTo(new DateTime(2026, 7, 15, 18, 30, 0)));
+            Assert.That(utc.CurrentTime, Is.EqualTo(new DateTime(2026, 7, 15, 17, 30, 0)));
+        });
+    }
 
-        // Act
-        var time = card.CurrentTime;
+    /// <summary>
+    /// Verifies that frozen time ignores the injected clock and any timezone offset.
+    /// </summary>
+    [Test]
+    public void CurrentTime_Frozen_IgnoresTimeProviderAndOffset()
+    {
+        var provider = new FixedTimeProvider(
+            new DateTimeOffset(2026, 7, 15, 17, 30, 0, TimeSpan.Zero),
+            FixedTimeProvider.CreatePacificLikeZone());
+        var card = new PocketWatchCard(
+            new PocketWatchConfig
+            {
+                TimeSource = "frozen",
+                FrozenTime = "1986-06-15T10:30:00",
+                TimezoneOffset = -300,
+            },
+            provider);
 
-        // Assert (allow some tolerance)
-        var expected = utcNow.AddMinutes(60).DateTime;
-        Assert.That(time, Is.EqualTo(expected).Within(TimeSpan.FromSeconds(2)));
+        Assert.Multiple(() =>
+        {
+            Assert.That(card.UseHostTime, Is.False);
+            Assert.That(card.CurrentTime.Year, Is.EqualTo(1986));
+            Assert.That(card.CurrentTime.Month, Is.EqualTo(6));
+            Assert.That(card.CurrentTime.Day, Is.EqualTo(15));
+            Assert.That(card.CurrentTime.Hour, Is.EqualTo(10));
+            Assert.That(card.CurrentTime.Minute, Is.EqualTo(30));
+        });
     }
 
     /// <summary>
@@ -285,13 +346,45 @@ public class PocketWatchCardTests
     [Test]
     public void FromProfileConfig_TimezoneOffset_AppliesOffset()
     {
-        using var document = JsonDocument.Parse(
+        var provider = new FixedTimeProvider(
+            new DateTimeOffset(2026, 7, 15, 17, 30, 0, TimeSpan.Zero),
+            FixedTimeProvider.CreatePacificLikeZone());
+        using var plusOneHour = JsonDocument.Parse(
             """{"timeSource":"host","timezoneOffset":60}""");
-        var card = PocketWatchCard.FromProfileConfig(document.RootElement);
-        var expected = DateTimeOffset.UtcNow.AddMinutes(60).DateTime;
+        using var explicitUtc = JsonDocument.Parse(
+            """{"timeSource":"host","timezoneOffset":0}""");
 
-        Assert.That(card.UseHostTime, Is.True);
-        Assert.That(card.CurrentTime, Is.EqualTo(expected).Within(TimeSpan.FromSeconds(2)));
+        var offsetCard = PocketWatchCard.FromProfileConfig(plusOneHour.RootElement, logger: null, timeProvider: provider);
+        var utcCard = PocketWatchCard.FromProfileConfig(explicitUtc.RootElement, logger: null, timeProvider: provider);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(offsetCard.UseHostTime, Is.True);
+            Assert.That(offsetCard.CurrentTime, Is.EqualTo(new DateTime(2026, 7, 15, 18, 30, 0)));
+            Assert.That(utcCard.CurrentTime, Is.EqualTo(new DateTime(2026, 7, 15, 17, 30, 0)));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a profile which omits <c>timezoneOffset</c>, or sets it to null, uses local time.
+    /// </summary>
+    [Test]
+    public void FromProfileConfig_OmittedOffset_UsesLocalTime()
+    {
+        var provider = new FixedTimeProvider(
+            new DateTimeOffset(2026, 7, 16, 6, 30, 0, TimeSpan.Zero),
+            FixedTimeProvider.CreatePacificLikeZone());
+        using var omitted = JsonDocument.Parse("""{"timeSource":"host"}""");
+        using var explicitNull = JsonDocument.Parse("""{"timeSource":"host","timezoneOffset":null}""");
+
+        var omittedCard = PocketWatchCard.FromProfileConfig(omitted.RootElement, logger: null, timeProvider: provider);
+        var nullCard = PocketWatchCard.FromProfileConfig(explicitNull.RootElement, logger: null, timeProvider: provider);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(omittedCard.CurrentTime, Is.EqualTo(new DateTime(2026, 7, 15, 23, 30, 0)));
+            Assert.That(nullCard.CurrentTime, Is.EqualTo(new DateTime(2026, 7, 15, 23, 30, 0)));
+        });
     }
 
     /// <summary>
