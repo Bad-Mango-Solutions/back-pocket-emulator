@@ -363,7 +363,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         // codeql[cs/catch-of-all-exceptions]
         catch (Exception ex)
         {
-            debugContext.Error.WriteLine("Boot error: " + ex.ToString());
+            debugContext.Error.WriteLine($"Boot error: {ex}");
         }
     }
 }
