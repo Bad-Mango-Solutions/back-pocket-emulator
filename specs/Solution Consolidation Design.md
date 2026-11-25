@@ -265,7 +265,7 @@ The dead-code review pile is 1,361 production lines, and 75 of the Remove lines 
 
 ### Publish size and cold start
 
-Not measured. `global.json` requires SDK `11.0.100` (`rollForward`: `latestPatch`). The machine used for this inventory has SDK `10.0.403` only, so `dotnet publish` cannot start. `DISPLAY` was set, so a built `bpui` could have been timed. No number is invented here.
+Not measured for the inventory. `global.json` requires SDK `11.0.100` (`rollForward`: `latestPatch`). The machine used for this inventory has SDK `10.0.403` only, so `dotnet publish` cannot start. `DISPLAY` was set, so a built `bpui` could have been timed. No number is invented here. The measurement is in Baseline (before consolidation) below.
 
 Take the baseline once, on a machine with that SDK, before move 1:
 
@@ -276,6 +276,30 @@ du -sb /tmp/bpui-publish
 ```
 
 Record the SDK version, the RID, `--self-contained false`, the directory byte count, and the size of `bpui.dll`. Cold start is a fresh process of that publish under a real display, timed until the main window is mapped. One sample. Write the command and the two numbers into the PR. `Avalonia.Headless` does not measure this. Repeat the same command after the host-shell fold and after the Core fold if a later issue wants the after number.
+
+### Baseline (before consolidation)
+
+Taken before move 1 on commit `eee9e57682f00944f3164b27405ec7db1dbe1c6f`. bpui shell only; bpui is not yet wired to the emulator core, so this excludes machine construction and boot.
+
+```bash
+dotnet publish src/BadMango.Emulator.UI/BadMango.Emulator.UI.csproj \
+  -c Release -r linux-x64 --self-contained false -o /tmp/bpui-publish
+du -sb /tmp/bpui-publish
+```
+
+| | |
+| --- | --- |
+| SDK | `11.0.100` (`dotnet --version`). `global.json` pins `11.0.100`, `rollForward` `latestPatch`. The 11.0 channel install resolved to that version. Runtime `Microsoft.NETCore.App 11.0.0`. |
+| RID | `linux-x64` |
+| `--self-contained` | `false` |
+| Publish directory | `29913145` bytes (`du -sb /tmp/bpui-publish`, immediately after publish) |
+| `bpui.dll` | `1973760` bytes (`stat -c %s`) |
+| Cold start | `899` ms. First of three fresh processes of `/tmp/bpui-publish/bpui`, until a visible window named `BackPocket Emulator`, then `xwininfo` Map State `IsViewable`. The other samples were `879` ms and `1001` ms. |
+| Display | Xvfb: `Xvfb :99 -screen 0 1600x1200x24 -ac +extension RANDR +render -noreset`. No physical display. Xorg is not installed, `/dev/dri` is absent, and the environment's `DISPLAY=:1` did not open. |
+| CPU | `Intel(R) Xeon(R) Processor`, 4 cores (KVM guest) |
+| Timing | `scripts/measure-bpui-coldstart.sh`. Polls `xdotool search --onlyvisible --name`. xdotool 3.20160805.1 `--sync` steps about 500 ms, so the script does not use `--sync`. |
+
+The cold-start sample is the first of those three fresh processes. The publish output was already in the file cache.
 
 ## 6. Proposed sub-issues
 
