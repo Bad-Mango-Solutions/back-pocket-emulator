@@ -1112,7 +1112,8 @@ public class GuestOsBootMonitorTests
         BootProDosToReady(machine);
         PlantMli(machine.Cpu, 0x0300, 0xC8, 0x0400, "/HELLO");
         Enter(machine, 0x0300);
-        Assert.That(new OsCommand(Logger.None).Execute(Context(machine, new StringWriter()), ["calls", "off"]).Success, Is.True);
+        using var output = new StringWriter();
+        Assert.That(new OsCommand(Logger.None).Execute(Context(machine, output), ["calls", "off"]).Success, Is.True);
         PlantMli(machine.Cpu, 0x0310, 0x65, 0x0000, null);
         Enter(machine, 0x0310);
         IReadOnlyList<OsCall> entries = machine.GetComponent<OsCallLog>()!.Entries;
