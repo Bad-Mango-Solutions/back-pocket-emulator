@@ -595,7 +595,12 @@ public sealed class ProDosFileLoadTracker : IFileLoadTracker
             return path;
         }
 
-        return this.prefix + path;
+        if (this.prefix[^1] == '/')
+        {
+            return this.prefix + path;
+        }
+
+        return this.prefix + "/" + path;
     }
 
     private readonly record struct PendingCall(ushort ReturnAddress, byte Command, ushort ParameterList, ulong Cycle);

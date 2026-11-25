@@ -293,7 +293,7 @@ public class GuestOsBootMonitorTests
         Poke(cpu, 0x1010, 0xA5);
         PlantPath(cpu, 0x0500, "BASIC.SYSTEM");
         PlantPath(cpu, 0x0510, "DRIVER");
-        PlantPath(cpu, 0x0520, "/DISK/");
+        PlantPath(cpu, 0x0520, "/DISK");
         Poke(cpu, 0x04F0, 0x01, 0x20, 0x05);
         Poke(cpu, 0x0400, 0x03, 0x00, 0x05, 0x00, 0x20, 0x00);
         Poke(cpu, 0x0430, 0x03, 0x10, 0x05, 0x00, 0x22, 0x00);
@@ -415,6 +415,25 @@ public class GuestOsBootMonitorTests
             Assert.That(tracker.Current, Is.Null);
             Assert.That(Registry(machine).HasTrap(0x1006), Is.False);
         });
+    }
+
+    /// <summary>A prefix that already ends with a slash is not given a second one.</summary>
+    [Test]
+    public void ProDosMli_PrefixEndingInSlash_JoinsWithOneSeparator()
+    {
+        using var machine = BootMachine();
+        BootProDosToReady(machine);
+        var cpu = machine.Cpu;
+        PlantMliStub(cpu);
+        PlantPath(cpu, 0x0520, "/DISK/");
+        PlantPath(cpu, 0x0500, "BASIC.SYSTEM");
+        Poke(cpu, 0x04F0, 0x01, 0x20, 0x05);
+        Poke(cpu, 0x0400, 0x03, 0x00, 0x05, 0x00, 0x20, 0x00);
+
+        RunMli(machine, 0xC6, 0x04F0, [], 0);
+        RunMli(machine, 0xC8, 0x0400, [0x01], 0x0405);
+
+        Assert.That(machine.GetComponent<IFileLoadTracker>()!.Files[0].Path, Is.EqualTo("/DISK/BASIC.SYSTEM"));
     }
 
     /// <summary>An unrecognized boot sector ends at CustomBoot, leaves the OS at None, and drops the traps.</summary>
