@@ -312,8 +312,13 @@ public class GuestOsBootMonitorTests
             sawReturn = true;
             var info = Registry(machine).GetTrapInfo(0x1006);
             Assert.That(info, Is.Not.Null);
-            Assert.That(info!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
-            Assert.That(info.Value.Name, Is.EqualTo("MLI file return"));
+            if (info is not TrapInfo trapInfo)
+            {
+                return;
+            }
+
+            Assert.That(trapInfo.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+            Assert.That(trapInfo.Name, Is.EqualTo("MLI file return"));
             Assert.That(tracker.Files, Is.Empty);
         });
 
