@@ -93,6 +93,50 @@ public class PocketWatchClockTrapTests
     }
 
     /// <summary>
+    /// Verifies that host time with no offset writes the provider's local time at <c>$0200</c>.
+    /// </summary>
+    /// <remarks>
+    /// The fixture is 06:30 UTC on 16 July 2026, which is 23:30 on 15 July in the Pacific-like zone.
+    /// A UTC clock would write the 16th at 06:30 instead.
+    /// </remarks>
+    [Test]
+    public void ClockEntries_HostLocalTime_WritesLocalTimeAt0200()
+    {
+        TimeZoneInfo zone = CreatePacificLikeZone();
+        var utc = new DateTimeOffset(2026, 7, 16, 6, 30, 0, TimeSpan.Zero);
+        DateTime local = TimeZoneInfo.ConvertTime(utc, zone).DateTime;
+        const string ExpectedLocalTime = "07,03,15,23,30";
+        var card = new PocketWatchCard(new PocketWatchConfig(), new FixedTimeProvider(utc, zone));
+
+        using var machine = CreateOffMachine();
+        machine.InsertSlotCard(4, card);
+        Power(machine);
+
+        var cpu = machine.Cpu;
+        Fill(cpu, TimeBuffer, TimeLength + 1, 0x11);
+        WriteProgram(cpu, 0x20, 0x0B, 0xC4, 0x20, 0x08, 0xC4, 0xDB);
+        cpu.SetPC(ProgramAddress);
+
+        machine.Step();
+        machine.Step();
+        machine.Step();
+        machine.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(FormatProDos(local), Is.EqualTo(ExpectedLocalTime));
+            Assert.That(local.Day, Is.Not.EqualTo(utc.Day));
+            Assert.That(card.CurrentTime, Is.EqualTo(local));
+            Assert.That(ReadAscii(cpu, TimeBuffer, TimeLength), Is.EqualTo(ExpectedLocalTime));
+            Assert.That(ProDosField(cpu, 0), Is.EqualTo(local.Month));
+            Assert.That(ProDosField(cpu, 6), Is.EqualTo(local.Day));
+            Assert.That(ProDosField(cpu, 9), Is.EqualTo(local.Hour));
+            Assert.That(ProDosField(cpu, 12), Is.EqualTo(local.Minute));
+            Assert.That(cpu.Read8(TimeBuffer + TimeLength), Is.EqualTo(0x11));
+        });
+    }
+
+    /// <summary>
     /// Verifies that the bytes at <c>$0200</c> survive the ProDOS 8 <c>TCLOCK.S</c> field conversion.
     /// </summary>
     [Test]
@@ -241,6 +285,36 @@ public class PocketWatchClockTrapTests
 
     private static string FrozenConfigJson()
         => $$"""{"timeSource":"frozen","frozenTime":"{{FrozenInstant}}"}""";
+
+    private static string FormatProDos(DateTime time)
+        => $"{time.Month:00},{(int)time.DayOfWeek:00},{time.Day:00},{time.Hour:00},{time.Minute:00}";
+
+    private static TimeZoneInfo CreatePacificLikeZone()
+    {
+        TimeZoneInfo.TransitionTime dstStart = TimeZoneInfo.TransitionTime.CreateFloatingDateRule(
+            new DateTime(1, 1, 1, 2, 0, 0),
+            3,
+            2,
+            DayOfWeek.Sunday);
+        TimeZoneInfo.TransitionTime dstEnd = TimeZoneInfo.TransitionTime.CreateFloatingDateRule(
+            new DateTime(1, 1, 1, 2, 0, 0),
+            11,
+            1,
+            DayOfWeek.Sunday);
+        TimeZoneInfo.AdjustmentRule rule = TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(
+            new DateTime(2000, 1, 1),
+            new DateTime(2039, 12, 31),
+            TimeSpan.FromHours(1),
+            dstStart,
+            dstEnd);
+        return TimeZoneInfo.CreateCustomTimeZone(
+            "TestPacific",
+            TimeSpan.FromHours(-8),
+            "Test Pacific",
+            "Test Pacific Standard Time",
+            "Test Pacific Daylight Time",
+            new[] { rule });
+    }
 
     private static void AssertFrozenInstant(PocketWatchCard card)
     {
@@ -470,5 +544,24 @@ public class PocketWatchClockTrapTests
         var registry = machine.GetComponent<ITrapRegistry>();
         Assert.That(registry, Is.Not.Null);
         return registry!.GetAllTraps().Where(trap => trap.Name.StartsWith("PW_", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// <see cref="TimeProvider"/> that returns one UTC instant in a caller-supplied local zone.
+    /// </summary>
+    private sealed class FixedTimeProvider : TimeProvider
+    {
+        private readonly DateTimeOffset utcNow;
+        private readonly TimeZoneInfo localZone;
+
+        public FixedTimeProvider(DateTimeOffset utcNow, TimeZoneInfo localZone)
+        {
+            this.utcNow = utcNow;
+            this.localZone = localZone;
+        }
+
+        public override TimeZoneInfo LocalTimeZone => localZone;
+
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

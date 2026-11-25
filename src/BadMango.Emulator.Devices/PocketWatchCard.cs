@@ -28,7 +28,7 @@ using Serilog;
 /// <para>
 /// The card supports multiple time sources:
 /// <list type="bullet">
-/// <item><description>"host" - Uses the host system's clock with timezone offset</description></item>
+/// <item><description>"host" - Uses the host system's local clock, including daylight saving time. A set timezone offset uses UTC plus that offset instead.</description></item>
 /// <item><description>"frozen" - Uses a static datetime from configuration</description></item>
 /// <item><description>"ntp" - Uses NTP server polling (not yet implemented)</description></item>
 /// </list>
@@ -80,10 +80,11 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     private readonly SlotIOHandlers handlers = new();
     private readonly IBusTarget romRegion;
     private readonly PocketWatchConfig config;
+    private readonly TimeProvider timeProvider;
     private readonly byte[] timeData = new byte[8];
     private DateTime fixedTime;
     private bool useHostTime = true;
-    private int timezoneOffsetMinutes;
+    private int? timezoneOffsetMinutes;
     private int slotNumber;
     private int readIndex;
     private bool clockTrapsRegistered;
@@ -103,9 +104,22 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     /// </summary>
     /// <param name="config">The PocketWatch configuration.</param>
     public PocketWatchCard(PocketWatchConfig config)
+        : this(config, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PocketWatchCard"/> class with specified configuration.
+    /// </summary>
+    /// <param name="config">The PocketWatch configuration.</param>
+    /// <param name="timeProvider">
+    /// Clock used for host time. <see langword="null"/> uses <see cref="TimeProvider.System"/>.
+    /// </param>
+    public PocketWatchCard(PocketWatchConfig config, TimeProvider? timeProvider)
     {
         ArgumentNullException.ThrowIfNull(config);
         this.config = config;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
 
         // Configure time source
         ConfigureTimeSource();
@@ -158,12 +172,17 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     {
         get
         {
-            if (useHostTime)
+            if (!useHostTime)
             {
-                return DateTimeOffset.UtcNow.AddMinutes(timezoneOffsetMinutes).DateTime;
+                return fixedTime;
             }
 
-            return fixedTime;
+            if (timezoneOffsetMinutes is int offsetMinutes)
+            {
+                return timeProvider.GetUtcNow().AddMinutes(offsetMinutes).DateTime;
+            }
+
+            return timeProvider.GetLocalNow().DateTime;
         }
     }
 
@@ -183,27 +202,33 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     /// <param name="logger">
     /// Optional logger for a config object that cannot be read. Null and non-object values are not logged.
     /// </param>
+    /// <param name="timeProvider">
+    /// Clock used for host time. <see langword="null"/> uses <see cref="TimeProvider.System"/>.
+    /// </param>
     /// <returns>
     /// A card configured from <paramref name="cardConfig"/>. A null, non-object, or unreadable value keeps the defaults.
     /// </returns>
-    public static PocketWatchCard FromProfileConfig(JsonElement? cardConfig, ILogger? logger = null)
+    public static PocketWatchCard FromProfileConfig(
+        JsonElement? cardConfig,
+        ILogger? logger = null,
+        TimeProvider? timeProvider = null)
     {
         if (cardConfig is not { ValueKind: JsonValueKind.Object } element)
         {
-            return new();
+            return new(new PocketWatchConfig(), timeProvider);
         }
 
         try
         {
             PocketWatchConfig parsed = element.Deserialize<PocketWatchConfig>() ?? new();
-            return new(parsed);
+            return new(parsed, timeProvider);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
         {
             logger?.Warning(
                 ex,
                 "PocketWatch card config could not be read. Using the default clock settings.");
-            return new();
+            return new(new PocketWatchConfig(), timeProvider);
         }
     }
 

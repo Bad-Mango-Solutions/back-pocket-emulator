@@ -134,8 +134,7 @@
                     "slot": 4,
                     "type": "pocketwatch",
                     "config": {
-                        "timeSource": "host",
-                        "timezoneOffset": 0
+                        "timeSource": "host"
                     }
                 }
             ]
