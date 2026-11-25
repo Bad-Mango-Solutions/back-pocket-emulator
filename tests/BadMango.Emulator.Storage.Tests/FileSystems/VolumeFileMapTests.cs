@@ -56,6 +56,13 @@ public class VolumeFileMapTests
                 Assert.That(seedling.Offset, Is.Zero);
                 Assert.That(seedling.Length, Is.EqualTo(Math.Min(entry.EofBytes, ProdosLayout.BlockSize)));
                 Assert.That(seedling.FileLength, Is.EqualTo(entry.EofBytes));
+                var sectorTrack = entry.KeyBlock / 8;
+                var logical = (entry.KeyBlock % 8) * 2;
+                var physical = SectorSkew.LogicalToPhysical(SectorOrder.ProDos, logical);
+                Assert.That(map.TryLocatePhysicalSector(sectorTrack, physical, out var sectorHit, out _, out _), Is.True);
+                Assert.That(sectorHit.Path, Is.EqualTo(entry.Path));
+                Assert.That(map.TryLocatePhysicalSector(sectorTrack + (1 << 29), physical, out _, out _, out _), Is.False);
+                Assert.That(map.TryLocatePhysicalSector(map.BlockCount, physical, out _, out _, out _), Is.False);
                 continue;
             }
 
@@ -118,6 +125,8 @@ public class VolumeFileMapTests
         Assert.That(block, Is.EqualTo(-1));
         Assert.That(half, Is.EqualTo(-1));
         Assert.That(map.TryLocateBlock(0, out _), Is.False);
+        Assert.That(map.TryLocatePhysicalSector(fixture.TrackCount, physical, out _, out _, out _), Is.False);
+        Assert.That(map.TryLocatePhysicalSector(data.Track + 0x01000000, physical, out _, out _, out _), Is.False);
     }
 
     /// <summary>

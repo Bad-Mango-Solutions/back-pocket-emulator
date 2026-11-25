@@ -170,11 +170,22 @@ public sealed class VolumeFileMap
 
         if (this.Kind == AppleFileSystemKind.Dos33)
         {
+            if ((uint)track >= (uint)this.TrackCount || track > (int.MaxValue >> 8))
+            {
+                return false;
+            }
+
             var logical = SectorSkew.PhysicalToLogical(SectorOrder.Dos33, physicalSector);
             return this.units.TryGetValue(SectorKey(track, logical), out location);
         }
 
-        if (this.Kind != AppleFileSystemKind.Prodos)
+        if (this.Kind != AppleFileSystemKind.Prodos || this.BlockCount <= 0)
+        {
+            return false;
+        }
+
+        var maxTrack = (this.BlockCount - 1) / 8;
+        if (track > maxTrack)
         {
             return false;
         }
@@ -182,7 +193,7 @@ public sealed class VolumeFileMap
         var prodosLogical = SectorSkew.PhysicalToLogical(SectorOrder.ProDos, physicalSector);
         block = (track * 8) + (prodosLogical / 2);
         half = prodosLogical & 1;
-        if (!this.units.TryGetValue(block, out var whole))
+        if ((uint)block >= (uint)this.BlockCount || !this.units.TryGetValue(block, out var whole))
         {
             block = -1;
             half = -1;
