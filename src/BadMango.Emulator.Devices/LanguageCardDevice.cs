@@ -28,11 +28,15 @@ using BadMango.Emulator.Core;
 /// </para>
 /// <para>
 /// This device owns its physical memory and configures the bus layers and swap
-/// groups during initialization.
+/// groups during initialization. The main 16K is the motherboard language-card
+/// RAM. A second 16K, selected by <see cref="IAuxiliaryLanguageCard.SetAuxiliaryBank"/>,
+/// is the auxiliary language-card RAM that ALTZP maps on an Apple IIe. Both banks
+/// share the $C080-$C08F switches. The page table names the selected RAM directly,
+/// so a memory read does not consult ALTZP.
 /// </para>
 /// </remarks>
 [DeviceType("languagecard")]
-public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider, ILanguageCardState, IHardResetMemory, IResetReceiver
+public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider, ILanguageCardState, IAuxiliaryLanguageCard, IHardResetMemory, IResetReceiver
 {
     /// <summary>
     /// The name of the Language Card RAM layer for $E000-$FFFF.
@@ -85,6 +89,36 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     public const string HighSplitVariantName = "SPLIT";
 
     /// <summary>
+    /// Auxiliary bank 1 for $D000-$DFFF, selected when ALTZP is on.
+    /// </summary>
+    public const string AuxBank1VariantName = "AUX_BANK1";
+
+    /// <summary>
+    /// Auxiliary bank 2 for $D000-$DFFF, selected when ALTZP is on.
+    /// </summary>
+    public const string AuxBank2VariantName = "AUX_BANK2";
+
+    /// <summary>
+    /// Auxiliary split bank 1: ROM reads, auxiliary bank-1 writes.
+    /// </summary>
+    public const string AuxSplitBank1VariantName = "AUX_SPLIT_BANK1";
+
+    /// <summary>
+    /// Auxiliary split bank 2: ROM reads, auxiliary bank-2 writes.
+    /// </summary>
+    public const string AuxSplitBank2VariantName = "AUX_SPLIT_BANK2";
+
+    /// <summary>
+    /// Auxiliary RAM for $E000-$FFFF, selected when ALTZP is on.
+    /// </summary>
+    public const string AuxHighRamVariantName = "AUX_RAM";
+
+    /// <summary>
+    /// Auxiliary split mode for $E000-$FFFF: ROM reads, auxiliary RAM writes.
+    /// </summary>
+    public const string AuxHighSplitVariantName = "AUX_SPLIT";
+
+    /// <summary>
     /// The layer priority for the Language Card layers.
     /// </summary>
     public const int LayerPriority = 20;
@@ -111,6 +145,12 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     private readonly RamTarget bank1Target;
     private readonly RamTarget bank2Target;
     private readonly RamTarget highTarget;
+    private readonly PhysicalMemory auxBank1Memory;
+    private readonly PhysicalMemory auxBank2Memory;
+    private readonly PhysicalMemory auxHighMemory;
+    private readonly RamTarget auxBank1Target;
+    private readonly RamTarget auxBank2Target;
+    private readonly RamTarget auxHighTarget;
 
     private IMemoryBus? bus;
     private uint bankSwapGroupId;
@@ -123,6 +163,7 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     private bool writeEnabled;      // True = writes go to LC RAM
     private bool bank2Selected;     // True = $D000 bank 2 (Bank 1 selected on power-on)
     private bool preWrite;          // Armed by an odd read; any later odd read enables writes
+    private bool auxiliaryBank;     // True = ALTZP maps the auxiliary 16K at $D000-$FFFF
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LanguageCardDevice"/> class.
@@ -141,6 +182,15 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         bank1Target = new(bank1Memory.Slice(0, D000BankSize), "LC_Bank1");
         bank2Target = new(bank2Memory.Slice(0, D000BankSize), "LC_Bank2");
         highTarget = new(highMemory.Slice(0, E000Size), "LC_E000");
+
+        // The IIe auxiliary language-card RAM. Bank 2 of $D000 occupies the $C000
+        // hole of the 64K aux card; bank 1 and $E000-$FFFF occupy $D000-$FFFF.
+        auxBank1Memory = new(D000BankSize, "LC_Aux_Bank1");
+        auxBank2Memory = new(D000BankSize, "LC_Aux_Bank2");
+        auxHighMemory = new(E000Size, "LC_Aux_E000");
+        auxBank1Target = new(auxBank1Memory.Slice(0, D000BankSize), "LC_Aux_Bank1");
+        auxBank2Target = new(auxBank2Memory.Slice(0, D000BankSize), "LC_Aux_Bank2");
+        auxHighTarget = new(auxHighMemory.Slice(0, E000Size), "LC_Aux_E000");
     }
 
     // ??? IPeripheral ????????????????????????????????????????????????????????????
@@ -297,6 +347,18 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
     // ??? IMotherboardDevice ?????????????????????????????????????????????????????
 
     /// <inheritdoc />
+    public void SetAuxiliaryBank(bool selected)
+    {
+        if (auxiliaryBank == selected)
+        {
+            return;
+        }
+
+        auxiliaryBank = selected;
+        ApplyState();
+    }
+
+    /// <inheritdoc />
     public void RegisterHandlers(IOPageDispatcher dispatcher)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
@@ -388,6 +450,9 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         bank1Memory.Clear();
         bank2Memory.Clear();
         highMemory.Clear();
+        auxBank1Memory.Clear();
+        auxBank2Memory.Clear();
+        auxHighMemory.Clear();
     }
 
     /// <inheritdoc />
@@ -396,6 +461,9 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         pattern.Apply(bank1Memory.AsSpan());
         pattern.Apply(bank2Memory.AsSpan());
         pattern.Apply(highMemory.AsSpan());
+        pattern.Apply(auxBank1Memory.AsSpan());
+        pattern.Apply(auxBank2Memory.AsSpan());
+        pattern.Apply(auxHighMemory.AsSpan());
     }
 
     // ??? Configuration Methods ??????????????????????????????????????????????????
@@ -490,11 +558,16 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         // Add Bank2 variant
         bus.AddSwapVariant(groupId, Bank2VariantName, bank2Target, physBase: 0, perms: PagePerms.ReadExecute);
 
+        // Auxiliary $D000 banks. ALTZP selects these instead of the main banks.
+        bus.AddSwapVariant(groupId, AuxBank1VariantName, auxBank1Target, physBase: 0, perms: PagePerms.ReadExecute);
+        bus.AddSwapVariant(groupId, AuxBank2VariantName, auxBank2Target, physBase: 0, perms: PagePerms.ReadExecute);
+
         // Create swap group for E000-FFFF mode selection (RAM vs. split). The "RAM"
         // variant is registered immediately and matches the default layer mapping;
         // the "SPLIT" variant is registered in Initialize() once the ROM is mapped.
         uint highGroupId = bus.CreateSwapGroup(HighSwapGroupName, virtualBase: 0xE000, size: E000Size);
         bus.AddSwapVariant(highGroupId, HighRamVariantName, highTarget, physBase: 0, perms: PagePerms.ReadExecute);
+        bus.AddSwapVariant(highGroupId, AuxHighRamVariantName, auxHighTarget, physBase: 0, perms: PagePerms.ReadExecute);
 
         // DO NOT call SelectSwapVariant here - the layer is inactive and we don't want
         // to overwrite the base ROM mapping in the page table. The variant will be
@@ -679,6 +752,20 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
                     physBase: 0,
                     perms: PagePerms.ReadWrite);
 
+                var auxHighSplitTarget = new LanguageCardSplitTarget(
+                    romBindings: highRomBindings,
+                    writeTarget: auxHighTarget,
+                    writePhysBaseAtRegion: 0,
+                    regionVirtualBase: 0xE000,
+                    regionSize: E000Size,
+                    name: "LC_Aux_E000_Split");
+                bus.AddSwapVariant(
+                    highSwapGroupId,
+                    AuxHighSplitVariantName,
+                    auxHighSplitTarget,
+                    physBase: 0,
+                    perms: PagePerms.ReadWrite);
+
                 highSplitVariantRegistered = true;
             }
         }
@@ -717,6 +804,33 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
                 bankSwapGroupId,
                 SplitBank2VariantName,
                 lowSplitBank2Target,
+                physBase: 0,
+                perms: PagePerms.ReadWrite);
+
+            var auxLowSplitBank1Target = new LanguageCardSplitTarget(
+                romBindings: [bank1Binding],
+                writeTarget: auxBank1Target,
+                writePhysBaseAtRegion: 0,
+                regionVirtualBase: 0xD000,
+                regionSize: D000BankSize,
+                name: "LC_Aux_D000_Bank1_Split");
+            var auxLowSplitBank2Target = new LanguageCardSplitTarget(
+                romBindings: [bank2Binding],
+                writeTarget: auxBank2Target,
+                writePhysBaseAtRegion: 0,
+                regionVirtualBase: 0xD000,
+                regionSize: D000BankSize,
+                name: "LC_Aux_D000_Bank2_Split");
+            bus.AddSwapVariant(
+                bankSwapGroupId,
+                AuxSplitBank1VariantName,
+                auxLowSplitBank1Target,
+                physBase: 0,
+                perms: PagePerms.ReadWrite);
+            bus.AddSwapVariant(
+                bankSwapGroupId,
+                AuxSplitBank2VariantName,
+                auxLowSplitBank2Target,
                 physBase: 0,
                 perms: PagePerms.ReadWrite);
 
@@ -779,11 +893,10 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
 
             if (readRam)
             {
-                // Full-RAM mode: route both reads and writes to the LC RAM targets.
-                SelectVariantIfChanged(highSwapGroupId, HighRamVariantName);
-                SelectVariantIfChanged(
-                    bankSwapGroupId,
-                    bank2Selected ? Bank2VariantName : Bank1VariantName);
+                // Full-RAM mode: route both reads and writes to the selected LC RAM.
+                // ALTZP chooses the auxiliary targets. The published page is that RAM.
+                SelectVariantIfChanged(highSwapGroupId, HighRamVariant());
+                SelectVariantIfChanged(bankSwapGroupId, LowRamVariant());
 
                 bus.SetLayerPermissions(HighLayerName, fullRamPerms);
                 bus.SetLayerPermissions(LowLayerName, fullRamPerms);
@@ -802,27 +915,23 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
                 // cascade of BRK $00 monitor calls).
                 if (highSplitVariantRegistered)
                 {
-                    SelectVariantIfChanged(highSwapGroupId, HighSplitVariantName);
+                    SelectVariantIfChanged(highSwapGroupId, HighSplitVariant());
                     bus.SetLayerPermissions(HighLayerName, PagePerms.ReadWrite);
                 }
                 else
                 {
-                    SelectVariantIfChanged(highSwapGroupId, HighRamVariantName);
+                    SelectVariantIfChanged(highSwapGroupId, HighRamVariant());
                     bus.SetLayerPermissions(HighLayerName, PagePerms.Write);
                 }
 
                 if (lowSplitVariantsRegistered)
                 {
-                    SelectVariantIfChanged(
-                        bankSwapGroupId,
-                        bank2Selected ? SplitBank2VariantName : SplitBank1VariantName);
+                    SelectVariantIfChanged(bankSwapGroupId, LowSplitVariant());
                     bus.SetLayerPermissions(LowLayerName, PagePerms.ReadWrite);
                 }
                 else
                 {
-                    SelectVariantIfChanged(
-                        bankSwapGroupId,
-                        bank2Selected ? Bank2VariantName : Bank1VariantName);
+                    SelectVariantIfChanged(bankSwapGroupId, LowRamVariant());
                     bus.SetLayerPermissions(LowLayerName, PagePerms.Write);
                 }
             }
@@ -841,6 +950,46 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
                 bus.DeactivateLayer(LowLayerName);
             }
         }
+    }
+
+    /// <summary>
+    /// Returns the $E000-$FFFF RAM variant for the bank ALTZP currently selects.
+    /// </summary>
+    /// <returns>The main or auxiliary full-RAM variant name.</returns>
+    private string HighRamVariant() => auxiliaryBank ? AuxHighRamVariantName : HighRamVariantName;
+
+    /// <summary>
+    /// Returns the $E000-$FFFF split variant for the bank ALTZP currently selects.
+    /// </summary>
+    /// <returns>The main or auxiliary split variant name.</returns>
+    private string HighSplitVariant() => auxiliaryBank ? AuxHighSplitVariantName : HighSplitVariantName;
+
+    /// <summary>
+    /// Returns the $D000-$DFFF RAM variant for the selected bank and ALTZP state.
+    /// </summary>
+    /// <returns>The main or auxiliary full-RAM variant name.</returns>
+    private string LowRamVariant()
+    {
+        if (auxiliaryBank)
+        {
+            return bank2Selected ? AuxBank2VariantName : AuxBank1VariantName;
+        }
+
+        return bank2Selected ? Bank2VariantName : Bank1VariantName;
+    }
+
+    /// <summary>
+    /// Returns the $D000-$DFFF split variant for the selected bank and ALTZP state.
+    /// </summary>
+    /// <returns>The main or auxiliary split variant name.</returns>
+    private string LowSplitVariant()
+    {
+        if (auxiliaryBank)
+        {
+            return bank2Selected ? AuxSplitBank2VariantName : AuxSplitBank1VariantName;
+        }
+
+        return bank2Selected ? SplitBank2VariantName : SplitBank1VariantName;
     }
 
     private void SelectVariantIfChanged(uint groupId, string variantName)

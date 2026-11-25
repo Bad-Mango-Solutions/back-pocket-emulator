@@ -51,6 +51,7 @@ public sealed class AuxiliaryMemoryController : IMotherboardDevice, ISoftSwitchP
 
     private IMemoryBus? bus;
     private IOPageDispatcher? ioDispatcher;
+    private IAuxiliaryLanguageCard? auxiliaryLanguageCard;
 
     // ─── Soft Switch State ──────────────────────────────────────────────
     private bool store80;
@@ -142,6 +143,7 @@ public sealed class AuxiliaryMemoryController : IMotherboardDevice, ISoftSwitchP
         ArgumentNullException.ThrowIfNull(context);
 
         bus = context.Bus;
+        auxiliaryLanguageCard = context.GetComponent<IAuxiliaryLanguageCard>();
 
         // Set initial state: all switches disabled (main RAM visible)
         store80 = false;
@@ -409,6 +411,8 @@ public sealed class AuxiliaryMemoryController : IMotherboardDevice, ISoftSwitchP
     /// </remarks>
     private void ApplyState()
     {
+        auxiliaryLanguageCard?.SetAuxiliaryBank(altzp);
+
         if (bus is null)
         {
             return;
