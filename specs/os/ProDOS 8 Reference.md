@@ -92,6 +92,8 @@ Four bytes, low byte first. The figure is in [TechRef §4.6.1](https://prodos8.c
 
 [Technical Note #28](https://prodos8.com/docs/technote/28/) (Dave Lyons, September 1990) defines the seven-bit year. Values 100–127 are invalid. 40–99 means 1940–1999. 0–39 means 2000–2039. The note says Apple II and Apple IIgs system software did not yet apply that rule.
 
+The optional `prodos-clock` motherboard device writes these four bytes, with `year % 100`, when ProDOS left `RTS` at `$BF06`. A clock card that ProDOS installed as `JMP` still owns `DATETIME`.
+
 ### Interpreter and kernel version
 
 | Address | Name | Description | Source |
@@ -805,3 +807,4 @@ ERROR:  ; Handle error in A
 |---------|------------|---------|
 | 1.0     | 2025-12-30 | Initial specification |
 | 1.1     | 2026-11-24 | Corrected global-page vectors, `MACHID`, date/time bytes, and `KVERSION` / `IVERSION` against the TechRef, TN #11, TN #23, and TN #28. Removed the built-in IIc clock claim. |
+| 1.2     | 2026-11-25 | Noted that `prodos-clock` fills `DATE`/`TIME` when `$BF06` is `RTS`. |

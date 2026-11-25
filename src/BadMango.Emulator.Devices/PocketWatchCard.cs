@@ -72,19 +72,10 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     /// </summary>
     private const byte HighAsciiBit = 0x80;
 
-    /// <summary>
-    /// The default frozen time when no valid frozen time is specified.
-    /// </summary>
-    private static readonly DateTime DefaultFrozenTime = new(1986, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
     private readonly SlotIOHandlers handlers = new();
     private readonly IBusTarget romRegion;
-    private readonly PocketWatchConfig config;
-    private readonly TimeProvider timeProvider;
+    private readonly ConfiguredClock clock;
     private readonly byte[] timeData = new byte[8];
-    private DateTime fixedTime;
-    private bool useHostTime = true;
-    private int? timezoneOffsetMinutes;
     private int slotNumber;
     private int readIndex;
     private bool clockTrapsRegistered;
@@ -118,11 +109,7 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     public PocketWatchCard(PocketWatchConfig config, TimeProvider? timeProvider)
     {
         ArgumentNullException.ThrowIfNull(config);
-        this.config = config;
-        this.timeProvider = timeProvider ?? TimeProvider.System;
-
-        // Configure time source
-        ConfigureTimeSource();
+        clock = new ConfiguredClock(config, timeProvider);
 
         // Set up I/O handlers (Thunderclock protocol)
         handlers.Set(0x00, ReadClockData, WriteClockControl);
@@ -168,29 +155,13 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     // ─── IClockDevice ───────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public DateTime CurrentTime
-    {
-        get
-        {
-            if (!useHostTime)
-            {
-                return fixedTime;
-            }
-
-            if (timezoneOffsetMinutes is int offsetMinutes)
-            {
-                return timeProvider.GetUtcNow().AddMinutes(offsetMinutes).DateTime;
-            }
-
-            return timeProvider.GetLocalNow().DateTime;
-        }
-    }
+    public DateTime CurrentTime => clock.CurrentTime;
 
     /// <inheritdoc />
     public bool UseHostTime
     {
-        get => useHostTime;
-        set => useHostTime = value;
+        get => clock.UseHostTime;
+        set => clock.UseHostTime = value;
     }
 
     /// <summary>
@@ -233,11 +204,7 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
     }
 
     /// <inheritdoc />
-    public void SetFixedTime(DateTime time)
-    {
-        fixedTime = time;
-        useHostTime = false;
-    }
+    public void SetFixedTime(DateTime time) => clock.SetFixedTime(time);
 
     // ─── IScheduledDevice ───────────────────────────────────────────────
 
@@ -290,36 +257,6 @@ public sealed class PocketWatchCard : IClockDevice, IDisposable
         int clamped = Math.Clamp(value, 0, 99);
         cpu.Write8(address, ToHighAscii((byte)('0' + (clamped / 10))));
         cpu.Write8(address + 1, ToHighAscii((byte)('0' + (clamped % 10))));
-    }
-
-    private void ConfigureTimeSource()
-    {
-        timezoneOffsetMinutes = config.TimezoneOffset;
-
-        switch (config.TimeSource.ToLowerInvariant())
-        {
-            case "host":
-                useHostTime = true;
-                break;
-
-            case "frozen":
-                useHostTime = false;
-                fixedTime = !string.IsNullOrEmpty(config.FrozenTime) &&
-                    DateTime.TryParse(config.FrozenTime, out var parsedTime)
-                        ? parsedTime
-                        : DefaultFrozenTime;
-                break;
-
-            case "ntp":
-                // NTP support is a future enhancement
-                // For now, fall back to host time
-                useHostTime = true;
-                break;
-
-            default:
-                useHostTime = true;
-                break;
-        }
     }
 
     private byte ReadClockData(byte offset, in BusAccess context)

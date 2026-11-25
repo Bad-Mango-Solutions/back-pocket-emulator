@@ -107,6 +107,7 @@ public static class DeviceFactoryExtensions
         /// <item><description>Motherboard: Speaker ($C030)</description></item>
         /// <item><description>Motherboard: Language Card (16KB RAM at $D000-$FFFF)</description></item>
         /// <item><description>Motherboard: Extended 80-Column Card (64KB auxiliary RAM)</description></item>
+        /// <item><description>Motherboard: ProDOS clock (slotless DATETIME at $BF06, when the profile lists it)</description></item>
         /// <item><description>Slot Cards: PocketWatch (Thunderclock-compatible RTC)</description></item>
         /// </list>
         /// <para>
