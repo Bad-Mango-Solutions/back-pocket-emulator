@@ -97,6 +97,11 @@ public abstract class CpuBase : ICpu
     private IDebugStepListener? debugListener;
 
     /// <summary>
+    /// Address of the last instruction that ran to completion. Cleared by reset and <see cref="SetPC"/>.
+    /// </summary>
+    private Addr? lastRetiredInstruction;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="CpuBase"/> class with an event context.
     /// </summary>
     /// <param name="context">The event context providing access to the memory bus, signal bus, and scheduler.</param>
@@ -155,6 +160,9 @@ public abstract class CpuBase : ICpu
     {
         get => stopRequested;
     }
+
+    /// <inheritdoc/>
+    public Addr? LastRetiredInstruction => this.lastRetiredInstruction;
 
     /// <inheritdoc/>
     public InstructionTrace Trace
@@ -259,6 +267,7 @@ public abstract class CpuBase : ICpu
     public void SetPC(Addr address)
     {
         registers.PC.SetAddr(address);
+        this.ClearRetiredInstruction();
     }
 
     /// <inheritdoc/>
@@ -506,6 +515,23 @@ public abstract class CpuBase : ICpu
     }
 
     // ─── Protected Helper Methods ───────────────────────────────────────
+
+    /// <summary>
+    /// Remembers <paramref name="address"/> as the instruction that just retired.
+    /// </summary>
+    /// <param name="address">The program counter of that instruction.</param>
+    protected void NoteRetiredInstruction(Addr address)
+    {
+        this.lastRetiredInstruction = address;
+    }
+
+    /// <summary>
+    /// Forgets the retired instruction so the next transfer has no stale caller.
+    /// </summary>
+    protected void ClearRetiredInstruction()
+    {
+        this.lastRetiredInstruction = null;
+    }
 
     /// <summary>
     /// Sets whether an unmapped read sets <see cref="HaltState.Stp"/>.

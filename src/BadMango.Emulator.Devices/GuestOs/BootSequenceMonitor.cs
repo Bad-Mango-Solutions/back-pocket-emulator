@@ -10,8 +10,11 @@ using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
 using BadMango.Emulator.Core.Interfaces.Cpu;
+using BadMango.Emulator.Devices.Interfaces;
 
 using Serilog;
+
+using KeyboardModifiers = BadMango.Emulator.Devices.KeyboardModifiers;
 
 /// <summary>
 /// Records observe-only boot milestones and publishes the guest OS when a boot profile matches.
@@ -27,18 +30,23 @@ using Serilog;
 /// <para>
 /// A boot sector that matches no profile ends at <see cref="GuestOsBootStage.CustomBoot"/>.
 /// A recognized boot whose probe does not confirm the profile ends at <see cref="GuestOsBootStage.Unknown"/>.
-/// Reset returns the stage to <see cref="GuestOsBootStage.None"/> until firmware is entered again.
+/// A cold reset (power-on, hard reset, or Open Apple held when RESET releases) returns the stage to
+/// <see cref="GuestOsBootStage.Init"/> and logs <see cref="BootMilestoneKind.RomInitEntered"/> first.
+/// A warm reset logs that milestone and leaves the stage where it is, until slot firmware runs.
 /// When no milestone was seen, <see cref="PublishFromDetector"/> asks <see cref="IGuestOsDetector"/>
 /// and sets <see cref="GuestOsBootStage.Ready"/> if an operating system is already in memory.
 /// </para>
 /// </remarks>
-public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
+public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, IPowerOnReset
 {
     private const int MilestoneLimit = 256;
     private const ushort BootSectorBase = 0x0800;
     private const ushort BootSectorAddress = 0x0801;
     private const int BootSectorBytes = 16;
     private const int ShownSectorBytes = 8;
+    private const ushort ResetVector = 0xFFFC;
+    private const ushort KeyboardData = 0xC000;
+    private const int KeyboardPollsBeforeNoDevice = 2;
 
     private readonly ILogger logger;
     private readonly IGuestOsDetector detector;
@@ -55,6 +63,13 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
     private GuestOsBootStage stage;
     private bool bootSectorClassified;
     private bool systemCallRecorded;
+    private bool pendingColdStart;
+    private bool openAppleSelection;
+    private bool warmMayBoot;
+    private bool deviceSelected;
+    private bool keyboardTrapArmed;
+    private int romKeyboardPolls;
+    private ushort resetVector;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BootSequenceMonitor"/> class.
@@ -145,7 +160,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
     /// <returns>The detector's current result.</returns>
     /// <remarks>
     /// This is the slotless, restored-state, and late-attach path. It does not register traps.
-    /// Reset still returns the stage to <see cref="GuestOsBootStage.None"/> until firmware is entered again.
+    /// A cold reset still returns the stage to <see cref="GuestOsBootStage.Init"/> until firmware is entered again.
     /// </remarks>
     public GuestOsInfo PublishFromDetector()
     {
@@ -166,7 +181,8 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
     /// Drops every milestone, the active profile, and the re-entry count, and sets
     /// <see cref="Stage"/> to <see cref="GuestOsBootStage.None"/>. Firmware traps are armed again.
     /// A monitor that had reached a terminal stage had removed them, so the next <c>$Cn00</c> entry
-    /// is the first milestone of the new boot.
+    /// can be recorded. A cold reset then logs <see cref="BootMilestoneKind.RomInitEntered"/> and
+    /// moves the stage to <see cref="GuestOsBootStage.Init"/>.
     /// </para>
     /// <para>
     /// RESET calls this. A logged boot or cold reset also calls it when the monitor is already
@@ -178,21 +194,52 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
     {
         this.DisarmRam();
         this.DisarmFirmware();
+        this.DisarmKeyboardPoll();
         this.ClearBoot();
         this.ArmFirmware();
+    }
+
+    /// <inheritdoc />
+    public void PowerOnReset()
+    {
+        this.pendingColdStart = true;
     }
 
     /// <inheritdoc />
     public void OnResetAsserted(Cycle cycle)
     {
         this.logger.Debug("Guest OS boot watch reset at cycle {Cycle}.", cycle.Value);
-        this.PrepareForBoot();
     }
 
     /// <inheritdoc />
     public void OnResetReleased(Cycle cycle)
     {
         this.logger.Debug("Guest OS boot watch saw RESET release at cycle {Cycle}.", cycle.Value);
+        bool openApple = this.OpenAppleHeld();
+        bool cold = this.pendingColdStart || openApple;
+        this.pendingColdStart = false;
+        ushort vector = this.ReadResetVector();
+        this.resetVector = vector;
+        if (cold)
+        {
+            this.PrepareForBoot();
+            this.openAppleSelection = openApple;
+            this.Record(cycle, BootMilestoneKind.RomInitEntered, vector, this.DescribeInit(vector, cold: true), null);
+            this.SetStage(GuestOsBootStage.Init);
+            this.ArmKeyboardPoll();
+            return;
+        }
+
+        this.openAppleSelection = false;
+        this.warmMayBoot = true;
+        this.deviceSelected = false;
+        this.romKeyboardPolls = 0;
+        this.Record(cycle, BootMilestoneKind.RomInitEntered, vector, this.DescribeInit(vector, cold: false), null);
+        this.ArmFirmware();
+        if (this.stage != GuestOsBootStage.Init)
+        {
+            this.DisarmKeyboardPoll();
+        }
     }
 
     private static byte[] ReadSector(ICpu cpu)
@@ -235,6 +282,10 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
         this.BootSectorReentries = 0;
         this.bootSectorClassified = false;
         this.systemCallRecorded = false;
+        this.openAppleSelection = false;
+        this.warmMayBoot = false;
+        this.deviceSelected = false;
+        this.romKeyboardPolls = 0;
         this.nextStep.Clear();
     }
 
@@ -262,7 +313,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
                 capturedSlot,
                 $"Boot firmware slot {capturedSlot}",
                 TrapCategory.OperatingSystem,
-                (cpu, _, context) => this.OnFirmware(capturedSlot, cardName, cpu, context),
+                (cpu, bus, context) => this.OnFirmware(capturedSlot, cardName, cpu, bus, context),
                 "Observe-only boot firmware entry.");
             this.firmwareTraps.Add(new FirmwareTrap(address, capturedSlot));
         }
@@ -318,15 +369,37 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
         }
     }
 
-    private TrapResult OnFirmware(int slot, string cardName, ICpu cpu, IEventContext context)
+    private TrapResult OnFirmware(int slot, string cardName, ICpu cpu, IMemoryBus bus, IEventContext context)
     {
+        var pc = cpu.GetPC();
+        if (!this.deviceSelected && (this.stage == GuestOsBootStage.Init || this.warmMayBoot))
+        {
+            if (this.warmMayBoot && this.stage != GuestOsBootStage.Init)
+            {
+                this.RestartBootWatch();
+            }
+
+            string method = this.SelectMethod(cpu, bus, pc);
+            this.Record(
+                context.Now,
+                BootMilestoneKind.BootDeviceSelected,
+                pc,
+                $"slot {slot}: {cardName}, method {method}",
+                null);
+            this.SetStage(GuestOsBootStage.BootDeviceSelected);
+            this.deviceSelected = true;
+            this.warmMayBoot = false;
+            this.openAppleSelection = false;
+            this.DisarmKeyboardPoll();
+        }
+
         this.Record(
             context.Now,
             BootMilestoneKind.BootFirmwareEntered,
-            cpu.GetPC(),
+            pc,
             $"slot {slot}: {cardName}",
             null);
-        if (this.stage == GuestOsBootStage.None)
+        if (this.stage is GuestOsBootStage.None or GuestOsBootStage.Init or GuestOsBootStage.BootDeviceSelected)
         {
             this.SetStage(GuestOsBootStage.BootRom);
         }
@@ -486,6 +559,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
         this.SetStage(terminal);
         this.DisarmRam();
         this.DisarmFirmware();
+        this.DisarmKeyboardPoll();
         if (terminal != GuestOsBootStage.Ready || this.active is null)
         {
             this.nextStep.Clear();
@@ -543,6 +617,148 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver
         }
 
         return null;
+    }
+
+    private void RestartBootWatch()
+    {
+        this.DisarmRam();
+        this.active = null;
+        this.BootSectorReentries = 0;
+        this.bootSectorClassified = false;
+        this.systemCallRecorded = false;
+        this.nextStep.Clear();
+    }
+
+    private void ArmKeyboardPoll()
+    {
+        if (this.registry is null || this.keyboardTrapArmed)
+        {
+            return;
+        }
+
+        this.registry.Register(
+            KeyboardData,
+            TrapOperation.Read,
+            "Boot keyboard poll",
+            TrapCategory.OperatingSystem,
+            (cpu, bus, context) => this.OnKeyboardPoll(cpu, bus, context),
+            "Observe-only ROM keyboard wait after reset.");
+        this.keyboardTrapArmed = true;
+        this.romKeyboardPolls = 0;
+    }
+
+    private void DisarmKeyboardPoll()
+    {
+        if (this.keyboardTrapArmed)
+        {
+            this.registry?.Unregister(KeyboardData, TrapOperation.Read);
+            this.keyboardTrapArmed = false;
+        }
+
+        this.romKeyboardPolls = 0;
+    }
+
+    private TrapResult OnKeyboardPoll(ICpu cpu, IMemoryBus bus, IEventContext context)
+    {
+        if (this.stage != GuestOsBootStage.Init || this.deviceSelected || !this.IsRomKeyboardWait(cpu, bus))
+        {
+            this.romKeyboardPolls = 0;
+            return TrapResult.NotHandled;
+        }
+
+        this.romKeyboardPolls++;
+        if (this.romKeyboardPolls < KeyboardPollsBeforeNoDevice)
+        {
+            return TrapResult.NotHandled;
+        }
+
+        Addr poll = cpu.GetPC() >= 3 ? cpu.GetPC() - 3 : cpu.GetPC();
+        this.Record(context.Now, BootMilestoneKind.NoBootDevice, poll, "ROM keyboard wait, no boot device", null);
+        this.Finish(GuestOsBootStage.NoBootDevice);
+        return TrapResult.NotHandled;
+    }
+
+    private string SelectMethod(ICpu cpu, IMemoryBus bus, Addr firmware)
+    {
+        if (this.openAppleSelection)
+        {
+            return "open-apple";
+        }
+
+        if (cpu.LastRetiredInstruction is Addr retired && IsRomMapping(bus.GetPageEntry(retired)))
+        {
+            return "autostart";
+        }
+
+        if (cpu.LastRetiredInstruction is null && firmware == this.resetVector)
+        {
+            return "autostart";
+        }
+
+        return "user";
+    }
+
+    private bool OpenAppleHeld()
+    {
+        return this.machine?.GetComponent<IKeyboardDevice>() is { } keyboard
+            && keyboard.Modifiers.HasFlag(KeyboardModifiers.OpenApple);
+    }
+
+    private ushort ReadResetVector()
+    {
+        ICpu? cpu = this.machine?.Cpu;
+        if (cpu is null)
+        {
+            return 0;
+        }
+
+        return (ushort)(cpu.Peek8(ResetVector) | (cpu.Peek8(ResetVector + 1u) << 8));
+    }
+
+    private string DescribeInit(ushort vector, bool cold)
+    {
+        string temperature = cold ? "cold" : "warm";
+        if (cold && this.openAppleSelection)
+        {
+            return $"reset vector ${vector:X4}, {temperature}, open-apple";
+        }
+
+        return $"reset vector ${vector:X4}, {temperature}";
+    }
+
+    private bool IsRomKeyboardWait(ICpu cpu, IMemoryBus bus)
+    {
+        Addr pc = cpu.GetPC();
+        if (pc < 3)
+        {
+            return false;
+        }
+
+        Addr instruction = pc - 3;
+        byte opcode = cpu.Peek8(instruction);
+        if (opcode is not (0xAD or 0x2C))
+        {
+            return false;
+        }
+
+        if (cpu.Peek8(instruction + 1) != 0x00 || cpu.Peek8(instruction + 2) != 0xC0)
+        {
+            return false;
+        }
+
+        return IsRomMapping(bus.GetPageEntry(instruction));
+    }
+
+    private bool IsRomMapping(PageEntry entry)
+    {
+        if (entry.RegionTag == RegionTag.Rom || entry.Target is RomTarget)
+        {
+            return true;
+        }
+
+        return !entry.CanWrite
+            && entry.CanExecute
+            && entry.RegionTag is not (RegionTag.Ram or RegionTag.ZeroPage or RegionTag.Stack or RegionTag.Video);
     }
 
     private void Record(Cycle at, BootMilestoneKind kind, Addr pc, string detail, GuestOsId? os)

@@ -31,7 +31,10 @@ public interface IBootSequenceMonitor
     event EventHandler<BootMilestone>? MilestoneReached;
 
     /// <summary>Gets the current boot stage.</summary>
-    /// <value><see cref="GuestOsBootStage.None"/> before any boot firmware is entered.</value>
+    /// <value>
+    /// <see cref="GuestOsBootStage.None"/> before reset, then <see cref="GuestOsBootStage.Init"/>
+    /// once a cold reset has been logged.
+    /// </value>
     GuestOsBootStage Stage { get; }
 
     /// <summary>Gets the milestones recorded for this boot.</summary>

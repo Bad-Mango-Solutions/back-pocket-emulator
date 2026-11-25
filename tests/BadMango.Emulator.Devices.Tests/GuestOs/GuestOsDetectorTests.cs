@@ -302,6 +302,7 @@ public class GuestOsDetectorTests
     [Test]
     public void BootContracts_NameTheStagesAndMilestones()
     {
+        // GetNames is ordered by numeric value. #685 values stay fixed; later stages use the next free numbers.
         Assert.That(Enum.GetNames<GuestOsBootStage>(), Is.EqualTo(new[]
         {
             nameof(GuestOsBootStage.None),
@@ -311,9 +312,17 @@ public class GuestOsDetectorTests
             nameof(GuestOsBootStage.Ready),
             nameof(GuestOsBootStage.Unknown),
             nameof(GuestOsBootStage.CustomBoot),
+            nameof(GuestOsBootStage.Init),
+            nameof(GuestOsBootStage.BootDeviceSelected),
+            nameof(GuestOsBootStage.NoBootDevice),
         }));
+        Assert.That((int)GuestOsBootStage.None, Is.EqualTo(0));
+        Assert.That((int)GuestOsBootStage.BootRom, Is.EqualTo(1));
         Assert.That((int)GuestOsBootStage.Unknown, Is.EqualTo(5));
         Assert.That((int)GuestOsBootStage.CustomBoot, Is.EqualTo(6));
+        Assert.That((int)GuestOsBootStage.Init, Is.EqualTo(7));
+        Assert.That((int)GuestOsBootStage.BootDeviceSelected, Is.EqualTo(8));
+        Assert.That((int)GuestOsBootStage.NoBootDevice, Is.EqualTo(9));
         Assert.That(Enum.GetNames<BootMilestoneKind>(), Is.EqualTo(new[]
         {
             nameof(BootMilestoneKind.BootFirmwareEntered),
@@ -323,9 +332,15 @@ public class GuestOsDetectorTests
             nameof(BootMilestoneKind.KernelReady),
             nameof(BootMilestoneKind.SystemProgramStarted),
             nameof(BootMilestoneKind.FirstSystemCall),
+            nameof(BootMilestoneKind.RomInitEntered),
+            nameof(BootMilestoneKind.BootDeviceSelected),
+            nameof(BootMilestoneKind.NoBootDevice),
         }));
         Assert.That((int)BootMilestoneKind.BootFirmwareEntered, Is.EqualTo(0));
         Assert.That((int)BootMilestoneKind.FirstSystemCall, Is.EqualTo(6));
+        Assert.That((int)BootMilestoneKind.RomInitEntered, Is.EqualTo(7));
+        Assert.That((int)BootMilestoneKind.BootDeviceSelected, Is.EqualTo(8));
+        Assert.That((int)BootMilestoneKind.NoBootDevice, Is.EqualTo(9));
     }
 
     /// <summary>An empty id is rejected. Comparison is ordinal.</summary>

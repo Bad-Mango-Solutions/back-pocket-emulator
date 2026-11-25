@@ -188,7 +188,7 @@ public sealed class InspectionTools
     /// milestone was seen, the monitor asks the detector and may set the stage to Ready.
     /// </returns>
     [McpServerTool(Name = "get_guest_os", UseStructuredContent = true)]
-    [Description("Get the detected guest operating system and boot stage. When the boot monitor is on and no milestone was seen, detection can set the stage to Ready.")]
+    [Description("Get the detected guest operating system and boot stage. Stage names include None, Init, BootDeviceSelected, BootRom, Boot1, Loader, Ready, Unknown, CustomBoot, and NoBootDevice. When the boot monitor is on and no milestone was seen, detection can set the stage to Ready. Init is left as Init.")]
     public object GetGuestOs()
     {
         try
@@ -207,7 +207,7 @@ public sealed class InspectionTools
     /// </summary>
     /// <returns>An emudbg envelope whose payload is the stage and the milestones, oldest first.</returns>
     [McpServerTool(Name = "get_boot_log", UseStructuredContent = true)]
-    [Description("Get the guest boot milestone log: stage, boot-sector re-entries, and each milestone's cycle, PC, kind, OS, and detail.")]
+    [Description("Get the guest boot milestone log: stage, boot-sector re-entries, and each milestone's cycle, PC, kind, OS, and detail. RomInitEntered detail includes the reset vector and cold or warm (open-apple when that key made it cold). BootDeviceSelected detail includes method autostart, method user, or method open-apple. A cold boot --log or reset --log starts with RomInitEntered.")]
     public object GetBootLog()
     {
         try

@@ -104,6 +104,19 @@ public interface ICpu
     /// </summary>
     bool IsStopRequested { get; }
 
+    /// <summary>
+    /// Gets the address of the instruction that retired before the one at <see cref="GetPC"/>.
+    /// </summary>
+    /// <value>
+    /// The retired instruction address, or <see langword="null"/> after <see cref="Reset"/>,
+    /// a reset sequence, or <see cref="SetPC"/> until another instruction retires.
+    /// </value>
+    /// <remarks>
+    /// The guest-OS boot monitor uses this to tell a ROM autostart transfer from a transfer
+    /// that came from RAM, without a per-instruction debug listener.
+    /// </remarks>
+    Addr? LastRetiredInstruction { get; }
+
     // ─── Memory Access Methods ──────────────────────────────────────────
 
     /// <summary>
