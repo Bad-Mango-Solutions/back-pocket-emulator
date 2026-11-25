@@ -22,8 +22,8 @@ using BadMango.Emulator.Core.Interfaces.Cpu;
 /// drops it with the rest of the session.
 /// </para>
 /// <para>
-/// Decoding stays in <see cref="ProDosMliFileCall"/> so it can move to the OS call
-/// log's decoder (#686). When the boot log is off, <see cref="Install"/> is not called.
+/// The call number, parameter pointer, and pathname come from <see cref="ProDosMliCall"/>.
+/// When the boot log is off, <see cref="Install"/> is not called.
 /// </para>
 /// </remarks>
 public sealed class ProDosFileLoadTracker : IFileLoadTracker
@@ -153,6 +153,21 @@ public sealed class ProDosFileLoadTracker : IFileLoadTracker
         bool active) =>
         new(progress.Path, size, bytesRead, position, progress.OpenedAtCycle, progress.RefNum, active);
 
+    private static bool IsFileCall(byte number) =>
+        number is 0xC4 or 0xC6 or 0xC7 or 0xC8 or 0xCA or 0xCC or 0xCD or 0xCE or 0xCF or 0xD1;
+
+    private static bool CompletesOnReturn(byte number) =>
+        number is 0xC4 or 0xC7 or 0xC8 or 0xCA or 0xCF or 0xD1;
+
+    private static string PathOf(ProDosMliCall call, IGuestMemoryReader reader, bool pointedBuffer)
+    {
+        Span<char> chars = stackalloc char[ProDosMliCall.MaxPathnameLength];
+        int count = pointedBuffer
+            ? call.CopyPointedPath(reader, chars)
+            : call.CopyPrimaryPath(reader, chars);
+        return count == 0 ? string.Empty : new string(chars[..count]);
+    }
+
     private void OnSessionEnded(object? sender, GuestOsSessionEventArgs args)
     {
         _ = sender;
@@ -168,18 +183,21 @@ public sealed class ProDosFileLoadTracker : IFileLoadTracker
             return;
         }
 
-        if (!ProDosMliFileCall.TryDecode(this.memory, args.ParameterAddress, out var call))
+        ushort stacked = (ushort)(args.ParameterAddress - 1);
+        ProDosMliCall call = ProDosMliCall.Decode(this.memory, stacked);
+        if (!IsFileCall(call.Number))
         {
             return;
         }
 
-        if (!call.CompletesOnReturn)
+        if (!CompletesOnReturn(call.Number))
         {
             this.ApplyInput(call);
             return;
         }
 
-        this.ArmReturn(new PendingCall(call.ReturnAddress, call.Command, call.ParameterList, args.At.Value));
+        ushort returnAddress = (ushort)(args.ParameterAddress + 3);
+        this.ArmReturn(new PendingCall(call, returnAddress, args.At.Value));
     }
 
     private TrapResult OnReturn(ICpu cpu, IMemoryBus bus, IEventContext context)
@@ -196,58 +214,50 @@ public sealed class ProDosFileLoadTracker : IFileLoadTracker
         return TrapResult.NotHandled;
     }
 
-    private void ApplyInput(ProDosMliFileCall.Decoded call)
+    private void ApplyInput(ProDosMliCall call)
     {
-        switch (call.Command)
+        switch (call.Number)
         {
-            case ProDosMliFileCall.SetPrefix:
-                this.prefix = this.Resolve(ProDosMliFileCall.ReadReferencedPath(this.memory, call.ParameterList));
+            case 0xC6:
+                this.prefix = this.Resolve(PathOf(call, this.memory, pointedBuffer: false));
                 break;
-            case ProDosMliFileCall.SetMark:
-                this.NotePosition(
-                    ProDosMliFileCall.ReadRef(this.memory, call.ParameterList),
-                    ProDosMliFileCall.Read24(this.memory, call.ParameterList));
+            case 0xCE:
+                this.NotePosition(call.ReadRef(this.memory), call.ReadValue24(this.memory));
                 break;
-            case ProDosMliFileCall.Close:
-            case ProDosMliFileCall.Flush:
-                this.CloseRef(ProDosMliFileCall.ReadRef(this.memory, call.ParameterList));
+            case 0xCC:
+            case 0xCD:
+                this.CloseRef(call.ReadRef(this.memory));
                 break;
         }
     }
 
     private void ApplyReturn(PendingCall waiting)
     {
-        switch (waiting.Command)
+        ProDosMliCall call = waiting.Call;
+        switch (call.Number)
         {
-            case ProDosMliFileCall.Open:
+            case 0xC8:
                 this.Open(
-                    this.Resolve(ProDosMliFileCall.ReadReferencedPath(this.memory, waiting.ParameterList)),
-                    ProDosMliFileCall.ReadOpenRef(this.memory, waiting.ParameterList),
+                    this.Resolve(PathOf(call, this.memory, pointedBuffer: false)),
+                    call.ReadOpenRef(this.memory),
                     waiting.Cycle);
                 break;
-            case ProDosMliFileCall.Read:
-                this.NoteRead(
-                    ProDosMliFileCall.ReadRef(this.memory, waiting.ParameterList),
-                    ProDosMliFileCall.ReadTransCount(this.memory, waiting.ParameterList));
+            case 0xCA:
+                this.NoteRead(call.ReadRef(this.memory), call.ReadTransCount(this.memory));
                 break;
-            case ProDosMliFileCall.GetEof:
-                this.NoteSize(
-                    ProDosMliFileCall.ReadRef(this.memory, waiting.ParameterList),
-                    ProDosMliFileCall.Read24(this.memory, waiting.ParameterList),
-                    exact: true);
+            case 0xD1:
+                this.NoteSize(call.ReadRef(this.memory), call.ReadValue24(this.memory), exact: true);
                 break;
-            case ProDosMliFileCall.GetMark:
-                this.NotePosition(
-                    ProDosMliFileCall.ReadRef(this.memory, waiting.ParameterList),
-                    ProDosMliFileCall.Read24(this.memory, waiting.ParameterList));
+            case 0xCF:
+                this.NotePosition(call.ReadRef(this.memory), call.ReadValue24(this.memory));
                 break;
-            case ProDosMliFileCall.GetFileInfo:
+            case 0xC4:
                 this.NoteFileInfo(
-                    this.Resolve(ProDosMliFileCall.ReadReferencedPath(this.memory, waiting.ParameterList)),
-                    ProDosMliFileCall.ReadBlocks(this.memory, waiting.ParameterList));
+                    this.Resolve(PathOf(call, this.memory, pointedBuffer: false)),
+                    call.ReadBlocks(this.memory));
                 break;
-            case ProDosMliFileCall.GetPrefix:
-                this.prefix = ProDosMliFileCall.ReadReferencedPath(this.memory, waiting.ParameterList);
+            case 0xC7:
+                this.prefix = PathOf(call, this.memory, pointedBuffer: true);
                 break;
         }
     }
@@ -603,7 +613,7 @@ public sealed class ProDosFileLoadTracker : IFileLoadTracker
         return this.prefix + "/" + path;
     }
 
-    private readonly record struct PendingCall(ushort ReturnAddress, byte Command, ushort ParameterList, ulong Cycle);
+    private readonly record struct PendingCall(ProDosMliCall Call, ushort ReturnAddress, ulong Cycle);
 
     private readonly record struct Row(FileLoadProgress Progress, bool ExactSize);
 }

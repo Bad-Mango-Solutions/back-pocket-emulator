@@ -22,6 +22,11 @@ using BadMango.Emulator.Core.Interfaces.Cpu;
 /// A pathname is a length byte followed by that many characters, at most <see cref="MaxPathnameLength"/>.
 /// Path-carrying calls are CREATE, DESTROY, RENAME, GET_FILE_INFO, SET_PREFIX, and OPEN.
 /// RENAME also has a new pathname at <see cref="RenamePathPointerOffset"/>.
+/// GET_PREFIX's buffer is the same length-prefixed string, read with <see cref="CopyPointedPath"/>.
+/// </para>
+/// <para>
+/// Returned file fields are read here as well: OPEN's ref_num, the ref_num on the other file calls,
+/// READ's trans_count, the 24-bit mark or EOF, and GET_FILE_INFO's block count.
 /// </para>
 /// </remarks>
 public readonly struct ProDosMliCall
@@ -34,6 +39,12 @@ public readonly struct ProDosMliCall
 
     /// <summary>Offset of RENAME's new pathname pointer.</summary>
     public const int RenamePathPointerOffset = 3;
+
+    private const int RefOffset = 1;
+    private const int OpenRefOffset = 5;
+    private const int Value24Offset = 2;
+    private const int TransCountOffset = 6;
+    private const int BlocksOffset = 8;
 
     private ProDosMliCall(byte number, ushort parameters)
     {
@@ -205,9 +216,71 @@ public readonly struct ProDosMliCall
             return 0;
         }
 
+        return this.CopyPointedPath(memory, destination);
+    }
+
+    /// <summary>
+    /// Copies the length-prefixed string addressed by the pointer at <see cref="PathPointerOffset"/>.
+    /// </summary>
+    /// <param name="memory">Side-effect-free guest memory.</param>
+    /// <param name="destination">The buffer that receives the characters. Not the length byte.</param>
+    /// <returns>The number of characters copied.</returns>
+    /// <exception cref="ArgumentNullException">If <paramref name="memory"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// OPEN, SET_PREFIX, and GET_FILE_INFO reach this through <see cref="CopyPrimaryPath"/>.
+    /// GET_PREFIX uses it directly, because its parameter is a buffer pointer rather than a pathname call.
+    /// </remarks>
+    public int CopyPointedPath(IGuestMemoryReader memory, Span<char> destination)
+    {
         ushort path = ReadPointer(memory, (ushort)(this.Parameters + PathPointerOffset));
         return CopyPathname(memory, path, destination);
     }
+
+    /// <summary>Reads OPEN's returned ref_num.</summary>
+    /// <param name="memory">Side-effect-free guest memory.</param>
+    /// <returns>The ref_num byte. Zero means the open failed.</returns>
+    /// <exception cref="ArgumentNullException">If <paramref name="memory"/> is <see langword="null"/>.</exception>
+    public byte ReadOpenRef(IGuestMemoryReader memory)
+    {
+        ArgumentNullException.ThrowIfNull(memory);
+        return memory.Read((ushort)(this.Parameters + OpenRefOffset));
+    }
+
+    /// <summary>Reads the ref_num of READ, CLOSE, FLUSH, GET_EOF, SET_MARK, or GET_MARK.</summary>
+    /// <param name="memory">Side-effect-free guest memory.</param>
+    /// <returns>The ref_num byte. Zero on CLOSE or FLUSH means every open file.</returns>
+    /// <exception cref="ArgumentNullException">If <paramref name="memory"/> is <see langword="null"/>.</exception>
+    public byte ReadRef(IGuestMemoryReader memory)
+    {
+        ArgumentNullException.ThrowIfNull(memory);
+        return memory.Read((ushort)(this.Parameters + RefOffset));
+    }
+
+    /// <summary>Reads READ's returned trans_count.</summary>
+    /// <param name="memory">Side-effect-free guest memory.</param>
+    /// <returns>The transferred byte count.</returns>
+    /// <exception cref="ArgumentNullException">If <paramref name="memory"/> is <see langword="null"/>.</exception>
+    public ushort ReadTransCount(IGuestMemoryReader memory) =>
+        ReadPointer(memory, (ushort)(this.Parameters + TransCountOffset));
+
+    /// <summary>Reads a 24-bit mark or EOF from the parameter list.</summary>
+    /// <param name="memory">Side-effect-free guest memory.</param>
+    /// <returns>The value. SET_MARK supplies it; GET_MARK and GET_EOF return it.</returns>
+    /// <exception cref="ArgumentNullException">If <paramref name="memory"/> is <see langword="null"/>.</exception>
+    public uint ReadValue24(IGuestMemoryReader memory)
+    {
+        ArgumentNullException.ThrowIfNull(memory);
+        ushort low = ReadPointer(memory, (ushort)(this.Parameters + Value24Offset));
+        byte high = memory.Read((ushort)(this.Parameters + Value24Offset + 2));
+        return low | ((uint)high << 16);
+    }
+
+    /// <summary>Reads GET_FILE_INFO's returned block count.</summary>
+    /// <param name="memory">Side-effect-free guest memory.</param>
+    /// <returns>The blocks_used field.</returns>
+    /// <exception cref="ArgumentNullException">If <paramref name="memory"/> is <see langword="null"/>.</exception>
+    public ushort ReadBlocks(IGuestMemoryReader memory) =>
+        ReadPointer(memory, (ushort)(this.Parameters + BlocksOffset));
 
     /// <summary>
     /// Copies RENAME's new pathname into <paramref name="destination"/>.
