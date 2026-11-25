@@ -41,7 +41,7 @@ Shipped Pocket2e profiles set `clockSpeed` to 1,020,484. `simple-65c02` sets 1,0
 
 ### VBlank
 
-[`VideoDevice`](../../src/BadMango.Emulator.Devices/VideoDevice.cs) schedules VBlank on the cycle queue. `CyclesPerFrame` is 17,030 and `VBlankDurationCycles` is 4,550. The schedule does not read `ClockSpeedHz`. `$C019` follows those edges. [`VideoWindow`](../../src/BadMango.Emulator.Debug.UI/Views/VideoWindow.axaml.cs) handles every `VBlankOccurred` by snapshotting display memory and posting `ProcessVBlankFrame` at `DispatcherPriority.Normal`. At a pace above stock, that posts one UI frame per emulated frame with no coalescing.
+[`VideoDevice`](../../src/BadMango.Emulator.Devices/VideoDevice.cs) schedules VBlank on the cycle queue. `CyclesPerFrame` is 17,030 and `VBlankDurationCycles` is 4,550. The schedule does not read `ClockSpeedHz`. `$C019` follows those edges. [`VideoWindow.OnVBlankOccurred`](../../src/BadMango.Emulator.Debug.UI/Views/VideoWindow.axaml.cs) runs on the machine thread. Every VBlank captures a display snapshot, then queues `ProcessVBlankFrame` only when `vblankPending` transitions from 0 to 1. Further VBlanks while that render is queued refresh the snapshot and do not post another `InvokeAsync`. `ProcessVBlankFrame` clears `vblankPending` before it paints, so a VBlank that arrives during the paint can queue the next one. There is no host-time cap. A UI that finishes each paint before the next VBlank presents every emulated frame. When VBlank outruns the UI, intermediate notifications are dropped and the paint shows the latest snapshot.
 
 ### Disk II motor and the NE556 hold
 
@@ -191,7 +191,7 @@ Disk acceleration is the fast path this epic provides. The sequencer still shift
 
 ### Video
 
-`VideoDevice` keeps the 17,030-cycle frame at every pace. The host presenter in `VideoWindow` keeps the latest VBlank snapshot and paints at most one frame per 16 ms of host time. A newer snapshot replaces a frame that has not been painted. Stock VBlank is one frame per 17,030 cycles, about 60 Hz at 1,020,484 Hz, so a stock pace still presents every frame when the UI keeps up. A faster pace drops intermediate frames. Dropped frames are presentation only: `$C019` and the cycle schedule still run.
+`VideoDevice` keeps the 17,030-cycle frame at every pace. `VideoWindow` keeps the one-in-flight queue it has now (`vblankPending`). A snapshot captured on a later VBlank still replaces a frame that has not been painted. Add a host interval of 16 ms: a paint that would start sooner than 16 ms after the previous paint stays queued, and the next paint shows the latest snapshot. Stock VBlank is one frame per 17,030 cycles, about 60 Hz at 1,020,484 Hz, which is already about one frame per 16 ms, so a stock pace still presents every frame. A faster pace, where the UI would otherwise repaint as soon as each frame finishes, drops intermediate frames down to that host interval. Dropped frames are presentation only: `$C019` and the cycle schedule still run.
 
 Headless runs have no presenter. `WaitForScreenText` keeps checking about once per 17,030 cycles. Frame skipping is not implemented in the device, and headless output does not depend on it.
 
@@ -279,6 +279,6 @@ File these under #443 when implementation starts. Sizes are S, M, or L.
 3. **M — Disk II motor-request acceleration.** Add `IDiskAccelerationControl` / `IEmulationPacing`, report `$C0n8`, `$C0n9`, and RESET from every `DiskIIController`, and defer enable changes until the last request clears. The NE556 hold does not notify.
 4. **S — `speed` command and debugger status.** Presets, `disk on|off` with a deferral reply, and a status row that shows the request separately from `motor-off-pending`.
 5. **S — Headless pacing on `IMachineIoSession`.** The same selected pace, effective pace, emulated clock, and disk-acceleration state, posted onto the machine thread.
-6. **M — Speaker and video presentation.** Mute while effective pace is 0, scale pitch with a finite pace, and coalesce `VideoWindow` to one paint per 16 ms. The `VideoDevice` schedule stays on 17,030 cycles.
+6. **M — Speaker and video presentation.** Mute while effective pace is 0, scale pitch with a finite pace, and hold `VideoWindow` to one paint per 16 ms on top of the existing `vblankPending` queue. The `VideoDevice` schedule stays on 17,030 cycles.
 7. **S — Open-Apple reset delay uses the emulated clock.** `GetResetAppleReleaseDelayCycles` stops reading the throttle.
 8. **M — Speed-invariant cycle tests.** Identical device-visible results at stock, 4 MHz, max, and disk acceleration, including `$C0n8` restoring pace while the NE556 hold is still counting.
