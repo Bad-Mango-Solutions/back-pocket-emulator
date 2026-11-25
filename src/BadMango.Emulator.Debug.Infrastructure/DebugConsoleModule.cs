@@ -85,7 +85,10 @@ public class DebugConsoleModule : Module
             .As<ICommandHandler>()
             .SingleInstance();
 
-        builder.RegisterType<ResetCommand>()
+        builder.Register(ctx => new ResetCommand(
+                ctx.ResolveOptional<IDebugSession>(),
+                ctx.ResolveOptional<IDebugOutputRenderer>(),
+                ctx.ResolveOptional<ILogger>() ?? Serilog.Log.Logger))
             .As<ICommandHandler>()
             .SingleInstance();
 
@@ -93,7 +96,8 @@ public class DebugConsoleModule : Module
             {
                 var profile = ctx.ResolveOptional<MachineProfile>();
                 var windowManager = ctx.ResolveOptional<IDebugWindowManager>();
-                return new BootCommand(profile, windowManager);
+                var logger = ctx.ResolveOptional<ILogger>() ?? Serilog.Log.Logger;
+                return new BootCommand(profile, windowManager, logger);
             })
             .As<ICommandHandler>()
             .SingleInstance();

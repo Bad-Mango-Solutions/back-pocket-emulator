@@ -401,6 +401,21 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
     }
 
     /// <inheritdoc />
+    public bool UnregisterSlotDependent(Addr address, int slot)
+    {
+        ValidateSlotNumber(slot);
+        var key = new TrapKey(address, TrapOperation.Call, MemoryContexts.Rom, slot);
+        if (!traps.Remove(key))
+        {
+            return false;
+        }
+
+        NoteRemoved(address, TrapOperation.Call);
+        TrapUnregistered?.Invoke(address, TrapOperation.Call, MemoryContexts.Rom);
+        return true;
+    }
+
+    /// <inheritdoc />
     public void UnregisterSlotTraps(int slot)
     {
         ValidateSlotNumber(slot);

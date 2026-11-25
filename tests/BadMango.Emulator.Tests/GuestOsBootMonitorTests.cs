@@ -360,6 +360,291 @@ public class GuestOsBootMonitorTests
         });
     }
 
+    /// <summary><c>boot --off --log</c> is a usage error and leaves detection off.</summary>
+    [Test]
+    public void BootOffAndLog_IsUsageError()
+    {
+        using var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: false));
+        using var output = new StringWriter();
+        var result = new BootCommand().Execute(Context(machine, output), ["--log", "--off"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ExitCode, Is.EqualTo(2));
+            Assert.That(machine.State, Is.EqualTo(MachineState.Off));
+            Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.Null);
+        });
+    }
+
+    /// <summary>
+    /// <c>boot --log</c> on an Off machine with detection off records DOS 3.3 and ProDOS from the first milestone.
+    /// </summary>
+    /// <returns>A task that completes when both boot profiles have been checked.</returns>
+    [Test]
+    public async Task BootLog_OnOffMachine_StartsAtFirmwareMilestone()
+    {
+        await AssertLoggedBootStartsAtFirmware(PlantDos, GuestOsId.Dos33, "DOS 3.3");
+        await AssertLoggedBootStartsAtFirmware(PlantProDos, GuestOsId.ProDos8, "ProDOS 8");
+    }
+
+    /// <summary>
+    /// <c>boot --log</c> keeps the installed monitor, clears its log, and does not register a second firmware trap.
+    /// </summary>
+    /// <returns>A task that completes when the fresh boot milestone has been checked.</returns>
+    [Test]
+    public async Task BootLog_WhenMonitorAlreadyInstalled_ClearsTheLogWithoutASecondMonitor()
+    {
+        using var machine = BootMachine();
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+        var monitor = MonitorOf(machine);
+        var registry = Registry(machine);
+        Assume.That(monitor.Milestones, Is.Not.Empty);
+        Assume.That(registry.HasTrap(Firmware), Is.True);
+
+        var command = LoggedBootCommand();
+        using var output = new StringWriter();
+        var result = command.Execute(Context(machine, output), ["--log"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(machine.GetComponents<BootSequenceMonitor>().Count(), Is.EqualTo(1));
+            Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.SameAs(monitor));
+            Assert.That(monitor.Milestones, Is.Empty);
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
+            Assert.That(registry.GetAllTraps().Count(trap => trap.Address == Firmware), Is.EqualTo(1));
+        });
+
+        await command.BootTask;
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+    }
+
+    /// <summary><c>os on</c> leaves an in-progress boot log in place.</summary>
+    [Test]
+    public void OsOn_WhenMonitorAlreadyInstalled_LeavesTheLog()
+    {
+        using var machine = BootMachine();
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+        var monitor = MonitorOf(machine);
+        int logged = monitor.Milestones.Count;
+        GuestOsBootStage stage = monitor.Stage;
+
+        using var output = new StringWriter();
+        var result = new OsCommand(Logger.None).Execute(Context(machine, output), ["on"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True);
+            Assert.That(machine.GetComponents<BootSequenceMonitor>().Count(), Is.EqualTo(1));
+            Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.SameAs(monitor));
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(logged));
+            Assert.That(monitor.Stage, Is.EqualTo(stage));
+        });
+    }
+
+    /// <summary><c>reset --log</c> without a cold-reset option is a usage error and does not reset.</summary>
+    [Test]
+    public void ResetLog_WithoutColdReset_IsUsageError()
+    {
+        using var machine = BootMachine();
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        var monitor = MonitorOf(machine);
+        int logged = monitor.Milestones.Count;
+        uint pc = machine.Cpu.GetPC();
+        using var context = ResetContext(machine);
+
+        var result = LoggedResetCommand().Execute(context, ["--log"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ExitCode, Is.EqualTo(2));
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(logged));
+            Assert.That(machine.Cpu.GetPC(), Is.EqualTo(pc));
+        });
+    }
+
+    /// <summary><c>reset --closed-apple --log</c> is a usage error. Closed Apple is not a cold reset.</summary>
+    [Test]
+    public void ResetClosedAppleAndLog_IsUsageError()
+    {
+        using var machine = BootMachine(bootLog: false);
+        using var context = ResetContext(machine);
+
+        var result = LoggedResetCommand().Execute(context, ["--closed-apple", "--log"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ExitCode, Is.EqualTo(2));
+            Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.Null);
+        });
+    }
+
+    /// <summary><c>reset --hard --log</c> installs the monitor when detection is off, then records firmware.</summary>
+    [Test]
+    public void ResetHardLog_WhenDetectionIsOff_InstallsAndRecordsFirmware()
+    {
+        using var machine = BootMachine(bootLog: false);
+        Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.Null);
+        using var context = ResetContext(machine);
+
+        var result = LoggedResetCommand().Execute(context, ["--hard", "--log"]);
+        var monitor = MonitorOf(machine);
+
+        Assert.That(result.Success, Is.True, result.Message);
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+    }
+
+    /// <summary><c>reset --hard --log</c> clears the previous log and records the next boot from firmware.</summary>
+    [Test]
+    public void ResetHardLog_StartsAFreshBootLog()
+    {
+        using var machine = BootMachine();
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+        var monitor = MonitorOf(machine);
+        Assume.That(monitor.Milestones, Is.Not.Empty);
+        machine.Cpu.SetPC(0x0300);
+        Poke(machine.Cpu, 0x0300, 0xEA, 0xEA, 0xEA);
+        using var context = ResetContext(machine);
+
+        var result = LoggedResetCommand().Execute(context, ["--hard", "--log"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(machine.GetComponents<BootSequenceMonitor>().Count(), Is.EqualTo(1));
+            Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.SameAs(monitor));
+            Assert.That(monitor.Milestones, Is.Empty);
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
+        });
+
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+    }
+
+    /// <summary><c>reset --cold --log</c> drops the previous milestone log and starts again at firmware.</summary>
+    [Test]
+    public void ResetColdLog_StartsAFreshBootLog()
+    {
+        using var machine = BootMachine();
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+        var monitor = MonitorOf(machine);
+        Assume.That(monitor.Milestones, Is.Not.Empty);
+        machine.Cpu.SetPC(0x0300);
+        Poke(machine.Cpu, 0x0300, 0xEA, 0xEA, 0xEA);
+        using var context = ResetContext(machine);
+
+        var result = LoggedResetCommand().Execute(context, ["--cold", "--log"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(machine.GetComponents<BootSequenceMonitor>().Count(), Is.EqualTo(1));
+            Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.SameAs(monitor));
+            Assert.That(monitor.Milestones, Is.Empty);
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
+        });
+
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+    }
+
+    /// <summary>Boot and reset help name <c>--log</c> and point at <c>os boot</c>.</summary>
+    [Test]
+    public void BootAndResetHelp_DescribeLog()
+    {
+        var boot = new BootCommand();
+        var reset = new ResetCommand();
+        string bootExamples = string.Join('\n', boot.Examples);
+        string resetExamples = string.Join('\n', reset.Examples);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(boot.Usage, Does.Contain("--log"));
+            Assert.That(boot.Synopsis, Does.Contain("--log"));
+            Assert.That(boot.DetailedDescription, Does.Contain("os boot"));
+            Assert.That(boot.Options.Select(option => option.Name), Does.Contain("--log"));
+            Assert.That(bootExamples, Does.Contain("boot --log"));
+            Assert.That(bootExamples, Does.Contain("power --on --log"));
+            Assert.That(boot.SeeAlso, Does.Contain("os"));
+            Assert.That(reset.Usage, Does.Contain("--log"));
+            Assert.That(reset.Synopsis, Does.Contain("--log"));
+            Assert.That(reset.DetailedDescription, Does.Contain("os boot"));
+            Assert.That(reset.Options.Select(option => option.Name), Does.Contain("--log"));
+            Assert.That(resetExamples, Does.Contain("--hard --log"));
+            Assert.That(resetExamples, Does.Contain("--cold --log"));
+            Assert.That(reset.SeeAlso, Does.Contain("os"));
+        });
+    }
+
+    private static async Task AssertLoggedBootStartsAtFirmware(Action<ICpu> plant, GuestOsId os, string bootSectorDetail)
+    {
+        using var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: false));
+        machine.PowerOnMemoryPattern = new PowerOnMemoryPattern(PowerOnMemoryPatternKind.Zero, 0);
+        machine.InsertSlotCard(Slot, new BlockDeviceCard());
+        Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.Null);
+
+        var command = LoggedBootCommand();
+        using var output = new StringWriter();
+        var result = command.Execute(Context(machine, output), ["--log"]);
+        Assert.That(result.Success, Is.True, result.Message);
+        Assert.That(machine.GetComponents<BootSequenceMonitor>().Count(), Is.EqualTo(1));
+
+        await command.BootTask;
+        plant(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+
+        var monitor = MonitorOf(machine);
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+            Assert.That(monitor.Milestones[1].Kind, Is.EqualTo(BootMilestoneKind.BootSectorLoaded));
+            Assert.That(monitor.Milestones[1].Os, Is.EqualTo(os));
+            Assert.That(monitor.Milestones[1].Detail, Is.EqualTo(bootSectorDetail));
+        });
+    }
+
+    private static BootCommand LoggedBootCommand() =>
+        new(null, null, bootDelayMs: 0, static (host, token) => host.PowerOnAsync(token), Logger.None);
+
+    private static ResetCommand LoggedResetCommand() => new(null, null, Logger.None);
+
+    private static DebugContext ResetContext(IMachine machine)
+    {
+        var context = new DebugContext(new CommandDispatcher(), new StringWriter(), new StringWriter());
+        context.AttachMachine(machine);
+        return context;
+    }
+
     private static IMachine BootMachine(bool bootLog = true)
     {
         var machine = MachineFactory.CreateMachine(CreateProfile(bootLog));
@@ -385,6 +670,7 @@ public class GuestOsBootMonitorTests
         var context = new Mock<IDebugContext>();
         context.Setup(candidate => candidate.Machine).Returns(machine);
         context.Setup(candidate => candidate.Output).Returns(output);
+        context.Setup(candidate => candidate.Error).Returns(TextWriter.Null);
         return context.Object;
     }
 

@@ -10,6 +10,8 @@ using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.Interfaces;
 
+using Serilog;
+
 /// <summary>
 /// Resets the machine or CPU to its initial state.
 /// </summary>
@@ -38,11 +40,19 @@ using BadMango.Emulator.Devices.Interfaces;
 /// If no machine is attached, reset falls back to CPU-only behavior and uses
 /// the attached bus for --hard memory clear when available.
 /// </para>
+/// <para>
+/// <c>--log</c> installs the guest OS detector and boot monitor before a cold reset
+/// (<c>--hard</c>, or <c>--open-apple</c> and its aliases <c>--command</c>, <c>--reboot</c>,
+/// and <c>--cold</c>), so the reboot is logged from the start. Read the log with <c>os boot</c>.
+/// <c>--log</c> without a cold-reset option is a usage error. A monitor that is already installed
+/// is kept, and its previous milestone log is cleared.
+/// </para>
 /// </remarks>
 public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
 {
     private readonly IDebugSession? session;
     private readonly IDebugOutputRenderer renderer;
+    private readonly ILogger logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ResetCommand"/> class.
@@ -58,20 +68,34 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
     /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
     /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
     public ResetCommand(IDebugSession? session, IDebugOutputRenderer? renderer)
+        : this(session, renderer, Log.Logger)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ResetCommand"/> class that resets the shared session.
+    /// </summary>
+    /// <param name="session">The debug session. <see langword="null"/> uses the session bound to the context.</param>
+    /// <param name="renderer">The output renderer. <see langword="null"/> writes text.</param>
+    /// <param name="logger">Logger used when <c>--log</c> installs the boot monitor.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="logger"/> is <see langword="null"/>.</exception>
+    public ResetCommand(IDebugSession? session, IDebugOutputRenderer? renderer, ILogger logger)
         : base("reset", "Reset the CPU (soft or hard)")
     {
+        ArgumentNullException.ThrowIfNull(logger);
         this.session = session;
         this.renderer = renderer ?? DebugOutputRenderer.PlainText;
+        this.logger = logger;
     }
 
     /// <inheritdoc/>
     public override IReadOnlyList<string> Aliases { get; } = ["rst"];
 
     /// <inheritdoc/>
-    public override string Usage => "reset [--hard] [--open-apple|-o] [--closed-apple|-a]";
+    public override string Usage => "reset [--hard] [--open-apple|-o] [--closed-apple|-a] [--log]";
 
     /// <inheritdoc/>
-    public string Synopsis => "reset [--hard] [--open-apple|--closed-apple]";
+    public string Synopsis => "reset [--hard] [--open-apple|--closed-apple] [--log]";
 
     /// <inheritdoc/>
     public string DetailedDescription =>
@@ -82,7 +106,11 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
         "a power-on reset of the CPU and devices and clears memory to zeros. With --open-apple / " +
         "--reboot / --cold, or --closed-apple / --diag, the corresponding Apple key is held through " +
         "the ROM reset sampling window for a short time after RESET releases, matching the hardware " +
-        "behavior of the Apple IIe reset handler.";
+        "behavior of the Apple IIe reset handler. With --log, the guest OS detector and boot monitor " +
+        "are installed before a cold reset (--hard, or --open-apple and --command / --reboot / --cold), " +
+        "so the reboot is logged from the start. Read the log with os boot. --log without a cold-reset " +
+        "option is a usage error. A monitor that is already installed is kept, and its previous " +
+        "milestone log is cleared so this boot starts fresh.";
 
     /// <inheritdoc/>
     public IReadOnlyList<CommandOption> Options { get; } =
@@ -90,6 +118,7 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
         new("--hard", "-h", "flag", "Also clear memory to zeros", "off"),
         new("--open-apple", "-o", "flag", "Hold Open Apple (PB0) through the ROM reset sampling window; aliases: --command --reboot --cold", "off"),
         new("--closed-apple", "-a", "flag", "Hold Closed Apple (PB1) through the ROM reset sampling window; aliases: --option --diag", "off"),
+        new("--log", null, "flag", "Install the guest OS boot monitor before a cold reset (--hard or --open-apple). Read the log with os boot.", "off"),
     ];
 
     /// <inheritdoc/>
@@ -97,19 +126,22 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
     [
         "reset                        Soft reset (like Ctrl-Reset; RAM preserved)",
         "reset --hard                 Hard reset (CPU + memory clear)",
+        "reset --hard --log           Hard reset and record the guest OS boot log",
         "reset --open-apple           Soft reset while holding Open Apple (cold reboot)",
         "reset --closed-apple         Soft reset while holding Closed Apple (self-test)",
         "reset --cold                 Alias for holding Open Apple through reset",
+        "reset --cold --log           Open-Apple reset and record the guest OS boot log",
         "rst                          Alias for reset",
     ];
 
     /// <inheritdoc/>
     public string? SideEffects =>
         "Resets devices and runs the CPU reset sequence. With --hard, also re-initializes the CPU " +
-        "and devices to their power-on state and clears all memory.";
+        "and devices to their power-on state and clears all memory. With --log, registers observe-only " +
+        "boot traps before a cold reset and clears an existing monitor's milestone log.";
 
     /// <inheritdoc/>
-    public IReadOnlyList<string> SeeAlso { get; } = ["run", "step", "stop", "regs"];
+    public IReadOnlyList<string> SeeAlso { get; } = ["run", "step", "stop", "regs", "os", "boot"];
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
@@ -119,16 +151,6 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
         if (context is not IDebugContext debugContext)
         {
             return CommandResult.Error("Debug context required for this command.");
-        }
-
-        if (debugContext.Machine?.State == Bus.MachineState.Off)
-        {
-            return CommandResult.Error("Machine is off. Use 'power --on' (or 'boot') first.");
-        }
-
-        if (debugContext.Cpu is null)
-        {
-            return CommandResult.Error("No CPU attached to debug context.");
         }
 
         bool hardReset = args.Any(arg =>
@@ -145,6 +167,32 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
             arg.Equals("--option", StringComparison.OrdinalIgnoreCase) ||
             arg.Equals("--diag", StringComparison.OrdinalIgnoreCase) ||
             arg.Equals("-a", StringComparison.OrdinalIgnoreCase));
+        bool logBoot = args.Any(arg => arg.Equals("--log", StringComparison.OrdinalIgnoreCase));
+        if (logBoot && !hardReset && !holdOpenApple)
+        {
+            return CommandResult.UsageError("--log requires a cold reset (--hard or --open-apple).");
+        }
+
+        if (debugContext.Machine?.State == Bus.MachineState.Off)
+        {
+            return CommandResult.Error("Machine is off. Use 'power --on' (or 'boot') first.");
+        }
+
+        if (debugContext.Cpu is null)
+        {
+            return CommandResult.Error("No CPU attached to debug context.");
+        }
+
+        if (logBoot)
+        {
+            if (debugContext.Machine is not { } loggedMachine)
+            {
+                return CommandResult.Error("No machine attached to debug context.");
+            }
+
+            GuestOsMonitorInstaller.Install(loggedMachine, this.logger, clearExistingLog: true);
+            debugContext.Output.WriteLine("Guest OS boot log is on. Read it with 'os boot'.");
+        }
 
         if (debugContext.Machine is { } machine)
         {

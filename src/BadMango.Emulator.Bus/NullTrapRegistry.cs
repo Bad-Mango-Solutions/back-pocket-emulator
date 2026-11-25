@@ -160,6 +160,9 @@ public sealed class NullTrapRegistry : ITrapRegistry
     public bool UnregisterLanguageCardRam(Addr address, TrapOperation operation) => false;
 
     /// <inheritdoc />
+    public bool UnregisterSlotDependent(Addr address, int slot) => false;
+
+    /// <inheritdoc />
     public void UnregisterSlotTraps(int slot)
     {
     }
