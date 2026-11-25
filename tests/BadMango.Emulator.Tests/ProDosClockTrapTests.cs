@@ -137,7 +137,8 @@ public class ProDosClockTrapTests
         Assert.Multiple(() =>
         {
             Assert.That(Registry(machine).HasTrap(0xBF00), Is.True);
-            Assert.That(Registry(machine).HasTrap(0xBF06), Is.True);
+            Assert.That(Registry(machine).GetTrapInfo(0xBF06)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+            Assert.That(Registry(machine).GetTrapInfo(0xBF00)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
             Assert.That(cpu.Peek8(MachId) & 0x01, Is.EqualTo(0));
         });
 
@@ -385,6 +386,7 @@ public class ProDosClockTrapTests
         {
             Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Ready));
             Assert.That(Registry(machine).HasTrap(0xBF06), Is.True);
+            Assert.That(Registry(machine).GetTrapInfo(0xBF06)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
             Assert.That(Registry(machine).GetTrapInfo(0xBF00)?.Name, Is.Not.EqualTo("ProDOS MLI"));
             Assert.That(cpu.Peek8(MachId) & 0x01, Is.EqualTo(0), "MACHID waits for the first MLI call.");
         });
@@ -401,6 +403,44 @@ public class ProDosClockTrapTests
         machine.Step();
         machine.Step();
         Assert.That(cpu.Peek8(MachId) & 0x01, Is.EqualTo(1), "The next MLI call sets the bit again.");
+    }
+
+    /// <summary>
+    /// Verifies that ending the guest OS session drops the DATETIME trap, and the next session puts it back.
+    /// </summary>
+    [Test]
+    public void SessionEnd_DropsDateTimeTrap_NextSessionReattaches()
+    {
+        using IMachine machine = BootMachine();
+        Power(machine);
+        ICpu cpu = machine.Cpu;
+        PlantBoot(cpu, dateTimeOpcode: 0x60);
+        cpu.SetPC(Firmware);
+        for (var step = 0; step < 6; step++)
+        {
+            machine.Step();
+        }
+
+        ITrapRegistry registry = Registry(machine);
+        Assert.That(registry.GetTrapInfo(0xBF06)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+
+        BootSequenceMonitor monitor = machine.GetComponent<BootSequenceMonitor>()!;
+        monitor.PowerOnReset();
+        machine.Reset();
+        Assert.That(registry.HasTrap(0xBF06), Is.False, "A cold start unloads the guest OS session trap.");
+
+        cpu.SetPC(Firmware);
+        for (var step = 0; step < 6; step++)
+        {
+            machine.Step();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Ready));
+            Assert.That(registry.HasTrap(0xBF06), Is.True);
+            Assert.That(registry.GetTrapInfo(0xBF06)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+        });
     }
 
     /// <summary>

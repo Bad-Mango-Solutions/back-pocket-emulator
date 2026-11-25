@@ -55,7 +55,7 @@ public static class GuestOsMonitorInstaller
         var monitor = new BootSequenceMonitor(logger, detector, BootSequenceMonitor.CreateStandardProfiles());
         monitor.Attach(machine);
         machine.AddComponent(monitor);
-        monitor.PublishFromDetector();
         machine.GetComponent<ProDosClockDevice>()?.Bind(machine);
+        monitor.PublishFromDetector();
     }
 }

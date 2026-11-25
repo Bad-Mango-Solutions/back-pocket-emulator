@@ -233,6 +233,8 @@ public sealed class ProDosClockDevice : IMotherboardDevice, IClockSource, IProfi
         {
             monitor.StageChanged -= OnStageChanged;
             monitor.SystemCallObserved -= OnSystemCall;
+            monitor.GuestOsSessionStarted -= OnSessionStarted;
+            monitor.GuestOsSessionEnded -= OnSessionEnded;
         }
     }
 
@@ -245,18 +247,18 @@ public sealed class ProDosClockDevice : IMotherboardDevice, IClockSource, IProfi
     /// </param>
     /// <remarks>
     /// <para>
-    /// This is the only method that registers or unregisters the slotless clock. Both traps are
-    /// guest-OS-session traps and fixed-address call traps, so removing a slot card does not touch
-    /// them. <c>$BF06</c> is installed when ProDOS 8 is the current session and <c>DATETIME</c> is
-    /// <c>RTS</c>. <c>$BF00</c> is an observe-only MLI entry, installed only when the boot monitor
-    /// is absent (<c>guestOs.detect</c> without <c>bootLog</c>). The monitor owns <c>$BF00</c> when
-    /// it is present; a second registration at that key throws.
+    /// This is the only method that registers or unregisters the slotless clock. Both traps use
+    /// <see cref="TrapScope.GuestOsSession"/> and are fixed-address call traps, so removing a slot
+    /// card does not touch them. A cold start or a user reboot drops them with
+    /// <see cref="ITrapRegistry.UnregisterScope"/>. <c>$BF06</c> is installed when a ProDOS 8
+    /// session starts and <c>DATETIME</c> is <c>RTS</c>. The boot monitor raises
+    /// <see cref="IBootSequenceMonitor.GuestOsSessionStarted"/> at the start of each session;
+    /// this method runs from that event, and again when the page becomes <c>RTS</c> later.
+    /// <c>$BF00</c> is an observe-only MLI entry, installed only when the boot monitor is absent.
+    /// The monitor owns <c>$BF00</c> when it is present; a second registration at that key throws.
     /// </para>
     /// <para>
-    /// #702 adds <c>TrapScope.GuestOsSession</c> and unloads that scope on a cold start or a
-    /// user reboot. After that merge, pass <c>TrapScope.GuestOsSession</c> on both register calls
-    /// below. The unregister calls can go away once the scope unload covers them. Do not register
-    /// these addresses anywhere else.
+    /// Do not register these addresses anywhere else.
     /// </para>
     /// </remarks>
     private void UpdateGuestOsSessionTrap(bool installDateTime)
@@ -275,7 +277,8 @@ public sealed class ProDosClockDevice : IMotherboardDevice, IClockSource, IProfi
                     DateTimeTrapName,
                     TrapCategory.OperatingSystem,
                     HandleDateTime,
-                    "Slotless ProDOS DATETIME. Writes DATE/TIME at $BF90-$BF93 and returns. A clock card's JMP is not registered.");
+                    "Slotless ProDOS DATETIME. Writes DATE/TIME at $BF90-$BF93 and returns. A clock card's JMP is not registered.",
+                    TrapScope.GuestOsSession);
                 dateTimeTrapRegistered = true;
             }
         }
@@ -297,7 +300,8 @@ public sealed class ProDosClockDevice : IMotherboardDevice, IClockSource, IProfi
                     MliObserverName,
                     TrapCategory.OperatingSystem,
                     ObserveMli,
-                    "Observe-only ProDOS MLI entry. The call is not handled.");
+                    "Observe-only ProDOS MLI entry. The call is not handled.",
+                    TrapScope.GuestOsSession);
                 mliObserverRegistered = true;
             }
         }
@@ -331,6 +335,34 @@ public sealed class ProDosClockDevice : IMotherboardDevice, IClockSource, IProfi
     private void OnStageChanged(object? sender, GuestOsBootStageChangedEventArgs args)
     {
         SyncGuestOsSession();
+    }
+
+    private void OnSessionStarted(object? sender, GuestOsSessionEventArgs args)
+    {
+        if (disposed || args.Id != GuestOsId.ProDos8)
+        {
+            return;
+        }
+
+        // Each session starts clean. The page may already hold RTS (a restored machine, or a
+        // test that planted it). If ProDOS has not stored DATETIME yet, Ready and the MLI call
+        // run this same registration again.
+        machIdStamped = false;
+        deferralLogged = false;
+        UpdateGuestOsSessionTrap(installDateTime: reader is not null && IsSlotlessDateTimePage(reader));
+        if (reader is not null && DeferringToClockCard(reader))
+        {
+            LogDeferralOnce();
+        }
+    }
+
+    private void OnSessionEnded(object? sender, GuestOsSessionEventArgs args)
+    {
+        // UnregisterScope already removed every GuestOsSession trap, including these.
+        dateTimeTrapRegistered = false;
+        mliObserverRegistered = false;
+        machIdStamped = false;
+        deferralLogged = false;
     }
 
     private void OnSystemCall(object? sender, GuestOsSystemCallEventArgs args)
@@ -413,6 +445,8 @@ public sealed class ProDosClockDevice : IMotherboardDevice, IClockSource, IProfi
         monitor = found;
         monitor.StageChanged += OnStageChanged;
         monitor.SystemCallObserved += OnSystemCall;
+        monitor.GuestOsSessionStarted += OnSessionStarted;
+        monitor.GuestOsSessionEnded += OnSessionEnded;
     }
 
     private void WarnIfClockCard(IMachine machine)
