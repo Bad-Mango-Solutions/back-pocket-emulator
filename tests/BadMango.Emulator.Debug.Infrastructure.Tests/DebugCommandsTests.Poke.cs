@@ -416,4 +416,23 @@ public partial class DebugCommandsTests
             Assert.That(result.Message, Does.Contain("File path required"));
         });
     }
+
+    /// <summary>
+    /// Verifies that poke to a soft-switch address does not toggle the switch.
+    /// </summary>
+    [Test]
+    public void PokeCommand_SoftSwitchAddress_DoesNotToggleTheSwitch()
+    {
+        var (ioBus, controller) = CreatePage2SoftSwitchBus();
+        ProvePage2RespondsToCpuWrite(ioBus, controller);
+
+        using var context = new DebugContext(new CommandDispatcher(), outputWriter, errorWriter, cpu: null, ioBus, disassembler: null);
+        var result = new PokeCommand().Execute(context, ["$C055", "00"]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(controller.IsPage2Selected, Is.False, "poke toggled PAGE2.");
+        });
+    }
 }

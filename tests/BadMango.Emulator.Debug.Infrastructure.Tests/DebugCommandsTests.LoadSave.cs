@@ -353,4 +353,32 @@ public partial class DebugCommandsTests
             }
         }
     }
+
+    /// <summary>
+    /// Verifies that load to a soft-switch address does not toggle the switch.
+    /// </summary>
+    [Test]
+    public void LoadCommand_SoftSwitchAddress_DoesNotToggleTheSwitch()
+    {
+        var (ioBus, controller) = CreatePage2SoftSwitchBus();
+        ProvePage2RespondsToCpuWrite(ioBus, controller);
+
+        string path = Path.Join(Path.GetTempPath(), $"load-softswitch-{Guid.NewGuid():N}.bin");
+        File.WriteAllBytes(path, [0x00]);
+        try
+        {
+            using var context = new DebugContext(new CommandDispatcher(), outputWriter, errorWriter, cpu: null, ioBus, disassembler: null);
+            var result = new LoadCommand().Execute(context, [path, "$C055"]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Success, Is.True, result.Message);
+                Assert.That(controller.IsPage2Selected, Is.False, "load toggled PAGE2.");
+            });
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }
