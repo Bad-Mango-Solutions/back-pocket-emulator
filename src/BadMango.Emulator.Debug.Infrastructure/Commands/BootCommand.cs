@@ -127,7 +127,7 @@ public sealed class BootCommand : CommandHandlerBase, ICommandHelp
         "(Open Apple, Closed Apple) that affect the boot process. " +
         "If the profile has autoVideoWindowOpen enabled, the video window opens automatically. " +
         "With --log, the guest OS detector and boot monitor are installed before power-on, " +
-        "so milestones are captured from reset. The first milestone is Init (the reset vector, cold). " +
+        "so milestones are captured from reset. The first milestone is RomInitEntered (stage Init: the reset vector, cold). " +
         "Read the log with os boot. " +
         "--log cannot be combined with --off. A monitor that is already installed is kept, " +
         "and its previous milestone log is cleared so this boot starts fresh.";
