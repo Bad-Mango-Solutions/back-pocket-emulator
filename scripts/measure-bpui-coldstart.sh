@@ -15,7 +15,8 @@
 #
 # Framework-dependent publish (--self-contained false). The apphost needs the
 # runtime selected by global.json. When DOTNET_ROOT is unset, it is set from
-# the dotnet on PATH.
+# the dotnet on PATH after resolving symlinks, so a shim such as /usr/bin/dotnet
+# does not become DOTNET_ROOT.
 #
 # xdotool 3.20160805 --sync sleeps about 500ms between tries, so a window
 # mapped at 50ms and one mapped at 250ms both come back near 500ms. This
@@ -41,14 +42,31 @@ if [[ -z ${DISPLAY:-} ]]; then
   exit 2
 fi
 
+missing_cmds=()
+for cmd in xdotool xwininfo xprop; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    missing_cmds+=("${cmd}")
+  fi
+done
+if (( ${#missing_cmds[@]} > 0 )); then
+  echo "missing required command(s): ${missing_cmds[*]}" >&2
+  exit 2
+fi
+
 if [[ -z ${DOTNET_ROOT:-} ]]; then
   dotnet_bin=$(command -v dotnet || true)
-  if [[ -z ${dotnet_bin} ]]; then
+  if [[ -z ${dotnet_bin} || ! -x ${dotnet_bin} ]]; then
     echo "dotnet is not on PATH and DOTNET_ROOT is unset" >&2
     exit 2
   fi
-  DOTNET_ROOT=$(cd "$(dirname "${dotnet_bin}")" && pwd)
+  # command -v often returns a shim. The apphost looks for host/fxr under DOTNET_ROOT.
+  dotnet_real=$(readlink -f "${dotnet_bin}")
+  DOTNET_ROOT=$(cd "$(dirname "${dotnet_real}")" && pwd)
   export DOTNET_ROOT
+fi
+if [[ ! -d ${DOTNET_ROOT}/host/fxr ]]; then
+  echo "DOTNET_ROOT=${DOTNET_ROOT} has no host/fxr. Point it at the .NET install directory, not a shim directory." >&2
+  exit 2
 fi
 
 app=${publish_dir}/bpui
