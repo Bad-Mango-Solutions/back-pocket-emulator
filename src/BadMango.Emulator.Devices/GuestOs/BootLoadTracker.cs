@@ -18,17 +18,23 @@ using Serilog;
 /// The map is built once per mounted volume, on the first read, from
 /// <see cref="VolumeFileMap"/>. A disk swap or eject drops it. A write drops the
 /// map and keeps bytes already counted. The next read builds it again.
-/// An unreadable or copy-protected volume reports <see cref="UnknownReadCount"/>
-/// and does not throw.
+/// An unreadable or copy-protected volume is reported as <c>unknown</c> through
+/// <see cref="IFileLoadTracker.Report"/> and does not throw.
 /// </para>
 /// <para>
+/// Rows use <see cref="FileLoadProgress"/>, the same record the MLI tracker publishes.
 /// <see cref="IBootSequenceMonitor.GuestOsSessionEnded"/> clears progress. Nothing is attached, and the
 /// Disk II read path does not call in, when this tracker is not installed.
 /// </para>
 /// </remarks>
 public sealed class BootLoadTracker : IDecodedDiskRead
 {
+    /// <summary>Path of the DOS 3.3 tracks 0–2 boot image row.</summary>
+    public const string BootImagePath = "boot image";
+
     private readonly ILogger logger;
+
+    private readonly IFileLoadTracker files;
 
     private readonly Dictionary<int, VolumeLoad> volumes = [];
 
@@ -38,37 +44,22 @@ public sealed class BootLoadTracker : IDecodedDiskRead
 
     private IBootSequenceMonitor? session;
 
+    private MutableLoad? unknown;
+
     private bool building;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BootLoadTracker"/> class.
     /// </summary>
     /// <param name="logger">Logger for a volume whose map could not be built. Not used per sector.</param>
-    /// <exception cref="ArgumentNullException">If <paramref name="logger"/> is <see langword="null"/>.</exception>
-    public BootLoadTracker(ILogger logger)
+    /// <param name="files">The shared file-load timeline. Pre-MLI rows are reported here.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="logger"/> or <paramref name="files"/> is <see langword="null"/>.</exception>
+    public BootLoadTracker(ILogger logger, IFileLoadTracker files)
     {
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(files);
         this.logger = logger.ForContext<BootLoadTracker>();
-    }
-
-    /// <summary>Gets a snapshot of file and boot-image progress, oldest first.</summary>
-    /// <value>The loads recorded since the last clear or disk swap.</value>
-    public IReadOnlyList<TrackedLoadProgress> Loads => this.Snapshot();
-
-    /// <summary>Gets how many decoded reads did not belong to a mapped file or the boot image.</summary>
-    /// <value>The count since the last clear or disk swap.</value>
-    public int UnknownReadCount
-    {
-        get
-        {
-            var count = 0;
-            foreach (var volume in this.volumes.Values)
-            {
-                count += volume.Unknown;
-            }
-
-            return count;
-        }
+        this.files = files;
     }
 
     /// <summary>
@@ -77,17 +68,23 @@ public sealed class BootLoadTracker : IDecodedDiskRead
     /// <param name="machine">The machine that receives the tracker.</param>
     /// <param name="logger">Logger used when a tracker is created by this call.</param>
     /// <param name="monitor">The session whose end clears load progress.</param>
-    /// <returns>The tracker stored on the machine.</returns>
+    /// <returns>The tracker stored on the machine, or <see langword="null"/> when no file tracker could be installed.</returns>
     /// <exception cref="ArgumentNullException">If any argument is <see langword="null"/>.</exception>
-    public static BootLoadTracker Install(IMachine machine, ILogger logger, IBootSequenceMonitor monitor)
+    public static BootLoadTracker? Install(IMachine machine, ILogger logger, BootSequenceMonitor monitor)
     {
         ArgumentNullException.ThrowIfNull(machine);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(monitor);
+        ProDosFileLoadTracker.Install(machine, monitor);
+        if (machine.GetComponent<IFileLoadTracker>() is not IFileLoadTracker shared)
+        {
+            return null;
+        }
+
         var tracker = machine.GetComponent<BootLoadTracker>();
         if (tracker is null)
         {
-            tracker = new BootLoadTracker(logger);
+            tracker = new BootLoadTracker(logger, shared);
             machine.AddComponent(tracker);
         }
 
@@ -151,10 +148,11 @@ public sealed class BootLoadTracker : IDecodedDiskRead
     {
         this.mounted[Key(slot, drive)] = new VolumeSource(blocks, sectors);
         this.Volume(slot, drive).ClearProgress();
+        this.Republish();
     }
 
     /// <summary>
-    /// Records one decoded block. An unmapped block increments <see cref="UnknownReadCount"/>.
+    /// Records one decoded block. An unmapped block is reported as <c>unknown</c>.
     /// </summary>
     /// <param name="slot">Slot number.</param>
     /// <param name="drive">Zero-based drive index.</param>
@@ -168,7 +166,7 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         }
         catch (Exception ex) when (IsReaderFailure(ex))
         {
-            this.Volume(slot, drive).Unknown++;
+            this.NoteUnknown(ProdosLayout.BlockSize, cycle);
             this.logger.Debug(ex, "Block read was not mapped.");
         }
     }
@@ -189,7 +187,7 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         }
         catch (Exception ex) when (IsReaderFailure(ex))
         {
-            this.Volume(slot, drive).Unknown++;
+            this.NoteUnknown(Dos33Layout.SectorSize, cycle);
             this.logger.Debug(ex, "Sector read was not mapped.");
         }
     }
@@ -203,6 +201,9 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         {
             volume.ClearProgress();
         }
+
+        this.unknown = null;
+        this.files.Clear();
     }
 
     /// <inheritdoc />
@@ -221,6 +222,8 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         {
             volume.ClearProgress();
         }
+
+        this.Republish();
     }
 
     /// <inheritdoc />
@@ -233,6 +236,21 @@ public sealed class BootLoadTracker : IDecodedDiskRead
     }
 
     private static int Key(int slot, int drive) => (slot << 8) | (drive & 0xFF);
+
+    private static uint Clamp(long value)
+    {
+        if (value <= 0)
+        {
+            return 0;
+        }
+
+        if (value >= uint.MaxValue)
+        {
+            return uint.MaxValue;
+        }
+
+        return (uint)value;
+    }
 
     private static bool IsReaderFailure(Exception ex) =>
         ex is (ArgumentException and not ArgumentNullException)
@@ -248,7 +266,7 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         var map = this.Ensure(volume, slot, drive);
         if (!map.TryLocateBlock(block, out var located))
         {
-            volume.Unknown++;
+            this.NoteUnknown(ProdosLayout.BlockSize, cycle);
             return;
         }
 
@@ -261,7 +279,7 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         var map = this.Ensure(volume, slot, drive);
         if (!map.Recognized)
         {
-            volume.Unknown++;
+            this.NoteUnknown(Dos33Layout.SectorSize, cycle);
             return;
         }
 
@@ -273,7 +291,7 @@ public sealed class BootLoadTracker : IDecodedDiskRead
 
         if (!map.TryLocatePhysicalSector(track, physicalSector, out var located, out var block, out var half))
         {
-            volume.Unknown++;
+            this.NoteUnknown(Dos33Layout.SectorSize, cycle);
             return;
         }
 
@@ -289,7 +307,7 @@ public sealed class BootLoadTracker : IDecodedDiskRead
             return;
         }
 
-        this.Account(volume, map, located, 1, located.Length, located.Offset + located.Length, cycle);
+        this.Account(volume, located, located.Length, located.Offset + located.Length, cycle);
     }
 
     private void NoteBoot(VolumeLoad volume, VolumeFileMap map, int track, int physicalSector, long cycle)
@@ -301,8 +319,8 @@ public sealed class BootLoadTracker : IDecodedDiskRead
 
         var load = this.Boot(volume, map, cycle);
         load.BytesRead += Dos33Layout.SectorSize;
-        load.UnitsRead++;
         load.Position = load.BytesRead;
+        this.Publish(load);
     }
 
     private void NoteWholeBlock(VolumeLoad volume, VolumeFileMap map, FileUnitLocation located, int block, long cycle)
@@ -310,7 +328,6 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         this.EnsureHalves(volume, map.BlockCount);
         var len0 = Math.Min(ProdosLayout.BlockSize / 2, located.Length);
         var len1 = Math.Max(0, located.Length - (ProdosLayout.BlockSize / 2));
-        var before = this.HalfSet(volume, block, 0) || this.HalfSet(volume, block, 1);
         var bytes = 0;
         if (len0 > 0 && this.MarkHalf(volume, block, 0))
         {
@@ -322,61 +339,50 @@ public sealed class BootLoadTracker : IDecodedDiskRead
             bytes += len1;
         }
 
-        var units = !before && bytes > 0 ? 1 : 0;
-        this.Account(volume, map, located, units, bytes, located.Offset + located.Length, cycle);
+        this.Account(volume, located, bytes, located.Offset + located.Length, cycle);
     }
 
     private void NoteHalf(VolumeLoad volume, VolumeFileMap map, FileUnitLocation located, int block, int half, long cycle)
     {
         if (block < 0 || half < 0)
         {
-            volume.Unknown++;
+            this.NoteUnknown(Dos33Layout.SectorSize, cycle);
             return;
         }
 
         this.EnsureHalves(volume, map.BlockCount);
-        var before = this.HalfSet(volume, block, 0) || this.HalfSet(volume, block, 1);
         if (!this.MarkHalf(volume, block, half))
         {
             this.Touch(volume, located, located.Offset + located.Length);
             return;
         }
 
-        this.Account(volume, map, located, before ? 0 : 1, located.Length, located.Offset + located.Length, cycle);
+        this.Account(volume, located, located.Length, located.Offset + located.Length, cycle);
     }
 
-    private void Account(
-        VolumeLoad volume,
-        VolumeFileMap map,
-        FileUnitLocation located,
-        int units,
-        int bytes,
-        long position,
-        long cycle)
+    private void Account(VolumeLoad volume, FileUnitLocation located, int bytes, long position, long cycle)
     {
         if (located.Path is null)
         {
-            volume.Unknown++;
+            this.NoteUnknown(bytes > 0 ? bytes : Dos33Layout.SectorSize, cycle);
             return;
         }
 
         if (!volume.ByPath.TryGetValue(located.Path, out var load))
         {
-            if (bytes == 0 && units == 0)
+            if (bytes == 0)
             {
                 return;
             }
 
-            var count = map.TryGetFile(located.Path, out var size) ? size.Units : (int?)null;
-            var label = map.Kind == AppleFileSystemKind.Prodos ? "blocks" : "sectors";
-            load = new MutableLoad(located.Path, located.FileLength, cycle, label, count);
+            load = new MutableLoad(located.Path, located.FileLength, cycle);
             volume.ByPath.Add(located.Path, load);
             volume.Order.Add(load);
         }
 
         load.BytesRead += bytes;
-        load.UnitsRead += units;
         load.Position = position;
+        this.Publish(load);
     }
 
     private void Touch(VolumeLoad volume, FileUnitLocation located, long position)
@@ -384,26 +390,67 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         if (located.Path is not null && volume.ByPath.TryGetValue(located.Path, out var load))
         {
             load.Position = position;
+            this.Publish(load);
         }
     }
 
     private MutableLoad Boot(VolumeLoad volume, VolumeFileMap map, long cycle)
     {
-        if (volume.ByPath.TryGetValue(TrackedLoadProgress.BootImagePath, out var existing))
+        if (volume.ByPath.TryGetValue(BootImagePath, out var existing))
         {
             return existing;
         }
 
         var bytes = (long)map.BootImageSectorCount * Dos33Layout.SectorSize;
-        var created = new MutableLoad(
-            TrackedLoadProgress.BootImagePath,
-            bytes,
-            cycle,
-            "sectors",
-            map.BootImageSectorCount);
+        var created = new MutableLoad(BootImagePath, bytes, cycle);
         volume.ByPath.Add(created.Path, created);
         volume.Order.Add(created);
         return created;
+    }
+
+    private void NoteUnknown(int bytes, long cycle)
+    {
+        if (bytes <= 0)
+        {
+            return;
+        }
+
+        if (this.unknown is null)
+        {
+            this.unknown = new MutableLoad(string.Empty, null, cycle);
+        }
+
+        this.unknown.BytesRead += bytes;
+        this.unknown.Position = this.unknown.BytesRead;
+        this.Publish(this.unknown);
+    }
+
+    private void Publish(MutableLoad load)
+    {
+        uint? size = null;
+        if (load.Size is long length && length >= 0 && length <= uint.MaxValue)
+        {
+            size = (uint)length;
+        }
+
+        uint read = Clamp(load.BytesRead);
+        uint position = Clamp(load.Position);
+        bool active = size is not uint known || read < known;
+        ulong opened = load.OpenCycle < 0 ? 0UL : (ulong)load.OpenCycle;
+        this.files.Report(new FileLoadProgress(load.Path, size, read, position, opened, null, active));
+    }
+
+    private void Republish()
+    {
+        this.unknown = null;
+        this.files.Clear();
+        foreach (var volume in this.volumes.Values)
+        {
+            foreach (var load in volume.Order)
+            {
+                this.Publish(load);
+            }
+        }
     }
 
     private VolumeFileMap Ensure(VolumeLoad volume, int slot, int drive)
@@ -481,20 +528,6 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         volume = new VolumeLoad();
         this.volumes.Add(key, volume);
         return volume;
-    }
-
-    private List<TrackedLoadProgress> Snapshot()
-    {
-        var list = new List<TrackedLoadProgress>();
-        foreach (var volume in this.volumes.Values)
-        {
-            foreach (var load in volume.Order)
-            {
-                list.Add(load.Snapshot());
-            }
-        }
-
-        return list;
     }
 
     private void EnsureHalves(VolumeLoad volume, int blockCount)
@@ -601,13 +634,10 @@ public sealed class BootLoadTracker : IDecodedDiskRead
 
         public List<MutableLoad> Order { get; } = [];
 
-        public int Unknown { get; set; }
-
         public void ClearProgress()
         {
             this.ByPath.Clear();
             this.Order.Clear();
-            this.Unknown = 0;
             this.Halves = null;
             this.Sectors = null;
             this.Ready = false;
@@ -623,13 +653,11 @@ public sealed class BootLoadTracker : IDecodedDiskRead
 
     private sealed class MutableLoad
     {
-        public MutableLoad(string path, long fileLength, long openCycle, string unitLabel, int? unitCount)
+        public MutableLoad(string path, long? fileLength, long openCycle)
         {
             this.Path = path;
             this.Size = fileLength;
             this.OpenCycle = openCycle;
-            this.UnitLabel = unitLabel;
-            this.UnitCount = unitCount;
         }
 
         public string Path { get; }
@@ -641,18 +669,5 @@ public sealed class BootLoadTracker : IDecodedDiskRead
         public long Position { get; set; }
 
         public long OpenCycle { get; }
-
-        public int UnitsRead { get; set; }
-
-        public int? UnitCount { get; }
-
-        public string UnitLabel { get; }
-
-        public TrackedLoadProgress Snapshot() => new(this.Path, this.Size, this.BytesRead, this.Position, this.OpenCycle)
-        {
-            UnitsRead = this.UnitsRead,
-            UnitCount = this.UnitCount,
-            UnitLabel = this.UnitLabel,
-        };
     }
 }

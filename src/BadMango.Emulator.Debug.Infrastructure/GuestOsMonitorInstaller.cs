@@ -29,6 +29,7 @@ public static class GuestOsMonitorInstaller
     /// A second monitor is never added, and its traps stay observe-only.
     /// <c>os on</c> passes <see langword="false"/> so a log already in progress is kept.
     /// <c>boot --log</c> and a logged cold reset pass <see langword="true"/> so the new boot starts with an empty log.
+    /// The file-load tracker and the pre-MLI block tracker share that monitor.
     /// </remarks>
     public static void Install(IMachine machine, ILogger logger, bool clearExistingLog)
     {
@@ -42,6 +43,7 @@ public static class GuestOsMonitorInstaller
                 existing.PrepareForBoot();
             }
 
+            ProDosFileLoadTracker.Install(machine, existing);
             BootLoadTracker.Install(machine, logger, existing);
             return;
         }
@@ -56,8 +58,9 @@ public static class GuestOsMonitorInstaller
         var monitor = new BootSequenceMonitor(logger, detector, BootSequenceMonitor.CreateStandardProfiles());
         monitor.Attach(machine);
         machine.AddComponent(monitor);
+        ProDosFileLoadTracker.Install(machine, monitor);
+        BootLoadTracker.Install(machine, logger, monitor);
         machine.GetComponent<ProDosClockDevice>()?.Bind(machine);
         monitor.PublishFromDetector();
-        BootLoadTracker.Install(machine, logger, monitor);
     }
 }

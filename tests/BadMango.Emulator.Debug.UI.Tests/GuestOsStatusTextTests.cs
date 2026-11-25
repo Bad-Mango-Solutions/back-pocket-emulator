@@ -137,6 +137,9 @@ public class GuestOsStatusTextTests
             Assert.That(
                 GuestOsStatusText.FormatLine(null, GuestOsBootStage.None),
                 Is.EqualTo($"OS: (detection off)     Stage: {GuestOsStatusText.NotEntered}"));
+            Assert.That(
+                GuestOsStatusText.FormatLine(proDos, GuestOsBootStage.Ready, "BASIC.SYSTEM 6656/10240 (65%)"),
+                Is.EqualTo("OS: ProDOS 8 2.4.x     Stage: Ready     Load: BASIC.SYSTEM 6656/10240 (65%)"));
         });
     }
 

@@ -55,35 +55,11 @@ public sealed class ProDos8GuestOsBootProfile : IGuestOsBootProfile
     {
         ArgumentNullException.ThrowIfNull(memory);
         byte command = memory.Read(parameterAddress);
-        return $"MLI ${command:X2} {MliName(command)}";
-    }
+        if (!ProDosMliCall.TryGetName(command, out string? name))
+        {
+            name = "CALL";
+        }
 
-    private static string MliName(byte command) => command switch
-    {
-        0x65 => "QUIT",
-        0x80 => "READ_BLOCK",
-        0x81 => "WRITE_BLOCK",
-        0x82 => "GET_TIME",
-        0xC0 => "CREATE",
-        0xC1 => "DESTROY",
-        0xC2 => "RENAME",
-        0xC3 => "SET_FILE_INFO",
-        0xC4 => "GET_FILE_INFO",
-        0xC5 => "ONLINE",
-        0xC6 => "SET_PREFIX",
-        0xC7 => "GET_PREFIX",
-        0xC8 => "OPEN",
-        0xC9 => "NEWLINE",
-        0xCA => "READ",
-        0xCB => "WRITE",
-        0xCC => "CLOSE",
-        0xCD => "FLUSH",
-        0xCE => "SET_MARK",
-        0xCF => "GET_MARK",
-        0xD0 => "SET_EOF",
-        0xD1 => "GET_EOF",
-        0xD2 => "SET_BUF",
-        0xD3 => "GET_BUF",
-        _ => "CALL",
-    };
+        return $"MLI ${command:X2} {name}";
+    }
 }

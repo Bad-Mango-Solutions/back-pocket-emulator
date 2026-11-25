@@ -210,6 +210,7 @@ public partial class StatusMonitorWindow : Window
         var bootStage = statsProvider.BootStage;
         OsText.Text = GuestOsStatusText.FormatOperatingSystem(guestOs, bootStage);
         BootStageText.Text = GuestOsStatusText.FormatStage(bootStage);
+        LoadText.Text = GuestOsStatusText.FormatLoad(GuestOsStatusText.ReadCurrentLoad(statsProvider.Machine));
 
         // WAI duration
         var waiDuration = statsProvider.WaiDuration;

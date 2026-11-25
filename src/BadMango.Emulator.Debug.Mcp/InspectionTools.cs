@@ -221,6 +221,54 @@ public sealed class InspectionTools
         }
     }
 
+    /// <summary>
+    /// Reads the file-load timeline.
+    /// </summary>
+    /// <returns>
+    /// An emudbg envelope whose payload is the current load and every row, oldest first.
+    /// Each row's <c>line</c> is <c>BASIC.SYSTEM 6656/10240 (65%)</c>, or <c>BASIC.SYSTEM 6656</c> when the size is unknown.
+    /// </returns>
+    [McpServerTool(Name = "get_file_activity", UseStructuredContent = true)]
+    [Description("Get the guest file-load timeline. Each line is BASIC.SYSTEM 6656/10240 (65%) when the size is known, or BASIC.SYSTEM 6656 when it is not. RefNum is the ProDOS ref; a pre-MLI row leaves it null and matches on path. Enabled is false when the boot log is off. Current is the file being loaded.")]
+    public object GetFileActivity()
+    {
+        try
+        {
+            FileActivitySnapshot activity = GuestOsInspection.ReadFileActivity(this.context.Machine);
+            return DebugEnvelope<FileActivitySnapshot>.Create(activity);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return this.Fail("get_file_activity", ex.Message, ex);
+        }
+    }
+
+    /// <summary>
+    /// Reads the recorded ProDOS MLI and DOS 3.3 calls.
+    /// </summary>
+    /// <param name="limit">How many of the newest calls to return. Defaults to the ring size. Maximum is 256.</param>
+    /// <returns>An emudbg envelope whose payload is the call-log mode and the calls, oldest first.</returns>
+    [McpServerTool(Name = "get_os_calls", UseStructuredContent = true)]
+    [Description("Get the recorded guest OS calls, oldest first. limit is how many of the newest calls to return, from 1 through 256, and defaults to 256. The mode is off, mli, dos, or all. An unknown MLI command is named $xx (unknown). The log is off until the profile or os calls turns it on.")]
+    public object GetOsCalls(
+        [Description("How many of the newest calls to return. Defaults to 256. Maximum is 256.")] int limit = GuestOsInspection.MaxOsCalls)
+    {
+        if (limit < 1 || limit > GuestOsInspection.MaxOsCalls)
+        {
+            return this.Fail("get_os_calls", $"OS call limit must be from 1 through {GuestOsInspection.MaxOsCalls}.");
+        }
+
+        try
+        {
+            OsCallLogSnapshot log = GuestOsInspection.ReadOsCalls(this.context.Machine, limit);
+            return DebugEnvelope<OsCallLogSnapshot>.Create(log);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return this.Fail("get_os_calls", ex.Message, ex);
+        }
+    }
+
     private static MemoryReadReceipt ToReceipt(MemoryBlock block)
     {
         var reports = new List<MemoryFaultLine>();

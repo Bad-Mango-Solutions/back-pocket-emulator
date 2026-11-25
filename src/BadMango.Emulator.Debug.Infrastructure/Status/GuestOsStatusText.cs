@@ -11,9 +11,10 @@ using BadMango.Emulator.Devices.GuestOs;
 /// Reads and formats the guest-OS status row. The words are the same in the window and in text-mode <c>statmon</c>.
 /// </summary>
 /// <remarks>
-/// The row names the operating system and the boot stage only. It does not name a slot, a card,
-/// or a disk format, and it does not read boot-milestone detail. A new operating system shows up
-/// through <see cref="GuestOsInfo.DisplayName"/> and <see cref="GuestOsInfo.VersionLabel"/>.
+/// The row names the operating system, the boot stage, and, when a file is loading, that file.
+/// It does not name a slot, a card, or a disk format, and it does not read boot-milestone detail.
+/// A new operating system shows up through <see cref="GuestOsInfo.DisplayName"/> and
+/// <see cref="GuestOsInfo.VersionLabel"/>. The load text is <see cref="FileLoadProgress.FormatLine"/>.
 /// </remarks>
 public static class GuestOsStatusText
 {
@@ -135,16 +136,50 @@ public static class GuestOsStatusText
     }
 
     /// <summary>
-    /// Formats one <c>OS: … Stage: …</c> line.
+    /// Formats one <c>OS: … Stage: …</c> line, and appends the current file when one is loading.
     /// </summary>
     /// <param name="guestOs">The detection result, or <see langword="null"/> when detection is off.</param>
     /// <param name="stage">The boot stage resolved for the same refresh.</param>
-    /// <returns>The line printed by text-mode <c>statmon</c> and shown in the status window.</returns>
-    public static string FormatLine(GuestOsInfo? guestOs, GuestOsBootStage stage)
+    /// <param name="currentLoad">
+    /// <see cref="FileLoadProgress.FormatLine"/> for the file being loaded, or <see langword="null"/>
+    /// when nothing is in progress. Empty is treated the same as <see langword="null"/>.
+    /// </param>
+    /// <returns>
+    /// The line printed by text-mode <c>statmon</c>. A load is appended as <c>Load: BASIC.SYSTEM 6656/10240 (65%)</c>.
+    /// </returns>
+    public static string FormatLine(GuestOsInfo? guestOs, GuestOsBootStage stage, string? currentLoad = null)
     {
         var operatingSystem = FormatOperatingSystem(guestOs, stage);
         var bootStage = FormatStage(stage);
-        return $"OS: {operatingSystem}     Stage: {bootStage}";
+        var line = $"OS: {operatingSystem}     Stage: {bootStage}";
+        if (string.IsNullOrEmpty(currentLoad))
+        {
+            return line;
+        }
+
+        return $"{line}     Load: {currentLoad}";
+    }
+
+    /// <summary>Reads the file currently being loaded.</summary>
+    /// <param name="machine">The machine to read. May be <see langword="null"/>.</param>
+    /// <returns>The tracker's current row, or <see langword="null"/> when the tracker is off or idle.</returns>
+    public static FileLoadProgress? ReadCurrentLoad(IMachine? machine) =>
+        machine?.GetComponent<IFileLoadTracker>()?.Current;
+
+    /// <summary>Formats the status window's load value.</summary>
+    /// <param name="current">The file being loaded, or <see langword="null"/>.</param>
+    /// <returns>
+    /// <see cref="FileLoadProgress.FormatLine"/> when <paramref name="current"/> is active;
+    /// otherwise <see cref="NotEntered"/>.
+    /// </returns>
+    public static string FormatLoad(FileLoadProgress? current)
+    {
+        if (current is not FileLoadProgress progress || !progress.Active)
+        {
+            return NotEntered;
+        }
+
+        return progress.FormatLine();
     }
 
     /// <summary>
@@ -152,7 +187,10 @@ public static class GuestOsStatusText
     /// </summary>
     /// <param name="machine">The machine, or <see langword="null"/> when none is attached.</param>
     /// <param name="stageSource">Optional injected stage. <see langword="null"/> reads the machine.</param>
-    /// <returns>The <c>OS: … Stage: …</c> line. A missing machine is reported as detection off.</returns>
+    /// <returns>
+    /// The <c>OS: … Stage: …</c> line, with <c>Load:</c> appended while a file is loading.
+    /// A missing machine is reported as detection off.
+    /// </returns>
     public static string FormatMachineLine(IMachine? machine, IGuestOsStageSource? stageSource = null)
     {
         if (machine is null)
@@ -162,7 +200,9 @@ public static class GuestOsStatusText
 
         var guestOs = ReadGuestOs(machine);
         var bootStage = ReadBootStage(machine, stageSource, guestOs);
-        return FormatLine(guestOs, bootStage);
+        var current = ReadCurrentLoad(machine);
+        string? loadLine = current is FileLoadProgress progress && progress.Active ? progress.FormatLine() : null;
+        return FormatLine(guestOs, bootStage, loadLine);
     }
 
     /// <summary>

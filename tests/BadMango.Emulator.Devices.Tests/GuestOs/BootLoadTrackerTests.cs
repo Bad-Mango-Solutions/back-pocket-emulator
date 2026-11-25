@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Devices.Tests.GuestOs;
 
+using BadMango.Emulator.Bus;
+using BadMango.Emulator.Core.Interfaces.Cpu;
 using BadMango.Emulator.Devices.GuestOs;
 using BadMango.Emulator.Storage.Backends;
 using BadMango.Emulator.Storage.FileSystems;
@@ -12,6 +14,7 @@ using BadMango.Emulator.Storage.Gcr;
 using BadMango.Emulator.Storage.Media;
 using BadMango.Emulator.Storage.Tests.FileSystems;
 
+using Moq;
 using Serilog;
 
 /// <summary>
@@ -28,26 +31,27 @@ public class BootLoadTrackerTests
     [Test]
     public void ProdosBlocks_ReportFileProgress()
     {
-        var (tracker, blocks) = Prodos();
+        var (tracker, files, blocks) = Prodos();
         tracker.ObserveBlock(Slot, 0, blocks[0].Block, cycle: 40);
-        var first = Load(tracker, "PRODOS");
+        var first = Load(files, "PRODOS");
 
-        Assert.That(first.OpenCycle, Is.EqualTo(40));
+        Assert.That(first.OpenedAtCycle, Is.EqualTo(40));
         Assert.That(first.BytesRead, Is.EqualTo(512));
-        Assert.That(first.UnitsRead, Is.EqualTo(1));
         Assert.That(first.Size, Is.EqualTo(1536));
-        Assert.That(first.Describe(), Is.EqualTo("PRODOS 1/3 blocks, 512/1536 (33%)"));
+        Assert.That(first.Active, Is.True);
+        Assert.That(first.RefNum, Is.Null);
+        Assert.That(first.FormatLine(), Is.EqualTo("PRODOS 512/1536 (33%)"));
 
         tracker.ObserveBlock(Slot, 0, blocks[0].Block, cycle: 90);
         tracker.ObserveBlock(Slot, 0, blocks[1].Block, cycle: 90);
         tracker.ObserveBlock(Slot, 0, blocks[2].Block, cycle: 90);
-        var done = Load(tracker, "PRODOS");
+        var done = Load(files, "PRODOS");
 
-        Assert.That(done.OpenCycle, Is.EqualTo(40));
+        Assert.That(done.OpenedAtCycle, Is.EqualTo(40));
         Assert.That(done.BytesRead, Is.EqualTo(1536));
-        Assert.That(done.UnitsRead, Is.EqualTo(3));
         Assert.That(done.Position, Is.EqualTo(1536));
-        Assert.That(done.Describe(), Is.EqualTo("PRODOS 3/3 blocks, 1536/1536 (100%)"));
+        Assert.That(done.Active, Is.False);
+        Assert.That(done.FormatLine(), Is.EqualTo("PRODOS 1536/1536 (100%)"));
     }
 
     /// <summary>
@@ -60,7 +64,7 @@ public class BootLoadTrackerTests
         var map = VolumeFileMap.TryBuild(built.Reader, sectors: null, Log());
         var hello = Blocks(map, "HELLO", built.Fixture.BlockCount).Single();
         var prodos = Blocks(map, "PRODOS", built.Fixture.BlockCount)[0];
-        var tracker = new BootLoadTracker(Log());
+        var (tracker, files) = Pair();
         tracker.MountVolume(Slot, 0, built.Reader, sectors: null);
         tracker.ObserveBlock(Slot, 0, hello.Block, 5);
 
@@ -69,18 +73,36 @@ public class BootLoadTrackerTests
         var lower = SectorSkew.LogicalToPhysical(SectorOrder.ProDos, within * 2);
         var upper = SectorSkew.LogicalToPhysical(SectorOrder.ProDos, (within * 2) + 1);
         tracker.ObserveSector(Slot, 0, track, lower, 11);
-        var half = Load(tracker, "PRODOS");
+        var half = Load(files, "PRODOS");
         tracker.ObserveSector(Slot, 0, track, upper, 12);
-        var whole = Load(tracker, "PRODOS");
+        var whole = Load(files, "PRODOS");
 
-        Assert.That(Load(tracker, "HELLO").BytesRead, Is.EqualTo(4));
-        Assert.That(Load(tracker, "HELLO").OpenCycle, Is.EqualTo(5));
-        Assert.That(half.UnitsRead, Is.EqualTo(1));
+        Assert.That(Load(files, "HELLO").BytesRead, Is.EqualTo(4));
+        Assert.That(Load(files, "HELLO").OpenedAtCycle, Is.EqualTo(5));
+        Assert.That(Load(files, "HELLO").FormatLine(), Is.EqualTo("HELLO 4/4 (100%)"));
         Assert.That(half.BytesRead, Is.EqualTo(256));
-        Assert.That(whole.UnitsRead, Is.EqualTo(1));
         Assert.That(whole.BytesRead, Is.EqualTo(512));
-        Assert.That(whole.OpenCycle, Is.EqualTo(11));
-        Assert.That(tracker.Loads, Has.Count.EqualTo(2));
+        Assert.That(whole.OpenedAtCycle, Is.EqualTo(11));
+        Assert.That(whole.FormatLine(), Is.EqualTo("PRODOS 512/1536 (33%)"));
+        Assert.That(files.Files, Has.Count.EqualTo(2));
+    }
+
+    /// <summary>
+    /// An MLI row and a pre-MLI block read share one tracker and one line format.
+    /// </summary>
+    [Test]
+    public void MliAndBlockReads_ShareOneTimeline()
+    {
+        var (tracker, files, blocks) = Prodos();
+        files.Report(new FileLoadProgress("/DISK/BASIC.SYSTEM", 10240, 6656, 6656, 1, 1, true));
+        tracker.ObserveBlock(Slot, 0, blocks[0].Block, 40);
+
+        Assert.That(files.Files.Select(row => row.FormatLine()).ToArray(), Is.EqualTo(new[]
+        {
+            "BASIC.SYSTEM 6656/10240 (65%)",
+            "PRODOS 512/1536 (33%)",
+        }));
+        Assert.That(files.Current!.Value.Path, Is.EqualTo("PRODOS"));
     }
 
     /// <summary>
@@ -89,23 +111,24 @@ public class BootLoadTrackerTests
     [Test]
     public void DosBoot_ReportsBootImageAndFileProgress()
     {
-        var (tracker, data) = Dos();
+        var (tracker, files, data) = Dos();
         tracker.ObserveSector(Slot, 0, 0, 0, 1);
         tracker.ObserveSector(Slot, 0, 0, 1, 2);
         tracker.ObserveSector(Slot, 0, 1, 4, 3);
         tracker.ObserveSector(Slot, 0, 0, 0, 4);
-        var boot = Load(tracker, TrackedLoadProgress.BootImagePath);
+        var boot = Load(files, BootLoadTracker.BootImagePath);
 
-        Assert.That(boot.Describe(), Is.EqualTo("boot image sectors read 3/48"));
+        Assert.That(boot.FormatLine(), Is.EqualTo("boot image 768/12288 (6%)"));
         Assert.That(boot.BytesRead, Is.EqualTo(3 * Dos33Layout.SectorSize));
         Assert.That(boot.Size, Is.EqualTo(48 * Dos33Layout.SectorSize));
+        Assert.That(boot.OpenedAtCycle, Is.EqualTo(1));
 
         var physical = SectorSkew.LogicalToPhysical(SectorOrder.Dos33, data.Sector);
         tracker.ObserveSector(Slot, 0, data.Track, physical, 8);
-        var hello = Load(tracker, "HELLO");
+        var hello = Load(files, "HELLO");
 
-        Assert.That(hello.Describe(), Is.EqualTo("HELLO 1/1 sectors, 256/256 (100%)"));
-        Assert.That(hello.OpenCycle, Is.EqualTo(8));
+        Assert.That(hello.FormatLine(), Is.EqualTo("HELLO 256/256 (100%)"));
+        Assert.That(hello.OpenedAtCycle, Is.EqualTo(8));
         Assert.That(hello.Position, Is.EqualTo(256));
     }
 
@@ -115,9 +138,9 @@ public class BootLoadTrackerTests
     [Test]
     public void DiskSwap_InvalidatesTheMap()
     {
-        var (tracker, blocks) = Prodos();
+        var (tracker, files, blocks) = Prodos();
         tracker.ObserveBlock(Slot, 0, blocks[0].Block, 1);
-        Assert.That(Load(tracker, "PRODOS").BytesRead, Is.EqualTo(512));
+        Assert.That(Load(files, "PRODOS").BytesRead, Is.EqualTo(512));
 
         var other = new ProdosImageBuilder(ProdosLayout.StandardFloppyBlocks, "OTHER")
             .AddSeedling("BASIC", ProdosFileType.Text, 0, new byte[] { 9, 8, 7 }, locked: false)
@@ -127,12 +150,12 @@ public class BootLoadTrackerTests
         var basic = Blocks(otherMap, "BASIC", other.BlockCount).Single();
         tracker.MountVolume(Slot, 0, otherReader, sectors: null);
 
-        Assert.That(tracker.Loads, Is.Empty);
+        Assert.That(files.Files, Is.Empty);
         tracker.ObserveBlock(Slot, 0, blocks[0].Block, 2);
         tracker.ObserveBlock(Slot, 0, basic.Block, 3);
 
-        Assert.That(tracker.Loads.Select(load => load.Path), Does.Not.Contain("PRODOS"));
-        Assert.That(Load(tracker, "BASIC").BytesRead, Is.EqualTo(3));
+        Assert.That(files.Files.Select(row => row.Path), Does.Not.Contain("PRODOS"));
+        Assert.That(Load(files, "BASIC").FormatLine(), Is.EqualTo("BASIC 3/3 (100%)"));
     }
 
     /// <summary>
@@ -145,7 +168,7 @@ public class BootLoadTrackerTests
         var map = VolumeFileMap.TryBuild(built.Reader, sectors: null, Log());
         var block = Blocks(map, "PRODOS", built.Fixture.BlockCount)[0].Block;
         var counting = new CountingBlocks(built.Reader);
-        var tracker = new BootLoadTracker(Log());
+        var (tracker, files) = Pair();
         tracker.MountVolume(Slot, 0, counting, sectors: null);
         tracker.ObserveBlock(Slot, 0, block, 1);
         var afterBuild = counting.Reads;
@@ -154,8 +177,8 @@ public class BootLoadTrackerTests
         tracker.ObserveBlock(Slot, 0, block, 2);
 
         Assert.That(counting.Reads, Is.GreaterThan(afterBuild));
-        Assert.That(Load(tracker, "PRODOS").BytesRead, Is.EqualTo(512));
-        Assert.That(Load(tracker, "PRODOS").UnitsRead, Is.EqualTo(1));
+        Assert.That(Load(files, "PRODOS").BytesRead, Is.EqualTo(512));
+        Assert.That(Load(files, "PRODOS").FormatLine(), Is.EqualTo("PRODOS 512/1536 (33%)"));
     }
 
     /// <summary>
@@ -164,19 +187,19 @@ public class BootLoadTrackerTests
     [Test]
     public void SessionEnd_ClearsProgress()
     {
-        var (tracker, blocks) = Prodos();
+        var (tracker, files, blocks) = Prodos();
         var monitor = new SessionMonitor();
         tracker.Watch(monitor);
         tracker.ObserveBlock(Slot, 0, 0, 1);
         tracker.ObserveBlock(Slot, 0, blocks[0].Block, 2);
         monitor.End();
 
-        Assert.That(tracker.Loads, Is.Empty);
-        Assert.That(tracker.UnknownReadCount, Is.Zero);
+        Assert.That(files.Files, Is.Empty);
+        Assert.That(files.Current, Is.Null);
 
         tracker.ObserveBlock(Slot, 0, blocks[0].Block, 9);
-        Assert.That(Load(tracker, "PRODOS").BytesRead, Is.EqualTo(512));
-        Assert.That(Load(tracker, "PRODOS").OpenCycle, Is.EqualTo(9));
+        Assert.That(Load(files, "PRODOS").BytesRead, Is.EqualTo(512));
+        Assert.That(Load(files, "PRODOS").OpenedAtCycle, Is.EqualTo(9));
     }
 
     /// <summary>
@@ -185,7 +208,7 @@ public class BootLoadTrackerTests
     [Test]
     public void UnmappableRead_IsUnknownAndDoesNotThrow()
     {
-        var tracker = new BootLoadTracker(Log());
+        var (tracker, files) = Pair();
         tracker.ObserveBlock(Slot, 0, 2, 1);
         tracker.ObserveSector(Slot, 0, 0, 0, 1);
         tracker.MountVolume(Slot, 0, new MemoryBlockReader(new byte[8 * 512], 8, 512), sectors: null);
@@ -195,8 +218,10 @@ public class BootLoadTrackerTests
         tracker.ObserveBlock(Slot, 0, -1, 1);
         tracker.ObserveSector(Slot, 0, -1, 99, 1);
 
-        Assert.That(tracker.UnknownReadCount, Is.GreaterThanOrEqualTo(3));
-        Assert.That(tracker.Loads, Is.Empty);
+        var unknown = files.Files.Single();
+        Assert.That(unknown.Path, Is.EqualTo(string.Empty));
+        Assert.That(unknown.FormatLine(), Is.EqualTo("unknown 1280"));
+        Assert.That(unknown.RefNum, Is.Null);
     }
 
     /// <summary>
@@ -205,35 +230,34 @@ public class BootLoadTrackerTests
     [Test]
     public void MountedDisk_UsesDecodedReadersAndEjectDropsTheMap()
     {
-        var (_, data, image) = DosImage();
+        var (_, _, data, image) = DosImage();
         var media = new SectorImageMedia(new RamStorageBackend(image.Image.ToArray()), DiskGeometry.Standard525Dos);
         var controller = new DiskIIController(Log())
         {
             SlotNumber = Slot,
         };
-        var tracker = new BootLoadTracker(Log());
+        var (tracker, files) = Pair();
         tracker.Attach(controller);
         controller.Mount(0, media.As525Media());
         var physical = SectorSkew.LogicalToPhysical(SectorOrder.Dos33, data.Sector);
         tracker.ObserveSector(Slot, 0, data.Track, physical, 4);
 
-        Assert.That(Load(tracker, "HELLO").BytesRead, Is.EqualTo(256));
+        Assert.That(Load(files, "HELLO").FormatLine(), Is.EqualTo("HELLO 256/256 (100%)"));
 
         Assert.That(controller.Eject(0), Is.True);
-        Assert.That(tracker.Loads, Is.Empty);
+        Assert.That(files.Files, Is.Empty);
         tracker.ObserveSector(Slot, 0, data.Track, physical, 5);
-        Assert.That(tracker.UnknownReadCount, Is.EqualTo(1));
-        Assert.That(tracker.Loads, Is.Empty);
+        Assert.That(files.Files.Single().FormatLine(), Is.EqualTo("unknown 256"));
     }
 
-    private static (BootLoadTracker Tracker, List<Located> Blocks) Prodos()
+    private static (BootLoadTracker Tracker, IFileLoadTracker Files, List<Located> Blocks) Prodos()
     {
         var built = ProdosImage();
         var map = VolumeFileMap.TryBuild(built.Reader, sectors: null, Log());
         var blocks = Blocks(map, "PRODOS", built.Fixture.BlockCount);
-        var tracker = new BootLoadTracker(Log());
+        var (tracker, files) = Pair();
         tracker.MountVolume(Slot, 0, built.Reader, sectors: null);
-        return (tracker, blocks);
+        return (tracker, files, blocks);
     }
 
     private static (ProdosFixture Fixture, IBlockReader Reader) ProdosImage()
@@ -246,13 +270,13 @@ public class BootLoadTrackerTests
         return (fixture, fixture.CreateBlockReader());
     }
 
-    private static (BootLoadTracker Tracker, Dos33Fixture.SectorRef Data) Dos()
+    private static (BootLoadTracker Tracker, IFileLoadTracker Files, Dos33Fixture.SectorRef Data) Dos()
     {
-        var (tracker, data, _) = DosImage();
-        return (tracker, data);
+        var (tracker, files, data, _) = DosImage();
+        return (tracker, files, data);
     }
 
-    private static (BootLoadTracker Tracker, Dos33Fixture.SectorRef Data, Dos33Fixture Image) DosImage()
+    private static (BootLoadTracker Tracker, IFileLoadTracker Files, Dos33Fixture.SectorRef Data, Dos33Fixture Image) DosImage()
     {
         var body = new byte[] { 1, 2, 3, 4 };
         var builder = new Dos33ImageBuilder(35, 254);
@@ -263,9 +287,19 @@ public class BootLoadTrackerTests
 
         var image = builder.AddFile("HELLO", Dos33FileType.Text, locked: false, deleted: false, new byte[]?[] { body }).Build();
         var data = image.Entries.Single(entry => entry.Name == "HELLO").DataSectors.Single(sector => sector.Allocated);
-        var tracker = new BootLoadTracker(Log());
+        var (tracker, files) = Pair();
         tracker.MountVolume(Slot, 0, blocks: null, new MemorySectorReader(image.Image, image.TrackCount, 16, 256));
-        return (tracker, data, image);
+        return (tracker, files, data, image);
+    }
+
+    private static (BootLoadTracker Boot, IFileLoadTracker Files) Pair()
+    {
+        var cpu = new Mock<ICpu>();
+        var memory = new CpuGuestMemoryReader(cpu.Object);
+        var detector = new GuestOsDetector(Log(), [], memory);
+        var monitor = new BootSequenceMonitor(Log(), detector, []);
+        var shared = new ProDosFileLoadTracker(NullTrapRegistry.Instance, cpu.Object, monitor);
+        return (new BootLoadTracker(Log(), shared), shared);
     }
 
     private static List<Located> Blocks(VolumeFileMap map, string path, int blockCount)
@@ -283,8 +317,8 @@ public class BootLoadTrackerTests
         return found;
     }
 
-    private static TrackedLoadProgress Load(BootLoadTracker tracker, string path) =>
-        tracker.Loads.Single(load => load.Path == path);
+    private static FileLoadProgress Load(IFileLoadTracker files, string path) =>
+        files.Files.Single(row => row.Path == path);
 
     private static ILogger Log() => Serilog.Core.Logger.None;
 
