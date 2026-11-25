@@ -724,6 +724,94 @@ public class ProdosFileSystemTests
         Assert.That(result.Attempts[0].Recognized, Is.True);
     }
 
+    /// <summary>
+    /// Directory dates use the ProDOS year window, a zero date word is no date, and free blocks come from the bitmap.
+    /// </summary>
+    [Test]
+    public void Catalog_DecodesDatesAndCountsBitmapBlocks()
+    {
+        var builder = new ProdosImageBuilder(ProdosLayout.StandardFloppyBlocks, "SAMPLE");
+        builder.AddSeedling("FEB", ProdosFileType.Applesoft, 0x0801, new byte[] { 1 }, false);
+        builder.SetDates(ProdosTimestamp.Encode(18, 2, 13, 9, 9), ProdosTimestamp.Encode(99, 6, 7, 12, 8));
+        builder.AddSeedling("Y40", ProdosFileType.Text, 0, new byte[] { 1 }, false);
+        builder.SetDates(ProdosTimestamp.Encode(40, 1, 2, 0, 1), ProdosTimestamp.Encode(40, 1, 2, 0, 1));
+        builder.AddSeedling("Y00", ProdosFileType.Text, 0, new byte[] { 1 }, false);
+        builder.SetDates(ProdosTimestamp.Encode(0, 3, 4, 5, 6), ProdosTimestamp.Encode(0, 3, 4, 5, 6));
+        builder.AddSeedling("Y39", ProdosFileType.Text, 0, new byte[] { 1 }, false);
+        builder.SetDates(ProdosTimestamp.Encode(39, 12, 31, 23, 59), ProdosTimestamp.Encode(39, 12, 31, 23, 59));
+        builder.AddSeedling("NONE", ProdosFileType.Binary, 0, new byte[] { 1 }, false);
+        builder.AddSeedling("CUSTOM", ProdosFileType.Text, 0, new byte[] { 1 }, false);
+        builder.SetFileType(0xF1);
+        var fixture = builder.Build();
+        var fs = Open(fixture);
+        var listing = fs.ListDirectory(null);
+        Assume.That(listing.Succeeded, Is.True, listing.Reason);
+        var feb = listing.Entries.Single(entry => entry.Name == "FEB");
+        var year40 = listing.Entries.Single(entry => entry.Name == "Y40");
+        var year00 = listing.Entries.Single(entry => entry.Name == "Y00");
+        var year39 = listing.Entries.Single(entry => entry.Name == "Y39");
+        var none = listing.Entries.Single(entry => entry.Name == "NONE");
+        var custom = listing.Entries.Single(entry => entry.Name == "CUSTOM");
+
+        var bitmapAt = ProdosLayout.BitmapPointer(fixture.BlockCount) * ProdosLayout.BlockSize;
+        var bitmapLength = ProdosLayout.BitmapBlockCount(fixture.BlockCount) * ProdosLayout.BlockSize;
+        var bitmap = fixture.Image.Span.Slice(bitmapAt, bitmapLength);
+        var free = 0;
+        for (var block = 0; block < fixture.BlockCount; block++)
+        {
+            if (ProdosLayout.IsBlockFree(bitmap, block))
+            {
+                free++;
+            }
+        }
+
+        var summed = listing.Entries.Sum(entry => entry.AllocatedUnits);
+        Assert.Multiple(() =>
+        {
+            Assert.That(feb.Created.Year, Is.EqualTo(2018));
+            Assert.That(feb.Created.Month, Is.EqualTo(2));
+            Assert.That(feb.Created.Day, Is.EqualTo(13));
+            Assert.That(feb.Created.Hour, Is.EqualTo(9));
+            Assert.That(feb.Created.Minute, Is.EqualTo(9));
+            Assert.That(feb.Created.ToCatalogText(), Is.EqualTo("13-FEB-18  9:09"));
+            Assert.That(feb.Modified.Year, Is.EqualTo(1999));
+            Assert.That(feb.Modified.ToCatalogText(), Is.EqualTo("07-JUN-99 12:08"));
+            Assert.That(feb.AuxType, Is.EqualTo(0x0801));
+            Assert.That(year40.Created.Year, Is.EqualTo(1940));
+            Assert.That(year40.Created.ToCatalogText(), Is.EqualTo("02-JAN-40  0:01"));
+            Assert.That(year00.Created.Year, Is.EqualTo(2000));
+            Assert.That(year00.Created.ToCatalogText(), Is.EqualTo("04-MAR-00  5:06"));
+            Assert.That(year39.Created.Year, Is.EqualTo(2039));
+            Assert.That(year39.Created.ToCatalogText(), Is.EqualTo("31-DEC-39 23:59"));
+            Assert.That(none.Created.HasDate, Is.False);
+            Assert.That(none.Modified.HasDate, Is.False);
+            Assert.That(none.Created.ToCatalogText(), Is.EqualTo("<NO DATE>"));
+            Assert.That(custom.FileType, Is.EqualTo(0xF1));
+            Assert.That(ProdosFileTypes.CatalogName(0x01), Is.EqualTo("BAD"));
+            Assert.That(ProdosFileTypes.CatalogName(0x04), Is.EqualTo("TXT"));
+            Assert.That(ProdosFileTypes.CatalogName(0x06), Is.EqualTo("BIN"));
+            Assert.That(ProdosFileTypes.CatalogName(0x0F), Is.EqualTo("DIR"));
+            Assert.That(ProdosFileTypes.CatalogName(0x19), Is.EqualTo("ADB"));
+            Assert.That(ProdosFileTypes.CatalogName(0x1A), Is.EqualTo("AWP"));
+            Assert.That(ProdosFileTypes.CatalogName(0x1B), Is.EqualTo("ASP"));
+            Assert.That(ProdosFileTypes.CatalogName(0xB3), Is.EqualTo("S16"));
+            Assert.That(ProdosFileTypes.CatalogName(0xEF), Is.EqualTo("PAS"));
+            Assert.That(ProdosFileTypes.CatalogName(0xF0), Is.EqualTo("CMD"));
+            Assert.That(ProdosFileTypes.CatalogName(0xFA), Is.EqualTo("INT"));
+            Assert.That(ProdosFileTypes.CatalogName(0xFB), Is.EqualTo("IVR"));
+            Assert.That(ProdosFileTypes.CatalogName(0xFC), Is.EqualTo("BAS"));
+            Assert.That(ProdosFileTypes.CatalogName(0xFD), Is.EqualTo("VAR"));
+            Assert.That(ProdosFileTypes.CatalogName(0xFE), Is.EqualTo("REL"));
+            Assert.That(ProdosFileTypes.CatalogName(0xFF), Is.EqualTo("SYS"));
+            Assert.That(ProdosFileTypes.CatalogName(0xF1), Is.EqualTo("$F1"));
+            Assert.That(fs.Allocation.FreeUnits, Is.EqualTo(free));
+            Assert.That(fs.Allocation.UsedUnits, Is.EqualTo(fixture.BlockCount - free));
+            Assert.That(fs.Allocation.TotalUnits, Is.EqualTo(fixture.BlockCount));
+            Assert.That(fs.Allocation.UsedUnits, Is.Not.EqualTo(summed));
+            Assert.That(free, Is.GreaterThan(0));
+        });
+    }
+
     private static ProdosFileSystem Open(ProdosFixture fixture) => new(fixture.CreateBlockReader(), Log());
 
     private static ProdosFileSystem Open(byte[] image, int blockCount) =>

@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Debug.Abstractions;
 
+using System.Text.Json.Serialization;
+
 /// <summary>
 /// One catalog row from <c>disk cat</c>.
 /// </summary>
@@ -17,6 +19,8 @@ namespace BadMango.Emulator.Debug.Abstractions;
 /// <param name="AllocatedUnits">The catalog allocation count.</param>
 /// <param name="Locked">Whether the catalog marks the entry locked.</param>
 /// <param name="Directory">Whether the entry is a ProDOS subdirectory.</param>
+/// <param name="Created">The ProDOS creation stamp, or <see langword="null"/> when the date word is zero.</param>
+/// <param name="Modified">The ProDOS modification stamp, or <see langword="null"/> when the date word is zero.</param>
 public sealed record DiskCatalogEntryPayload(
     string Name,
     string DisplayName,
@@ -27,4 +31,6 @@ public sealed record DiskCatalogEntryPayload(
     int EofBytes,
     int AllocatedUnits,
     bool Locked,
-    bool Directory);
+    bool Directory,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] DiskCatalogTimestamp? Created,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] DiskCatalogTimestamp? Modified);

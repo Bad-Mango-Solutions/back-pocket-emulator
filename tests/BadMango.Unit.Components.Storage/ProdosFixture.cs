@@ -98,7 +98,16 @@ public sealed class ProdosFixture
     /// <param name="AuxType">Auxiliary type.</param>
     /// <param name="Data">End-of-file bytes. At most one block.</param>
     /// <param name="Locked">Whether the write bit is clear.</param>
-    public readonly record struct SeedlingSpec(string Name, ProdosFileType FileType, ushort AuxType, ReadOnlyMemory<byte> Data, bool Locked);
+    /// <param name="Created">Creation stamp. The default is a zero date word.</param>
+    /// <param name="Modified">Modification stamp. The default is a zero date word.</param>
+    public readonly record struct SeedlingSpec(
+        string Name,
+        ProdosFileType FileType,
+        ushort AuxType,
+        ReadOnlyMemory<byte> Data,
+        bool Locked,
+        ProdosTimestamp Created = default,
+        ProdosTimestamp Modified = default);
 
     /// <summary>One root or nested catalog entry in a <see cref="ProdosFixture"/>.</summary>
     public sealed class Entry
@@ -120,6 +129,8 @@ public sealed class ProdosFixture
         /// <param name="childIndexPointers">Pointers in a tree's single subindex.</param>
         /// <param name="rawBytes">Bytes a raw read returns. Empty for directories and extended files.</param>
         /// <param name="children">Files inside a subdirectory.</param>
+        /// <param name="created">Creation stamp. The default is a zero date word.</param>
+        /// <param name="modified">Modification stamp. The default is a zero date word.</param>
         public Entry(
             string name,
             string path,
@@ -134,7 +145,9 @@ public sealed class ProdosFixture
             IReadOnlyList<int> indexPointers,
             IReadOnlyList<int> childIndexPointers,
             ReadOnlyMemory<byte> rawBytes,
-            IReadOnlyList<Entry> children)
+            IReadOnlyList<Entry> children,
+            ProdosTimestamp created = default,
+            ProdosTimestamp modified = default)
         {
             this.Name = name;
             this.Path = path;
@@ -150,6 +163,8 @@ public sealed class ProdosFixture
             this.ChildIndexPointers = childIndexPointers;
             this.RawBytes = rawBytes;
             this.Children = children;
+            this.Created = created;
+            this.Modified = modified;
         }
 
         /// <summary>Gets the file name.</summary>
@@ -207,5 +222,13 @@ public sealed class ProdosFixture
         /// <summary>Gets subdirectory children.</summary>
         /// <value>An empty list when this entry is not a directory.</value>
         public IReadOnlyList<Entry> Children { get; }
+
+        /// <summary>Gets the creation stamp written into the directory entry.</summary>
+        /// <value>A zero date word when the fixture did not set one.</value>
+        public ProdosTimestamp Created { get; }
+
+        /// <summary>Gets the modification stamp written into the directory entry.</summary>
+        /// <value>A zero date word when the fixture did not set one.</value>
+        public ProdosTimestamp Modified { get; }
     }
 }

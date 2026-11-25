@@ -100,6 +100,7 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         this.firstCatalogTrack = vtoc[Dos33Layout.Vtoc.CatalogTrackOffset];
         this.firstCatalogSector = vtoc[Dos33Layout.Vtoc.CatalogSectorOffset];
         this.VolumeName = vtoc[Dos33Layout.Vtoc.VolumeOffset].ToString(CultureInfo.InvariantCulture);
+        this.Allocation = Dos33Layout.CountFreeSectors(vtoc, sectors.TrackCount);
     }
 
     /// <summary>Gets the volume number as an invariant decimal.</summary>
@@ -109,6 +110,10 @@ public sealed class Dos33FileSystem : IAppleFileSystem
     /// <summary>Gets the DOS 3.3 volume type.</summary>
     /// <value><see cref="AppleFileSystemKind.Dos33"/>.</value>
     public AppleFileSystemKind Kind => AppleFileSystemKind.Dos33;
+
+    /// <summary>Gets free, used, and total sectors from the VTOC bitmap.</summary>
+    /// <value>A set bitmap bit is a free sector. Total is tracks times 16.</value>
+    public VolumeSpace Allocation { get; }
 
     /// <summary>
     /// Lists the volume root, or reports that a file is not a directory.

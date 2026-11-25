@@ -139,6 +139,33 @@ public sealed class ProdosImageBuilder
         return this;
     }
 
+    /// <summary>
+    /// Sets the creation and modification stamps on the root entry most recently added.
+    /// </summary>
+    /// <param name="created">Creation stamp. A zero date word stays <c>&lt;NO DATE&gt;</c>.</param>
+    /// <param name="modified">Modification stamp.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">If the root has no entries yet.</exception>
+    public ProdosImageBuilder SetDates(ProdosTimestamp created, ProdosTimestamp modified)
+    {
+        var pending = this.LastPending();
+        pending.Created = created;
+        pending.Modified = modified;
+        return this;
+    }
+
+    /// <summary>
+    /// Stores a file-type byte on the root entry most recently added.
+    /// </summary>
+    /// <param name="fileType">The directory file-type byte, including values with no three-letter name.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">If the root has no entries yet.</exception>
+    public ProdosImageBuilder SetFileType(byte fileType)
+    {
+        this.LastPending().FileTypeByte = fileType;
+        return this;
+    }
+
     /// <summary>Adds a subdirectory of seedlings. At most 12 children.</summary>
     /// <param name="name">Directory name.</param>
     /// <param name="children">Files stored in the subdirectory key block.</param>
@@ -239,7 +266,7 @@ public sealed class ProdosImageBuilder
         var natural = LogicalBytes(pending.Blocks, pointers);
         var raw = PadToEof(natural, ResolveEof(natural.Length, pending.ExplicitEof));
         var usedBlocks = 1 + pointers.Count(pointer => pointer != 0);
-        return new ProdosFixture.Entry(name, name, pending.FileType, pending.AuxType, raw.Length, usedBlocks, pending.Locked, false, kind, indexBlock, pointers, Array.Empty<int>(), raw, Array.Empty<ProdosFixture.Entry>());
+        return new ProdosFixture.Entry(name, name, pending.StoredType, pending.AuxType, raw.Length, usedBlocks, pending.Locked, false, kind, indexBlock, pointers, Array.Empty<int>(), raw, Array.Empty<ProdosFixture.Entry>(), pending.Created, pending.Modified);
     }
 
     private ProdosFixture.Entry PlaceTree(byte[] image, bool[] used, Pending pending, string name)
@@ -259,7 +286,7 @@ public sealed class ProdosImageBuilder
         return new ProdosFixture.Entry(
             name,
             name,
-            pending.FileType,
+            pending.StoredType,
             pending.AuxType,
             raw.Length,
             usedBlocks,
@@ -270,7 +297,9 @@ public sealed class ProdosImageBuilder
             masterPointers,
             dataPointers,
             raw,
-            Array.Empty<ProdosFixture.Entry>());
+            Array.Empty<ProdosFixture.Entry>(),
+            pending.Created,
+            pending.Modified);
     }
 
     private ProdosFixture.Entry PlaceExtended(byte[] image, bool[] used, Pending pending, string name)
@@ -287,7 +316,7 @@ public sealed class ProdosImageBuilder
         return new ProdosFixture.Entry(
             name,
             name,
-            pending.FileType,
+            pending.StoredType,
             0,
             dataFork.Length,
             3,
@@ -298,7 +327,9 @@ public sealed class ProdosImageBuilder
             new[] { dataBlock, resourceBlock },
             Array.Empty<int>(),
             ReadOnlyMemory<byte>.Empty,
-            Array.Empty<ProdosFixture.Entry>());
+            Array.Empty<ProdosFixture.Entry>(),
+            pending.Created,
+            pending.Modified);
     }
 
     private ProdosFixture.Entry PlaceDirectory(byte[] image, bool[] used, Pending pending, string name)
@@ -309,6 +340,8 @@ public sealed class ProdosImageBuilder
         {
             var spec = pending.Children[i];
             var child = this.CreateSeedling(spec.Name, spec.FileType, spec.AuxType, spec.Data, spec.Locked, key, name);
+            child.Created = spec.Created;
+            child.Modified = spec.Modified;
             var placed = this.PlaceSeedling(image, used, child, Normalize(spec.Name));
             var slot = (key * ProdosLayout.BlockSize) + ProdosLayout.Directory.FirstEntryOffset + ((i + 1) * ProdosLayout.Entry.Length);
             FileEntryBytes(placed, key).CopyTo(image.AsSpan(slot, ProdosLayout.Entry.Length));
@@ -330,7 +363,9 @@ public sealed class ProdosImageBuilder
             Array.Empty<int>(),
             Array.Empty<int>(),
             ReadOnlyMemory<byte>.Empty,
-            children);
+            children,
+            pending.Created,
+            pending.Modified);
     }
 
     private int[] AllocateData(byte[] image, bool[] used, IReadOnlyList<byte[]?> blocks, int minimumForLast)
@@ -468,6 +503,8 @@ public sealed class ProdosImageBuilder
         WriteU24(bytes.AsSpan(ProdosLayout.Entry.EofOffset), entry.EofBytes);
         bytes[ProdosLayout.Entry.AccessOffset] = entry.IsLocked ? ProdosLayout.AccessLocked : ProdosLayout.AccessUnlocked;
         WriteU16(bytes.AsSpan(ProdosLayout.Entry.AuxTypeOffset), entry.AuxType);
+        WriteTimestamp(bytes.AsSpan(ProdosLayout.Entry.CreationDateOffset, 4), entry.Created);
+        WriteTimestamp(bytes.AsSpan(ProdosLayout.Entry.ModificationDateOffset, 4), entry.Modified);
         WriteU16(bytes.AsSpan(ProdosLayout.Entry.HeaderPointerOffset), headerBlock);
         return bytes;
     }
@@ -591,7 +628,7 @@ public sealed class ProdosImageBuilder
         return new ProdosFixture.Entry(
             name,
             path,
-            pending.FileType,
+            pending.StoredType,
             pending.AuxType,
             raw.Length,
             1,
@@ -602,7 +639,19 @@ public sealed class ProdosImageBuilder
             Array.Empty<int>(),
             Array.Empty<int>(),
             raw,
-            Array.Empty<ProdosFixture.Entry>());
+            Array.Empty<ProdosFixture.Entry>(),
+            pending.Created,
+            pending.Modified);
+    }
+
+    private Pending LastPending()
+    {
+        if (this.root.Count == 0)
+        {
+            throw new InvalidOperationException("Add a file before changing it.");
+        }
+
+        return this.root[^1];
     }
 
     private void WriteName(Span<byte> entry, ProdosStorageType storage, string name)
@@ -622,6 +671,14 @@ public sealed class ProdosImageBuilder
         }
 
         return upper;
+    }
+
+    private void WriteTimestamp(Span<byte> dateAndTime, ProdosTimestamp stamp)
+    {
+        dateAndTime[0] = (byte)stamp.DateWord;
+        dateAndTime[1] = (byte)(stamp.DateWord >> 8);
+        dateAndTime[2] = (byte)stamp.TimeWord;
+        dateAndTime[3] = (byte)(stamp.TimeWord >> 8);
     }
 
     private void WriteU16(Span<byte> destination, int value)
@@ -682,5 +739,13 @@ public sealed class ProdosImageBuilder
         public int? ExplicitEof { get; set; }
 
         public int MasterSlot { get; set; }
+
+        public ProdosTimestamp Created { get; set; }
+
+        public ProdosTimestamp Modified { get; set; }
+
+        public byte? FileTypeByte { get; set; }
+
+        public ProdosFileType StoredType => this.FileTypeByte is byte raw ? (ProdosFileType)raw : this.FileType;
     }
 }

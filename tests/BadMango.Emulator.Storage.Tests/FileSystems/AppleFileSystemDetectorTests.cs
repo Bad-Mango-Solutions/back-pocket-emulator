@@ -251,6 +251,8 @@ public class AppleFileSystemDetectorTests
 
         public AppleFileSystemKind Kind { get; }
 
+        public VolumeSpace Allocation => default;
+
         public DirectoryListing ListDirectory(string? path) => DirectoryListing.Success(Array.Empty<FileEntry>());
 
         public FileReadResult TryReadFile(string path, FileReadView view)

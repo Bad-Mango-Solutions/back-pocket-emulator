@@ -69,6 +69,7 @@ using System.Text.Json.Serialization;
 [JsonSerializable(typeof(IReadOnlyList<DiskFileSystemProbePayload>))]
 [JsonSerializable(typeof(DiskCatalogPayload))]
 [JsonSerializable(typeof(DiskCatalogEntryPayload))]
+[JsonSerializable(typeof(DiskCatalogTimestamp))]
 [JsonSerializable(typeof(IReadOnlyList<DiskCatalogEntryPayload>))]
 [JsonSerializable(typeof(DiskFilePayload))]
 [JsonSerializable(typeof(DebugEnvelope<DiskFileSystemInfoPayload>))]

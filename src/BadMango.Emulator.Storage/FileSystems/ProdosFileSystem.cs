@@ -87,8 +87,11 @@ public sealed class ProdosFileSystem : IAppleFileSystem
 
         var header = this.blockBuffer.AsSpan(ProdosLayout.Directory.FirstEntryOffset, ProdosLayout.Entry.Length);
         this.VolumeName = DecodeName(header, header[0] & 0x0F, ProdosLayout.VolumeHeader.CaseBitsOffset);
+        var bitmapPointer = header[ProdosLayout.VolumeHeader.BitmapPointerOffset]
+            | (header[ProdosLayout.VolumeHeader.BitmapPointerOffset + 1] << 8);
         this.totalBlocks = header[ProdosLayout.VolumeHeader.TotalBlocksOffset]
             | (header[ProdosLayout.VolumeHeader.TotalBlocksOffset + 1] << 8);
+        this.Allocation = this.ReadAllocation(bitmapPointer);
         this.logger.Debug(
             "Opened ProDOS volume {VolumeName} with {BlockCount} blocks.",
             this.VolumeName,
@@ -100,6 +103,9 @@ public sealed class ProdosFileSystem : IAppleFileSystem
 
     /// <inheritdoc />
     public AppleFileSystemKind Kind => AppleFileSystemKind.Prodos;
+
+    /// <inheritdoc />
+    public VolumeSpace Allocation { get; }
 
     /// <inheritdoc />
     public DirectoryListing ListDirectory(string? path)
@@ -390,6 +396,12 @@ public sealed class ProdosFileSystem : IAppleFileSystem
         var eof = ReadU24(entry, ProdosLayout.Entry.EofOffset);
         var allocated = ReadU16(entry, ProdosLayout.Entry.BlocksUsedOffset);
         var aux = (ushort)ReadU16(entry, ProdosLayout.Entry.AuxTypeOffset);
+        var created = ProdosTimestamp.Decode(
+            (ushort)ReadU16(entry, ProdosLayout.Entry.CreationDateOffset),
+            (ushort)ReadU16(entry, ProdosLayout.Entry.CreationTimeOffset));
+        var modified = ProdosTimestamp.Decode(
+            (ushort)ReadU16(entry, ProdosLayout.Entry.ModificationDateOffset),
+            (ushort)ReadU16(entry, ProdosLayout.Entry.ModificationTimeOffset));
         var file = new FileEntry(
             path,
             name,
@@ -400,7 +412,10 @@ public sealed class ProdosFileSystem : IAppleFileSystem
             ProdosLayout.BlockSize,
             ProdosLayout.IsLocked(entry[ProdosLayout.Entry.AccessOffset]),
             storage == ProdosStorageType.Subdirectory,
-            kind);
+            kind,
+            displayName: null,
+            created: created,
+            modified: modified);
         entries.Add(new CatalogItem(file, ReadU16(entry, ProdosLayout.Entry.KeyPointerOffset), storage));
     }
 
@@ -539,6 +554,19 @@ public sealed class ProdosFileSystem : IAppleFileSystem
         }
 
         return null;
+    }
+
+    private VolumeSpace ReadAllocation(int bitmapPointer)
+    {
+        var bitmapBlocks = ProdosLayout.BitmapBlockCount(this.totalBlocks);
+        var bitmap = new byte[bitmapBlocks * ProdosLayout.BlockSize];
+        for (var index = 0; index < bitmapBlocks; index++)
+        {
+            this.blocks.ReadBlock(bitmapPointer + index, this.blockBuffer);
+            this.blockBuffer.AsSpan().CopyTo(bitmap.AsSpan(index * ProdosLayout.BlockSize));
+        }
+
+        return ProdosLayout.CountFreeBlocks(bitmap, this.totalBlocks);
     }
 
     private FileReadResult? PointerOutOfRange(int block)

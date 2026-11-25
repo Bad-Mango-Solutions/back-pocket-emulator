@@ -40,7 +40,7 @@ emudbg --headless --max-cycles 100000 --exec "run-until --until-cycles=1000;exit
 
 ## Disk files
 
-`disk fsinfo`, `disk cat`, and `disk read` recognize a DOS 3.3, ProDOS, or Pascal volume. The source is a mounted `slot:drive` (`disk fsinfo 6:1`) or an offline image (`disk fsinfo --image game.dsk`) with no machine. `disk catalog` is `disk cat`. A missing path lists the volume root. A ProDOS path such as `SUB` lists that directory. DOS 3.3 and Pascal are flat.
+`disk fsinfo`, `disk cat`, and `disk read` recognize a DOS 3.3, ProDOS, or Pascal volume. The source is a mounted `slot:drive` (`disk fsinfo 6:1`) or an offline image (`disk fsinfo --image game.dsk`) with no machine. `disk catalog` is `disk cat`. A missing path lists the volume root. A ProDOS path such as `SUB` lists that directory. DOS 3.3 and Pascal are flat. A ProDOS catalog prints the 2.4.3 columns (named type or `$xx`, blocks, modified, created, endfile, and `A=$xxxx` when the aux type is not zero) and a blocks free/used/total footer from the volume bitmap. DOS 3.3 prints the type letter, sector count, and a VTOC sectors free/used/total footer. A zero ProDOS date word is `<NO DATE>`. Years 40–99 are 19xx and years 0–39 are 20xx.
 
 `disk read 6:1 HELLO` prints the logical file: a DOS A/I/B header is removed and the payload is trimmed to the header length. `--raw` keeps the on-disk bytes. `--hex` prints a hex dump. `--` ends options, so `disk read --image game.dsk -- -HELLO` reads a name that starts with `-`. This command does not replace the memory `read` command.
 
