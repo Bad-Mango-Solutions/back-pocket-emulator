@@ -66,6 +66,16 @@ JSON for those commands looks like:
 }
 ```
 
+## Guest OS boot
+
+`os` prints the detected guest operating system and the boot stage. `os boot` prints the milestone log. `os on` installs the boot monitor when the profile left it off. `boot --log` and a cold `reset --log` (`reset --hard --log` or `reset --cold --log`) install that monitor and record from reset. The first milestone is `RomInitEntered` (stage `Init`): the reset-vector target read from `$FFFC`/`$FFFD`, and `cold` or `warm`. A cold start is power-on, `reset --hard`, or Open Apple held when RESET releases (`reset --cold`). The detail also says `open-apple` in that last case. A warm reset is logged and does not move the stage unless execution then enters slot firmware.
+
+The next milestone on the first `$Cn00` transfer is `BootDeviceSelected` (stage `Boot device` in `statmon`), then `BootFirmwareEntered` (stage `Boot ROM`). The device detail names the slot, the card, and `method autostart` (the transferring instruction was fetched from ROM), `method user` (it was fetched from RAM, or the host set PC onto the firmware), or `method open-apple`. Later stages are `Boot1`, `Loader`, and `Ready`. `CustomBoot`, `Unknown`, and `NoBootDevice` are terminal.
+
+`NoBootDevice` (`No boot device` in `statmon`) means init reached the ROM keyboard wait without entering boot firmware. v1 sees that wait as two `LDA $C000` or `BIT $C000` instructions fetched from ROM. It does not hardcode an Apple IIe entry point. A ROM that prompts through another register does not reach this stage.
+
+`get_guest_os` and `get_boot_log` return the same stage and milestone names. Milestone `detail` carries the cold/warm and method tokens above.
+
 ## Interactive use
 
 ```text

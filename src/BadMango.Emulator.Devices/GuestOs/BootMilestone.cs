@@ -52,7 +52,11 @@ public sealed class BootMilestone : EventArgs
 
     /// <summary>Gets what the monitor saw.</summary>
     /// <value>
-    /// A non-empty detail string. <see cref="BootMilestoneKind.BootFirmwareEntered"/> names the slot and the card,
+    /// A non-empty detail string. <see cref="BootMilestoneKind.RomInitEntered"/> names the reset-vector
+    /// target and <c>cold</c> or <c>warm</c> (and <c>open-apple</c> when that key made the reset cold).
+    /// <see cref="BootMilestoneKind.BootDeviceSelected"/> names the slot, the card, and
+    /// <c>method autostart</c>, <c>method user</c>, or <c>method open-apple</c>.
+    /// <see cref="BootMilestoneKind.BootFirmwareEntered"/> names the slot and the card,
     /// for example "slot 6: Disk II" or "slot 7: SmartPort".
     /// <see cref="BootMilestoneKind.CustomBootLoaderEntered"/> includes the first bytes of the boot sector.
     /// Later milestones name the OS step, for example "DOS 3.3 Boot 2 at $B700" or "MLI $C8 OPEN".

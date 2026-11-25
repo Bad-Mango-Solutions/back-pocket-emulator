@@ -19,12 +19,15 @@ public class GuestOsStatusTextTests
     /// <param name="stage">The stage to format.</param>
     /// <param name="expected">The display word.</param>
     [TestCase(GuestOsBootStage.None, "\u2014")]
+    [TestCase(GuestOsBootStage.Init, "Init")]
+    [TestCase(GuestOsBootStage.BootDeviceSelected, "Boot device")]
     [TestCase(GuestOsBootStage.BootRom, "Boot ROM")]
     [TestCase(GuestOsBootStage.Boot1, "Boot 1")]
     [TestCase(GuestOsBootStage.Loader, "Loader")]
     [TestCase(GuestOsBootStage.Ready, "Ready")]
     [TestCase(GuestOsBootStage.Unknown, "Unknown")]
     [TestCase(GuestOsBootStage.CustomBoot, "Custom boot")]
+    [TestCase(GuestOsBootStage.NoBootDevice, "No boot device")]
     public void FormatStage_IsMediaNeutral(GuestOsBootStage stage, string expected)
     {
         var text = GuestOsStatusText.FormatStage(stage);
@@ -49,12 +52,15 @@ public class GuestOsStatusTextTests
         var expected = new Dictionary<GuestOsBootStage, string>
         {
             [GuestOsBootStage.None] = "\u2014",
+            [GuestOsBootStage.Init] = "Init",
+            [GuestOsBootStage.BootDeviceSelected] = "Boot device",
             [GuestOsBootStage.BootRom] = "Boot ROM",
             [GuestOsBootStage.Boot1] = "Boot 1",
             [GuestOsBootStage.Loader] = "Loader",
             [GuestOsBootStage.Ready] = "Ready",
             [GuestOsBootStage.Unknown] = "Unknown",
             [GuestOsBootStage.CustomBoot] = "Custom boot",
+            [GuestOsBootStage.NoBootDevice] = "No boot device",
         };
 
         Assert.That(Enum.GetValues<GuestOsBootStage>(), Is.EquivalentTo(expected.Keys));

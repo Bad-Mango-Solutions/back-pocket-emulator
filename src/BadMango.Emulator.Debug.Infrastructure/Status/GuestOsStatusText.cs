@@ -118,12 +118,15 @@ public static class GuestOsStatusText
         var label = stage switch
         {
             GuestOsBootStage.None => NotEntered,
+            GuestOsBootStage.Init => "Init",
+            GuestOsBootStage.BootDeviceSelected => "Boot device",
             GuestOsBootStage.BootRom => "Boot ROM",
             GuestOsBootStage.Boot1 => "Boot 1",
             GuestOsBootStage.Loader => "Loader",
             GuestOsBootStage.Ready => "Ready",
             GuestOsBootStage.Unknown => "Unknown",
             GuestOsBootStage.CustomBoot => "Custom boot",
+            GuestOsBootStage.NoBootDevice => "No boot device",
             _ => null,
         };
 

@@ -196,6 +196,7 @@ public sealed class Cpu65C02 : CpuBase, ITrapAwareCpu
         resetHeld = false;
         concreteSignals?.ConsumeResetReleaseEdge();
         ClearStopRequest();
+        this.ClearRetiredInstruction();
     }
 
     /// <inheritdoc/>
@@ -301,6 +302,7 @@ public sealed class Cpu65C02 : CpuBase, ITrapAwareCpu
                 // Clear TCU after advancing scheduler
                 Registers.TCU = Cycle.Zero;
 
+                this.NoteRetiredInstruction(pcBefore);
                 return new(CpuRunState.Running, trapCycles);
             }
         }
@@ -393,6 +395,7 @@ public sealed class Cpu65C02 : CpuBase, ITrapAwareCpu
             _ => CpuRunState.Halted,
         };
 
+        this.NoteRetiredInstruction(pcBefore);
         return new(runState, instructionCycles);
     }
 
@@ -529,6 +532,7 @@ public sealed class Cpu65C02 : CpuBase, ITrapAwareCpu
         Registers.P.SetDecimalMode(false);
 
         Registers.PC.SetAddr((Addr)(Read16(Cpu65C02Constants.ResetVector) & 0xFFFF));
+        this.ClearRetiredInstruction();
         Registers.TCU += 2;
 
         interruptDisableSample = Registers.P.IsInterruptDisabled();

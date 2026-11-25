@@ -108,7 +108,8 @@ public sealed class ResetCommand : CommandHandlerBase, ICommandHelp
         "the ROM reset sampling window for a short time after RESET releases, matching the hardware " +
         "behavior of the Apple IIe reset handler. With --log, the guest OS detector and boot monitor " +
         "are installed before a cold reset (--hard, or --open-apple and --command / --reboot / --cold), " +
-        "so the reboot is logged from the start. Read the log with os boot. --log without a cold-reset " +
+        "so the reboot is logged from the start. The first milestone is Init (the reset vector and cold or warm). " +
+        "Read the log with os boot. --log without a cold-reset " +
         "option is a usage error. A monitor that is already installed is kept, and its previous " +
         "milestone log is cleared so this boot starts fresh.";
 

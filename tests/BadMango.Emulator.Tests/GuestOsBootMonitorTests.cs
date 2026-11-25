@@ -14,6 +14,7 @@ using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
 using BadMango.Emulator.Debug.Mcp;
+using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.GuestOs;
 
 using Moq;
@@ -112,17 +113,20 @@ public class GuestOsBootMonitorTests
             Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Ready));
             Assert.That(Kinds(monitor), Is.EqualTo(new[]
             {
+                BootMilestoneKind.RomInitEntered,
+                BootMilestoneKind.BootDeviceSelected,
                 BootMilestoneKind.BootFirmwareEntered,
                 BootMilestoneKind.BootSectorLoaded,
                 BootMilestoneKind.LoaderEntered,
                 BootMilestoneKind.KernelReady,
             }));
-            Assert.That(monitor.Milestones[0].Detail, Is.EqualTo("slot 6: Block Device"));
-            Assert.That(monitor.Milestones[1].Detail, Is.EqualTo("DOS 3.3"));
-            Assert.That(monitor.Milestones[1].Os, Is.EqualTo(GuestOsId.Dos33));
-            Assert.That(monitor.Milestones[2].Detail, Is.EqualTo("DOS 3.3 Boot 2 at $B700"));
-            Assert.That(monitor.Milestones[2].Pc, Is.EqualTo(0xB700u));
-            Assert.That(monitor.Milestones[3].Detail, Is.EqualTo("DOS 3.3 cold start"));
+            Assert.That(monitor.Milestones[0].Detail, Does.Contain("cold"));
+            Assert.That(monitor.Milestones[2].Detail, Is.EqualTo("slot 6: Block Device"));
+            Assert.That(monitor.Milestones[3].Detail, Is.EqualTo("DOS 3.3"));
+            Assert.That(monitor.Milestones[3].Os, Is.EqualTo(GuestOsId.Dos33));
+            Assert.That(monitor.Milestones[4].Detail, Is.EqualTo("DOS 3.3 Boot 2 at $B700"));
+            Assert.That(monitor.Milestones[4].Pc, Is.EqualTo(0xB700u));
+            Assert.That(monitor.Milestones[5].Detail, Is.EqualTo("DOS 3.3 cold start"));
             Assert.That(published, Is.EqualTo(GuestOsId.Dos33));
             Assert.That(detector.Current.Id, Is.EqualTo(GuestOsId.Dos33));
         });
@@ -158,8 +162,9 @@ public class GuestOsBootMonitorTests
         machine.Reset();
         Assert.Multiple(() =>
         {
-            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
-            Assert.That(monitor.Milestones, Is.Empty);
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Ready));
+            Assert.That(monitor.Milestones[^1].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(monitor.Milestones[^1].Detail, Does.Contain("warm"));
             Assert.That(registry.HasTrap(Firmware), Is.True);
             Assert.That(registry.HasTrap(0x0801), Is.False);
         });
@@ -190,6 +195,8 @@ public class GuestOsBootMonitorTests
         {
             Assert.That(Kinds(monitor), Is.EqualTo(new[]
             {
+                BootMilestoneKind.RomInitEntered,
+                BootMilestoneKind.BootDeviceSelected,
                 BootMilestoneKind.BootFirmwareEntered,
                 BootMilestoneKind.BootSectorLoaded,
                 BootMilestoneKind.LoaderEntered,
@@ -197,11 +204,11 @@ public class GuestOsBootMonitorTests
                 BootMilestoneKind.SystemProgramStarted,
                 BootMilestoneKind.FirstSystemCall,
             }));
-            Assert.That(monitor.Milestones[2].Detail, Is.EqualTo("ProDOS loader"));
-            Assert.That(monitor.Milestones[2].Pc, Is.EqualTo(0x2000u));
-            Assert.That(monitor.Milestones[3].At, Is.EqualTo(monitor.Milestones[4].At));
-            Assert.That(monitor.Milestones[5].Detail, Is.EqualTo("MLI $C8 OPEN"));
-            Assert.That(monitor.Milestones[5].Pc, Is.EqualTo(0xBF00u));
+            Assert.That(monitor.Milestones[4].Detail, Is.EqualTo("ProDOS loader"));
+            Assert.That(monitor.Milestones[4].Pc, Is.EqualTo(0x2000u));
+            Assert.That(monitor.Milestones[5].At, Is.EqualTo(monitor.Milestones[6].At));
+            Assert.That(monitor.Milestones[7].Detail, Is.EqualTo("MLI $C8 OPEN"));
+            Assert.That(monitor.Milestones[7].Pc, Is.EqualTo(0xBF00u));
             Assert.That(call, Is.Not.Null);
             Assert.That(call!.Detail, Is.EqualTo("MLI $C8 OPEN"));
             Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Id, Is.EqualTo(GuestOsId.ProDos8));
@@ -282,13 +289,15 @@ public class GuestOsBootMonitorTests
         {
             Assert.That(Kinds(monitor), Is.EqualTo(new[]
             {
+                BootMilestoneKind.RomInitEntered,
+                BootMilestoneKind.BootDeviceSelected,
                 BootMilestoneKind.BootFirmwareEntered,
                 BootMilestoneKind.BootSectorLoaded,
                 BootMilestoneKind.LoaderEntered,
                 BootMilestoneKind.KernelReady,
             }));
-            Assert.That(monitor.Milestones[2].Pc, Is.EqualTo(0x4000u));
-            Assert.That(monitor.Milestones[3].Pc, Is.EqualTo(0x4003u));
+            Assert.That(monitor.Milestones[4].Pc, Is.EqualTo(0x4000u));
+            Assert.That(monitor.Milestones[5].Pc, Is.EqualTo(0x4003u));
             Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Unknown));
             Assert.That(
                 sink.Lines.Exists(line =>
@@ -298,23 +307,31 @@ public class GuestOsBootMonitorTests
         });
     }
 
-    /// <summary>Memory that already holds ProDOS reaches Ready through the detector, with no boot milestones.</summary>
+    /// <summary>
+    /// A monitor installed after power-on, with an OS already in memory and no milestone, reaches Ready.
+    /// A monitored power-on has already logged Init, and detection does not replace that stage.
+    /// </summary>
     [Test]
     public void NoBootMilestones_DetectorSetsReady()
     {
-        using var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: true));
+        using var watched = MachineFactory.CreateMachine(CreateProfile(bootLog: true));
+        Power(watched);
+        var watchedMonitor = MonitorOf(watched);
+        Assert.That(watchedMonitor.Stage, Is.EqualTo(GuestOsBootStage.Init));
+        PlantProDosPage(watched.Cpu);
+        using var watchedOutput = new StringWriter();
+        var watchedTools = new InspectionTools(new Mock<IDebugSession>().Object, Context(watched, watchedOutput), Logger.None);
+        var watchedGuest = (DebugEnvelope<GuestOsSnapshot>)watchedTools.GetGuestOs();
+        Assert.That(watchedMonitor.Stage, Is.EqualTo(GuestOsBootStage.Init));
+        Assert.That(watchedGuest.Payload.Stage, Is.EqualTo(nameof(GuestOsBootStage.Init)));
+
+        using var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: false));
         Power(machine);
         PlantProDosPage(machine.Cpu);
-        machine.Cpu.SetPC(0x0300);
-        Poke(machine.Cpu, 0x0300, 0xEA, 0xEA, 0xEA);
-        machine.Step();
-        machine.Step();
-        machine.Step();
-        var monitor = MonitorOf(machine);
-        Assert.That(monitor.Milestones, Is.Empty);
-        Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
-
         using var output = new StringWriter();
+        var command = new OsCommand(Logger.None);
+        Assert.That(command.Execute(Context(machine, output), ["on"]).Success, Is.True);
+        var monitor = MonitorOf(machine);
         var tools = new InspectionTools(new Mock<IDebugSession>().Object, Context(machine, output), Logger.None);
         var guest = (DebugEnvelope<GuestOsSnapshot>)tools.GetGuestOs();
 
@@ -414,17 +431,22 @@ public class GuestOsBootMonitorTests
             Assert.That(result.Success, Is.True, result.Message);
             Assert.That(machine.GetComponents<BootSequenceMonitor>().Count(), Is.EqualTo(1));
             Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.SameAs(monitor));
-            Assert.That(monitor.Milestones, Is.Empty);
-            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
-            Assert.That(registry.GetAllTraps().Count(trap => trap.Address == Firmware), Is.EqualTo(1));
         });
 
         await command.BootTask;
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Init));
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(1));
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(registry.GetAllTraps().Count(trap => trap.Address == Firmware), Is.EqualTo(1));
+        });
         PlantDos(machine.Cpu);
         machine.Cpu.SetPC(Firmware);
         machine.Step();
 
-        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+        Assert.That(monitor.Milestones[0].Detail, Does.Contain("cold"));
     }
 
     /// <summary><c>os on</c> leaves an in-progress boot log in place.</summary>
@@ -506,13 +528,16 @@ public class GuestOsBootMonitorTests
         var monitor = MonitorOf(machine);
 
         Assert.That(result.Success, Is.True, result.Message);
+        Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Init));
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
         PlantDos(machine.Cpu);
         machine.Cpu.SetPC(Firmware);
         machine.Step();
-        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+        Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.BootRom));
     }
 
-    /// <summary><c>reset --hard --log</c> clears the previous log and records the next boot from firmware.</summary>
+    /// <summary><c>reset --hard --log</c> clears the previous log and records the next boot from reset.</summary>
     [Test]
     public void ResetHardLog_StartsAFreshBootLog()
     {
@@ -534,18 +559,21 @@ public class GuestOsBootMonitorTests
             Assert.That(result.Success, Is.True, result.Message);
             Assert.That(machine.GetComponents<BootSequenceMonitor>().Count(), Is.EqualTo(1));
             Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.SameAs(monitor));
-            Assert.That(monitor.Milestones, Is.Empty);
-            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(1));
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(monitor.Milestones[0].Detail, Does.Contain("cold"));
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Init));
         });
 
         PlantDos(machine.Cpu);
         machine.Cpu.SetPC(Firmware);
         machine.Step();
 
-        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+        Assert.That(monitor.Milestones[1].Kind, Is.EqualTo(BootMilestoneKind.BootDeviceSelected));
     }
 
-    /// <summary><c>reset --cold --log</c> drops the previous milestone log and starts again at firmware.</summary>
+    /// <summary><c>reset --cold --log</c> drops the previous milestone log. Without a keyboard the pulse is warm.</summary>
     [Test]
     public void ResetColdLog_StartsAFreshBootLog()
     {
@@ -567,13 +595,16 @@ public class GuestOsBootMonitorTests
             Assert.That(result.Success, Is.True, result.Message);
             Assert.That(machine.GetComponents<BootSequenceMonitor>().Count(), Is.EqualTo(1));
             Assert.That(machine.GetComponent<BootSequenceMonitor>(), Is.SameAs(monitor));
-            Assert.That(monitor.Milestones, Is.Empty);
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(1));
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(monitor.Milestones[0].Detail, Does.Contain("warm"));
             Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.None));
         });
 
         machine.Cpu.SetPC(Firmware);
         machine.Step();
-        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+        Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+        Assert.That(monitor.Milestones[1].Kind, Is.EqualTo(BootMilestoneKind.BootDeviceSelected));
     }
 
     /// <summary>Boot and reset help name <c>--log</c> and point at <c>os boot</c>.</summary>
@@ -604,6 +635,153 @@ public class GuestOsBootMonitorTests
         });
     }
 
+    /// <summary>A JMP fetched from ROM after cold Init is an autostart device selection.</summary>
+    [Test]
+    public void TransferFromRom_SelectsAutostart()
+    {
+        using var machine = RomBootMachine();
+        Poke(machine.Cpu, 0xF000, 0x4C, 0x00, 0xC6);
+        machine.Cpu.SetPC(0xF000);
+        machine.Step();
+        machine.Step();
+
+        var monitor = MonitorOf(machine);
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(monitor.Milestones[0].Detail, Is.EqualTo("reset vector $0000, cold"));
+            Assert.That(monitor.Milestones[1].Kind, Is.EqualTo(BootMilestoneKind.BootDeviceSelected));
+            Assert.That(monitor.Milestones[1].Detail, Is.EqualTo("slot 6: Block Device, method autostart"));
+            Assert.That(monitor.Milestones[2].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.BootRom));
+        });
+    }
+
+    /// <summary>A JMP fetched from RAM after cold Init is a user device selection.</summary>
+    [Test]
+    public void TransferFromRam_SelectsUser()
+    {
+        using var machine = BootMachine();
+        Poke(machine.Cpu, 0x0300, 0x4C, 0x00, 0xC6);
+        machine.Cpu.SetPC(0x0300);
+        machine.Step();
+        machine.Step();
+
+        var selected = MonitorOf(machine).Milestones[1];
+        Assert.Multiple(() =>
+        {
+            Assert.That(selected.Kind, Is.EqualTo(BootMilestoneKind.BootDeviceSelected));
+            Assert.That(selected.Detail, Is.EqualTo("slot 6: Block Device, method user"));
+        });
+    }
+
+    /// <summary>Open Apple held at RESET is a cold start and selects the device as open-apple.</summary>
+    [Test]
+    public void OpenAppleReset_IsCold_AndSelectsOpenApple()
+    {
+        using var machine = BootMachine();
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        var monitor = MonitorOf(machine);
+        Assume.That(monitor.Milestones, Is.Not.Empty);
+        var keyboard = new AppleIIeKeyboard();
+        machine.AddComponent(keyboard);
+        keyboard.SetModifiers(KeyboardModifiers.OpenApple);
+
+        machine.Reset();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Init));
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(1));
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(monitor.Milestones[0].Detail, Is.EqualTo("reset vector $0000, cold, open-apple"));
+        });
+
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        Assert.That(monitor.Milestones[1].Detail, Is.EqualTo("slot 6: Block Device, method open-apple"));
+    }
+
+    /// <summary>A warm reset keeps the stage and appends a warm Init milestone.</summary>
+    [Test]
+    public void WarmReset_LogsWarmWithoutRestartingTheStage()
+    {
+        using var machine = BootMachine();
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+        var monitor = MonitorOf(machine);
+        Assume.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Boot1));
+        int logged = monitor.Milestones.Count;
+
+        machine.Reset();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Boot1));
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(logged + 1));
+            Assert.That(monitor.Milestones[^1].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(monitor.Milestones[^1].Detail, Is.EqualTo("reset vector $0000, warm"));
+        });
+    }
+
+    /// <summary>Slot firmware after a warm reset starts the boot stages again and keeps the warm milestone.</summary>
+    [Test]
+    public void WarmReset_ThatEntersFirmware_ContinuesTheBoot()
+    {
+        using var machine = BootMachine();
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+        var monitor = MonitorOf(machine);
+        machine.Reset();
+        int warmIndex = monitor.Milestones.Count - 1;
+
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Milestones[warmIndex].Detail, Does.Contain("warm"));
+            Assert.That(monitor.Milestones[warmIndex + 1].Kind, Is.EqualTo(BootMilestoneKind.BootDeviceSelected));
+            Assert.That(monitor.Milestones[warmIndex + 1].Detail, Does.Contain("method user"));
+            Assert.That(monitor.Milestones[warmIndex + 2].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Boot1));
+        });
+    }
+
+    /// <summary>Two ROM polls of the keyboard data register, with no slot entry, end at NoBootDevice.</summary>
+    [Test]
+    public void RomKeyboardPoll_EndsAtNoBootDevice()
+    {
+        using var machine = RomBootMachine();
+
+        // $C000 with no keyboard reads as $FF, so BMI keeps polling. BPL would leave after one read.
+        Poke(machine.Cpu, 0xF000, 0xAD, 0x00, 0xC0, 0x30, 0xFB);
+        machine.Cpu.SetPC(0xF000);
+        machine.Step();
+        machine.Step();
+        machine.Step();
+
+        var monitor = MonitorOf(machine);
+        var registry = Registry(machine);
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.NoBootDevice));
+            Assert.That(monitor.Milestones[^1].Kind, Is.EqualTo(BootMilestoneKind.NoBootDevice));
+            Assert.That(monitor.Milestones[^1].Detail, Is.EqualTo("ROM keyboard wait, no boot device"));
+            Assert.That(monitor.Milestones[^1].Pc, Is.EqualTo(0xF000u));
+            Assert.That(Kinds(monitor), Does.Not.Contain(BootMilestoneKind.BootFirmwareEntered));
+            Assert.That(registry.HasTrap(Firmware), Is.False);
+            Assert.That(registry.HasTrap(0xC000, TrapOperation.Read), Is.False);
+        });
+    }
+
     private static async Task AssertLoggedBootStartsAtFirmware(Action<ICpu> plant, GuestOsId os, string bootSectorDetail)
     {
         using var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: false));
@@ -626,10 +804,11 @@ public class GuestOsBootMonitorTests
         var monitor = MonitorOf(machine);
         Assert.Multiple(() =>
         {
-            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootFirmwareEntered));
-            Assert.That(monitor.Milestones[1].Kind, Is.EqualTo(BootMilestoneKind.BootSectorLoaded));
-            Assert.That(monitor.Milestones[1].Os, Is.EqualTo(os));
-            Assert.That(monitor.Milestones[1].Detail, Is.EqualTo(bootSectorDetail));
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(monitor.Milestones[0].Detail, Does.Contain("cold"));
+            Assert.That(monitor.Milestones[3].Kind, Is.EqualTo(BootMilestoneKind.BootSectorLoaded));
+            Assert.That(monitor.Milestones[3].Os, Is.EqualTo(os));
+            Assert.That(monitor.Milestones[3].Detail, Is.EqualTo(bootSectorDetail));
         });
     }
 
@@ -648,6 +827,14 @@ public class GuestOsBootMonitorTests
     private static IMachine BootMachine(bool bootLog = true)
     {
         var machine = MachineFactory.CreateMachine(CreateProfile(bootLog));
+        machine.InsertSlotCard(Slot, new BlockDeviceCard());
+        Power(machine);
+        return machine;
+    }
+
+    private static IMachine RomBootMachine()
+    {
+        var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: true, highRom: true));
         machine.InsertSlotCard(Slot, new BlockDeviceCard());
         Power(machine);
         return machine;
@@ -733,8 +920,70 @@ public class GuestOsBootMonitorTests
         }
     }
 
-    private static MachineProfile CreateProfile(bool bootLog)
+    private static MachineProfile CreateProfile(bool bootLog, bool highRom = false)
     {
+        var highMemory = new List<MemoryRegionProfile>();
+        if (highRom)
+        {
+            highMemory.Add(new MemoryRegionProfile
+            {
+                Name = "vector-ram",
+                Type = "ram",
+                Start = "0xD000",
+                Size = "0x2000",
+                Permissions = "rwx",
+                Source = "vector-ram",
+                SourceOffset = "0x0000",
+            });
+            highMemory.Add(new MemoryRegionProfile
+            {
+                Name = "synthetic-rom",
+                Type = "rom",
+                Start = "0xF000",
+                Size = "0x1000",
+                Permissions = "rx",
+                Source = "vector-ram",
+                SourceOffset = "0x2000",
+            });
+        }
+        else
+        {
+            highMemory.Add(new MemoryRegionProfile
+            {
+                Name = "vector-ram",
+                Type = "ram",
+                Start = "0xD000",
+                Size = "0x3000",
+                Permissions = "rwx",
+                Source = "vector-ram",
+                SourceOffset = "0x0000",
+            });
+        }
+
+        var regions = new List<MemoryRegionProfile>
+        {
+            new()
+            {
+                Name = "main-ram",
+                Type = "ram",
+                Start = "0x0000",
+                Size = "0xC000",
+                Permissions = "rwx",
+                Source = "main-ram",
+                SourceOffset = "0x0000",
+            },
+            new()
+            {
+                Name = "io-region",
+                Type = "composite",
+                Start = "0xC000",
+                Size = "0x1000",
+                Permissions = "rw",
+                Handler = "composite-io",
+            },
+        };
+        regions.AddRange(highMemory);
+
         return new MachineProfile
         {
             Name = "guest-os-boot",
@@ -748,38 +997,7 @@ public class GuestOsBootMonitorTests
                     new PhysicalMemoryProfile { Name = "main-ram", Size = "0xC000", Fill = "0x00" },
                     new PhysicalMemoryProfile { Name = "vector-ram", Size = "0x3000", Fill = "0x00" },
                 ],
-                Regions =
-                [
-                    new MemoryRegionProfile
-                    {
-                        Name = "main-ram",
-                        Type = "ram",
-                        Start = "0x0000",
-                        Size = "0xC000",
-                        Permissions = "rwx",
-                        Source = "main-ram",
-                        SourceOffset = "0x0000",
-                    },
-                    new MemoryRegionProfile
-                    {
-                        Name = "io-region",
-                        Type = "composite",
-                        Start = "0xC000",
-                        Size = "0x1000",
-                        Permissions = "rw",
-                        Handler = "composite-io",
-                    },
-                    new MemoryRegionProfile
-                    {
-                        Name = "vector-ram",
-                        Type = "ram",
-                        Start = "0xD000",
-                        Size = "0x3000",
-                        Permissions = "rwx",
-                        Source = "vector-ram",
-                        SourceOffset = "0x0000",
-                    },
-                ],
+                Regions = regions,
             },
             Devices = new DevicesProfile
             {

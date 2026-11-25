@@ -365,12 +365,15 @@ public class MachineStatsProviderTests
     /// </summary>
     /// <param name="bootStage">The stage the fake monitor reports.</param>
     [TestCase(GuestOsBootStage.None)]
+    [TestCase(GuestOsBootStage.Init)]
+    [TestCase(GuestOsBootStage.BootDeviceSelected)]
     [TestCase(GuestOsBootStage.BootRom)]
     [TestCase(GuestOsBootStage.Boot1)]
     [TestCase(GuestOsBootStage.Loader)]
     [TestCase(GuestOsBootStage.Ready)]
     [TestCase(GuestOsBootStage.Unknown)]
     [TestCase(GuestOsBootStage.CustomBoot)]
+    [TestCase(GuestOsBootStage.NoBootDevice)]
     public void BootStage_ReadsEachMonitorStage(GuestOsBootStage bootStage)
     {
         var guestOs = new GuestOsInfo(GuestOsId.ProDos8, "ProDOS 8", "ProDOS 8 2.4.x", "kversion", null);
