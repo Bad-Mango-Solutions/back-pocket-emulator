@@ -199,4 +199,45 @@ public partial class DebugCommandsTests
 
         return bus;
     }
+
+    /// <summary>
+    /// Creates a bus whose $C000 page dispatches auxiliary-memory soft switches.
+    /// A data write to $C055 selects PAGE2 and a data write to $C054 clears it.
+    /// </summary>
+    /// <returns>The bus and the controller that owns the PAGE2 switch.</returns>
+    private static (MainBus IoBus, AuxiliaryMemoryController Controller) CreatePage2SoftSwitchBus()
+    {
+        var ioDispatcher = new IOPageDispatcher();
+        var ioPage = new CompositeIOTarget("I/O Page", ioDispatcher, new SlotManager(ioDispatcher));
+        var controller = new AuxiliaryMemoryController();
+        controller.RegisterHandlers(ioDispatcher);
+
+        var ioBus = new MainBus();
+        ioBus.MapPage(0xC000 >> 12, new(1, RegionTag.Io, PagePerms.ReadWrite, TargetCaps.None, ioPage, 0));
+        return (ioBus, controller);
+    }
+
+    /// <summary>
+    /// Proves the PAGE2 handler is live, then leaves the switch clear.
+    /// </summary>
+    /// <param name="ioBus">The bus returned by <see cref="CreatePage2SoftSwitchBus"/>.</param>
+    /// <param name="controller">The controller that owns the PAGE2 switch.</param>
+    private static void ProvePage2RespondsToCpuWrite(MainBus ioBus, AuxiliaryMemoryController controller)
+    {
+        var cpuWrite = new BusAccess(
+            Address: 0xC055,
+            Value: 0,
+            WidthBits: 8,
+            Mode: BusAccessMode.Decomposed,
+            EmulationFlag: true,
+            Intent: AccessIntent.DataWrite,
+            SourceId: 0,
+            Cycle: 0,
+            Flags: AccessFlags.None);
+
+        Assert.That(ioBus.TryWrite8(cpuWrite, 0).Ok, Is.True, "PAGE2 write did not reach the soft-switch handler.");
+        Assert.That(controller.IsPage2Selected, Is.True, "A CPU write to $C055 should select PAGE2.");
+        Assert.That(ioBus.TryWrite8(cpuWrite with { Address = 0xC054 }, 0).Ok, Is.True);
+        Assert.That(controller.IsPage2Selected, Is.False);
+    }
 }
