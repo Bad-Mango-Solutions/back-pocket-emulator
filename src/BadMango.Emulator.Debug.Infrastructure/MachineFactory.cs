@@ -142,7 +142,7 @@ public static class MachineFactory
     /// <remarks>
     /// Detection and the boot log both off, with <c>callLog</c> off, registers nothing, so the
     /// instruction loop gains no boot trap. <c>bootLog</c> attaches <see cref="BootSequenceMonitor"/>
-    /// with the DOS 3.3 and ProDOS 8 profiles, and the ProDOS file-load tracker that listens to it.
+    /// with the DOS 3.3 and ProDOS 8 profiles, the ProDOS file-load tracker, and the pre-MLI block tracker that reports into it.
     /// <c>callLog</c> other than <c>off</c> attaches that monitor as well, and an <see cref="OsCallLog"/>
     /// that subscribes to its observe-only hooks.
     /// </remarks>
@@ -182,6 +182,7 @@ public static class MachineFactory
                 BootSequenceMonitor.CreateStandardProfiles());
             monitor.Attach(machine);
             ProDosFileLoadTracker.Install(machine, monitor);
+            BootLoadTracker.Install(machine, guestLogger, monitor);
             if (callMode != OsCallLogMode.Off)
             {
                 var calls = new OsCallLog(guestLogger);

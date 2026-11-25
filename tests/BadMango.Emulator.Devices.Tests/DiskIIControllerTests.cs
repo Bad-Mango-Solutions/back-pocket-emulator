@@ -8,6 +8,7 @@ using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
 using BadMango.Emulator.Core.Interfaces.Signaling;
+using BadMango.Emulator.Devices.GuestOs;
 using BadMango.Emulator.Storage.Backends;
 using BadMango.Emulator.Storage.Formats;
 using BadMango.Emulator.Storage.Gcr;
@@ -1873,6 +1874,65 @@ public class DiskIIControllerTests
     }
 
     /// <summary>
+    /// A checksum-valid data field is reported. A checksum failure is not, and a null observer allocates nothing.
+    /// </summary>
+    [Test]
+    public void DecodedReadObserver_ReportsChecksumValidSectorsOnly()
+    {
+        var observed = new RecordingReads();
+        var valid = BuildEncodedTrack(volume: 0xFE, track: 0x05);
+        var (controller, dispatcher, ctx, scheduler, _) = BuildHarness(motorSettleCycles: 0);
+        controller.SetDecodedReadObserver(observed);
+        controller.Mount(0, new RepeatingPatternMedia(valid));
+        scheduler.Advance(new Cycle(2));
+        Spin(dispatcher, ctx, scheduler, 8000);
+
+        Assert.That(observed.Sectors, Is.GreaterThanOrEqualTo(16));
+        Assert.That(observed.Changes, Is.EqualTo(1));
+        var validSectors = observed.Sectors;
+
+        var broken = BuildEncodedTrack(volume: 0xFE, track: 0x05);
+        const int sectorStride = 416;
+        const int dataFieldStart = 48 + 14 + 5;
+        for (var physical = 0; physical < 16; physical++)
+        {
+            var checksumIndex = (physical * sectorStride) + dataFieldStart + 3 + 342;
+            broken[checksumIndex] = MapToDifferentValidNibble(broken[checksumIndex]);
+        }
+
+        var again = new RecordingReads();
+        var (second, secondDispatcher, secondContext, secondScheduler, _) = BuildHarness(motorSettleCycles: 0);
+        second.SetDecodedReadObserver(again);
+        second.Mount(0, new RepeatingPatternMedia(broken));
+        secondScheduler.Advance(new Cycle(2));
+        Spin(secondDispatcher, secondContext, secondScheduler, 8000);
+
+        Assert.That(again.Sectors, Is.Zero);
+        Assert.That(validSectors, Is.GreaterThan(again.Sectors));
+    }
+
+    /// <summary>
+    /// Mount and eject invalidate the volume. The observer is not called when it is null.
+    /// </summary>
+    [Test]
+    public void DecodedReadObserver_MountAndEjectNotify()
+    {
+        var observed = new RecordingReads();
+        var (controller, _, _, scheduler, _) = BuildHarness(motorSettleCycles: 0);
+        controller.SetDecodedReadObserver(null);
+        controller.Mount(0, new ConstantTrackMedia(0xAA));
+        scheduler.Advance(new Cycle(2));
+        Assert.That(observed.Changes, Is.Zero);
+
+        controller.SetDecodedReadObserver(observed);
+        controller.Eject(0);
+        controller.Mount(1, new ConstantTrackMedia(0x96));
+        scheduler.Advance(new Cycle(2));
+
+        Assert.That(observed.Changes, Is.EqualTo(2));
+    }
+
+    /// <summary>
     /// Encodes a full 6656-byte track with deterministic per-sector content so the
     /// standard 48 / 14 / 5 / 349 sector stride is laid down for the live stream
     /// parser tests to consume.
@@ -2017,6 +2077,16 @@ public class DiskIIControllerTests
         _ = dispatcher.Read(0xEE, in ctx);
     }
 
+    private static void Spin(IOPageDispatcher dispatcher, BusAccess ctx, Scheduler scheduler, int reads)
+    {
+        _ = dispatcher.Read(0xE9, in ctx);
+        for (var i = 0; i < reads; i++)
+        {
+            scheduler.Advance(new Cycle(DiskIIController.CyclesPerByte));
+            _ = dispatcher.Read(0xEC, in ctx);
+        }
+    }
+
     /// <summary>
     /// Test fake whose <see cref="WriteTrack"/> always throws — used to verify that
     /// <see cref="DiskIIController.Eject"/> rejects when flush fails (FR-R2).
@@ -2134,6 +2204,25 @@ public class DiskIIControllerTests
         public void Flush()
         {
             FlushCount++;
+        }
+    }
+
+    private sealed class RecordingReads : IDecodedDiskRead
+    {
+        public int Sectors { get; private set; }
+
+        public int Changes { get; private set; }
+
+        public void OnDecodedSector(int slot, int drive, int track, int physicalSector) => this.Sectors++;
+
+        public void OnDecodedBlock(int slot, int drive, int block)
+        {
+        }
+
+        public void OnVolumeChanged(int slot, int drive) => this.Changes++;
+
+        public void OnVolumeWritten(int slot, int drive)
+        {
         }
     }
 }

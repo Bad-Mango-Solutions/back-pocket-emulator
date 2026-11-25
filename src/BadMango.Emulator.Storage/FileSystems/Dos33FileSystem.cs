@@ -178,6 +178,65 @@ public sealed class Dos33FileSystem : IAppleFileSystem
         }
     }
 
+    /// <summary>
+    /// Records every data sector of every intact file. Tracks 0–2 stay with the boot image.
+    /// A corrupt catalog records nothing. A corrupt track/sector list skips that file.
+    /// The first file to claim a sector keeps it.
+    /// </summary>
+    /// <param name="units">Packed DOS logical track and sector to file unit. Not <see langword="null"/>.</param>
+    /// <param name="sizes">File name to end-of-file and mapped sector count. Not <see langword="null"/>.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="units"/> or <paramref name="sizes"/> is <see langword="null"/>.</exception>
+    internal void CollectDataSectors(Dictionary<int, FileUnitLocation> units, Dictionary<string, FileLoadSize> sizes)
+    {
+        ArgumentNullException.ThrowIfNull(units);
+        ArgumentNullException.ThrowIfNull(sizes);
+        lock (this.gate)
+        {
+            var catalog = this.LoadCatalog();
+            if (catalog.Corrupt)
+            {
+                return;
+            }
+
+            foreach (var file in catalog.Files)
+            {
+                if (file.TsFailure is not null)
+                {
+                    continue;
+                }
+
+                var added = 0;
+                foreach (var pair in file.Pairs)
+                {
+                    if (pair.Track < VolumeFileMap.DosBootTrackCount)
+                    {
+                        continue;
+                    }
+
+                    var offset = (long)pair.Index * Dos33Layout.SectorSize;
+                    if (offset >= file.Entry.EofBytes)
+                    {
+                        continue;
+                    }
+
+                    var length = (int)Math.Min(Dos33Layout.SectorSize, file.Entry.EofBytes - offset);
+                    var key = VolumeFileMap.SectorKey(pair.Track, pair.Sector);
+                    if (!units.TryAdd(key, new FileUnitLocation(file.Entry.Path, offset, length, file.Entry.EofBytes)))
+                    {
+                        continue;
+                    }
+
+                    added++;
+                }
+
+                if (added > 0)
+                {
+                    sizes[file.Entry.Path] = new FileLoadSize(file.Entry.EofBytes, added);
+                }
+            }
+        }
+    }
+
     private static bool TryDecodeName(ReadOnlySpan<byte> bytes, out string name, out string displayName) =>
         AppleCatalogName.TryDecodeDos(bytes, out name, out displayName);
 

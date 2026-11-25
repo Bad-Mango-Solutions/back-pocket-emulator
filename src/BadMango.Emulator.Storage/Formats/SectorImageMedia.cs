@@ -4,6 +4,7 @@
 
 namespace BadMango.Emulator.Storage.Formats;
 
+using BadMango.Emulator.Storage.FileSystems;
 using BadMango.Emulator.Storage.Gcr;
 using BadMango.Emulator.Storage.Media;
 
@@ -171,14 +172,24 @@ public sealed class SectorImageMedia
     /// <summary>
     /// I525Media view over the parent image.
     /// </summary>
-    private sealed class TrackView : I525Media
+    private sealed class TrackView : I525Media, IVolumeReaders
     {
         private readonly SectorImageMedia parent;
+
+        private IBlockReader? blocks;
+
+        private ISectorReader? sectors;
 
         internal TrackView(SectorImageMedia parent)
         {
             this.parent = parent;
         }
+
+        /// <inheritdoc />
+        public IBlockReader Blocks => this.blocks ??= new BlockMediaReader(this.parent.AsBlockMedia());
+
+        /// <inheritdoc />
+        public ISectorReader Sectors => this.sectors ??= new SectorImageSectorReader(this.parent);
 
         /// <inheritdoc />
         public DiskGeometry Geometry => this.parent.geometry;

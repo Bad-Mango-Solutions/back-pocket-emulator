@@ -7,6 +7,7 @@ namespace BadMango.Emulator.Devices;
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
+using BadMango.Emulator.Devices.GuestOs;
 using BadMango.Emulator.Storage.Gcr;
 using BadMango.Emulator.Storage.Media;
 
@@ -119,6 +120,18 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     /// </summary>
     private readonly Action<IEventContext> motorOffDue;
 
+    /// <summary>
+    /// One delegate shared by both drives. A dirty-track flush calls it with the drive index.
+    /// The read path does not.
+    /// </summary>
+    private readonly Action<int> notifyWritten;
+
+    /// <summary>
+    /// Decoded-sector observer. Null when boot-load tracking is off, which leaves the
+    /// data-field path a single null check and allocates nothing.
+    /// </summary>
+    private IDecodedDiskRead? decodedReads;
+
     private IBusTarget? romRegion;
 
     // Controller-level state
@@ -197,12 +210,13 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
         this.trackStepSettleCycles = trackStepSettleCycles;
         this.motorOffDelayCycles = motorOffDelayCycles;
         motorOffDue = OnMotorOffDue;
+        notifyWritten = NotifyVolumeWritten;
         romRegion = bootRom;
         expansionRomRegion = new DiskIIExpansionRomStub();
 
         for (var i = 0; i < drives.Length; i++)
         {
-            drives[i] = new Drive525();
+            drives[i] = new Drive525(i, notifyWritten);
         }
 
         handlers.Set(0x00, PhaseAccess, PhaseAccessWrite);
@@ -407,6 +421,18 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     public void OnResetReleased(Cycle cycle)
     {
     }
+
+    /// <summary>
+    /// Sets the observer for decoded sectors, mounts, ejects, and committed writes.
+    /// </summary>
+    /// <param name="observer">
+    /// The observer, or <see langword="null"/> to leave the read path a null check.
+    /// </param>
+    /// <remarks>
+    /// The data-field parser calls the observer only after a checksum-valid decode, and
+    /// only when this reference is non-null. The call passes integers and allocates nothing.
+    /// </remarks>
+    public void SetDecodedReadObserver(IDecodedDiskRead? observer) => decodedReads = observer;
 
     /// <inheritdoc />
     public void Mount(int driveIndex, I525Media media, string? imagePath = null)
@@ -1384,6 +1410,10 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
         if (checksumValid)
         {
             drive.ObservedDataFieldDecodeSuccesses++;
+            if (decodedReads is not null)
+            {
+                decodedReads.OnDecodedSector(SlotNumber, currentDrive, drive.LastObservedTrack, drive.LastObservedSector);
+            }
         }
         else
         {
@@ -1618,6 +1648,24 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
             drive.SettleUntil = evtContext.Now + (Cycle)(ulong)motorSettleCycles;
             drive.LastUpdateCycle = evtContext.Now;
         }
+
+        NotifyVolumeChanged(driveIndex);
+    }
+
+    private void NotifyVolumeChanged(int driveIndex)
+    {
+        if (decodedReads is not null)
+        {
+            decodedReads.OnVolumeChanged(SlotNumber, driveIndex);
+        }
+    }
+
+    private void NotifyVolumeWritten(int driveIndex)
+    {
+        if (decodedReads is not null)
+        {
+            decodedReads.OnVolumeWritten(SlotNumber, driveIndex);
+        }
     }
 
     private void ApplyEject(int driveIndex)
@@ -1647,6 +1695,8 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
         {
             lastReadSpinPosition = -1;
         }
+
+        NotifyVolumeChanged(driveIndex);
     }
 
     /// <summary>
@@ -1654,6 +1704,16 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
     /// </summary>
     private sealed class Drive525
     {
+        private readonly int index;
+
+        private readonly Action<int> onWritten;
+
+        public Drive525(int driveIndex, Action<int> written)
+        {
+            this.index = driveIndex;
+            this.onWritten = written;
+        }
+
         public I525Media? Media { get; set; }
 
         public string? ImagePath { get; set; }
@@ -1844,6 +1904,7 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
             Media.WriteTrack(CachedQuarterTrack, CachedTrack);
             Media.Flush();
             IsTrackDirty = false;
+            this.onWritten(this.index);
         }
     }
 }

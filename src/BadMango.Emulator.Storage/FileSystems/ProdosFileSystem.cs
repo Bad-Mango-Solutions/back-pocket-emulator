@@ -206,6 +206,20 @@ public sealed class ProdosFileSystem : IAppleFileSystem
         return item.Entry;
     }
 
+    /// <summary>
+    /// Records every data block of every file. Directory, bitmap, and index blocks are omitted.
+    /// A corrupt directory is skipped. The first file to claim a block keeps it.
+    /// </summary>
+    /// <param name="units">Block number to file unit. Not <see langword="null"/>.</param>
+    /// <param name="sizes">Path to end-of-file and mapped block count. Not <see langword="null"/>.</param>
+    /// <exception cref="ArgumentNullException">If <paramref name="units"/> or <paramref name="sizes"/> is <see langword="null"/>.</exception>
+    internal void CollectDataBlocks(Dictionary<int, FileUnitLocation> units, Dictionary<string, FileLoadSize> sizes)
+    {
+        ArgumentNullException.ThrowIfNull(units);
+        ArgumentNullException.ThrowIfNull(sizes);
+        this.CollectDirectory(ProdosLayout.VolumeKeyBlock, string.Empty, units, sizes, []);
+    }
+
     private static bool IsSubdirectoryKeyBlock(ReadOnlySpan<byte> block)
     {
         var header = ProdosLayout.Directory.FirstEntryOffset;
@@ -254,6 +268,172 @@ public sealed class ProdosFileSystem : IAppleFileSystem
 
     private static int ReadU24(ReadOnlySpan<byte> entry, int offset) =>
         entry[offset] | (entry[offset + 1] << 8) | (entry[offset + 2] << 16);
+
+    private void CollectDirectory(
+        int keyBlock,
+        string directoryPath,
+        Dictionary<int, FileUnitLocation> units,
+        Dictionary<string, FileLoadSize> sizes,
+        HashSet<int> directories)
+    {
+        if ((uint)keyBlock >= (uint)this.totalBlocks || !directories.Add(keyBlock))
+        {
+            return;
+        }
+
+        if (!this.TryReadDirectory(keyBlock, directoryPath, out var entries, out _))
+        {
+            return;
+        }
+
+        foreach (var item in entries)
+        {
+            if (item.Storage == ProdosStorageType.Subdirectory)
+            {
+                this.CollectDirectory(item.KeyBlock, item.Entry.Path, units, sizes, directories);
+                continue;
+            }
+
+            if (item.Storage is not (ProdosStorageType.Seedling or ProdosStorageType.Sapling or ProdosStorageType.Tree))
+            {
+                continue;
+            }
+
+            var added = this.CollectFile(item, units);
+            if (added > 0)
+            {
+                sizes[item.Entry.Path] = new FileLoadSize(item.Entry.EofBytes, added);
+            }
+        }
+    }
+
+    private int CollectFile(CatalogItem item, Dictionary<int, FileUnitLocation> units)
+    {
+        var eof = item.Entry.EofBytes;
+        if (eof <= 0 || item.KeyBlock <= 0 || (uint)item.KeyBlock >= (uint)this.totalBlocks)
+        {
+            return 0;
+        }
+
+        return item.Storage switch
+        {
+            ProdosStorageType.Seedling => this.CollectSeedling(item, eof, units),
+            ProdosStorageType.Sapling => this.CollectSapling(item, eof, units),
+            ProdosStorageType.Tree => this.CollectTree(item, eof, units),
+            _ => 0,
+        };
+    }
+
+    private int CollectSeedling(CatalogItem item, int eof, Dictionary<int, FileUnitLocation> units)
+    {
+        if (eof > ProdosLayout.BlockSize)
+        {
+            return 0;
+        }
+
+        return this.AddDataBlock(units, item.Entry.Path, item.KeyBlock, 0, Math.Min(eof, ProdosLayout.BlockSize), eof) ? 1 : 0;
+    }
+
+    private int CollectSapling(CatalogItem item, int eof, Dictionary<int, FileUnitLocation> units)
+    {
+        if (eof > ProdosLayout.Index.PointerCount * ProdosLayout.BlockSize)
+        {
+            return 0;
+        }
+
+        this.blocks.ReadBlock(item.KeyBlock, this.indexBuffer);
+        return this.CollectIndex(this.indexBuffer, item.Entry.Path, 0, eof, eof, units);
+    }
+
+    private int CollectTree(CatalogItem item, int eof, Dictionary<int, FileUnitLocation> units)
+    {
+        this.blocks.ReadBlock(item.KeyBlock, this.masterBuffer);
+        var added = 0;
+        var master = this.masterBuffer.AsSpan();
+        for (var slot = 0; slot < ProdosLayout.Index.PointerCount; slot++)
+        {
+            var origin = (long)slot * ProdosLayout.Index.SlotBytes;
+            if (origin >= eof)
+            {
+                break;
+            }
+
+            var pointer = ProdosLayout.ReadIndexPointer(master, slot);
+            if (pointer == 0 || (uint)pointer >= (uint)this.totalBlocks)
+            {
+                continue;
+            }
+
+            var span = (int)Math.Min(ProdosLayout.Index.SlotBytes, eof - origin);
+            this.blocks.ReadBlock(pointer, this.indexBuffer);
+            added += this.CollectIndex(this.indexBuffer, item.Entry.Path, origin, span, eof, units);
+        }
+
+        return added;
+    }
+
+    private int CollectIndex(byte[] index, string path, long origin, int span, long fileLength, Dictionary<int, FileUnitLocation> units)
+    {
+        var count = (span + ProdosLayout.BlockSize - 1) / ProdosLayout.BlockSize;
+        if (count > ProdosLayout.Index.PointerCount)
+        {
+            count = ProdosLayout.Index.PointerCount;
+        }
+
+        if (count <= 0)
+        {
+            return 0;
+        }
+
+        var pointers = new int[count];
+        var indexSpan = index.AsSpan();
+        for (var slot = 0; slot < count; slot++)
+        {
+            pointers[slot] = ProdosLayout.ReadIndexPointer(indexSpan, slot);
+        }
+
+        var added = 0;
+        for (var slot = 0; slot < count; slot++)
+        {
+            var pointer = pointers[slot];
+            if (pointer == 0)
+            {
+                continue;
+            }
+
+            var offset = origin + ((long)slot * ProdosLayout.BlockSize);
+            var within = span - (slot * ProdosLayout.BlockSize);
+            if (within <= 0)
+            {
+                break;
+            }
+
+            var length = Math.Min(ProdosLayout.BlockSize, within);
+            if (this.AddDataBlock(units, path, pointer, offset, length, fileLength))
+            {
+                added++;
+            }
+        }
+
+        return added;
+    }
+
+    private bool AddDataBlock(
+        Dictionary<int, FileUnitLocation> units,
+        string path,
+        int block,
+        long offset,
+        int length,
+        long fileLength)
+    {
+        if (length <= 0 || block <= 0 || (uint)block >= (uint)this.totalBlocks || units.ContainsKey(block))
+        {
+            return false;
+        }
+
+        units.Add(block, new FileUnitLocation(path, offset, length, fileLength));
+        return true;
+    }
 
     private bool TryResolve(string path, out CatalogItem item, out FileAccessStatus status, out string reason)
     {
