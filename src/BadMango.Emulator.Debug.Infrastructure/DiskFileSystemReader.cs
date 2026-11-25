@@ -53,6 +53,28 @@ public sealed class DiskFileSystemReader
     public static string ToHostText(ReadOnlySpan<byte> data) => DiskFileSystemSupport.ToText(data);
 
     /// <summary>
+    /// Returns the bytes a caller shows for one file.
+    /// </summary>
+    /// <param name="file">The file the reader returned.</param>
+    /// <param name="raw"><see langword="true"/> when the caller asked for on-disk bytes.</param>
+    /// <returns>
+    /// Logical DOS 3.3 text stops at the first <c>$00</c>. Every other file, and a raw read,
+    /// is <see cref="DiskVolumeFile.Data"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">If <paramref name="file"/> is <see langword="null"/>.</exception>
+    public static ReadOnlyMemory<byte> PresentedBytes(DiskVolumeFile file, bool raw)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        if (raw || !file.LogicalText || file.Kind != nameof(AppleFileSystemKind.Dos33))
+        {
+            return file.Data;
+        }
+
+        var zero = file.Data.Span.IndexOf((byte)0);
+        return zero < 0 ? file.Data : file.Data[..zero];
+    }
+
+    /// <summary>
     /// Lists a directory on a mounted drive or an offline image.
     /// </summary>
     /// <param name="context">The debug context that owns mounted images and the disk factory.</param>

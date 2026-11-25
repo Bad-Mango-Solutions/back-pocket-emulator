@@ -15,7 +15,8 @@ using Serilog;
 /// </summary>
 /// <remarks>
 /// This is the <c>disk read</c> subcommand. It does not replace the top-level memory <c>read</c> command.
-/// The default view is <see cref="FileReadView.Logical"/>.
+/// The default view is <see cref="FileReadView.Logical"/>. Logical DOS 3.3 text stops at the first <c>$00</c>.
+/// <c>--raw</c> keeps last-sector padding.
 /// </remarks>
 [DeviceDebugCommand]
 public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
@@ -55,7 +56,8 @@ public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
     /// <inheritdoc/>
     public string DetailedDescription =>
         "Prints one file. The default view is logical: DOS A/I/B headers are removed and the payload " +
-        "is trimmed to the header length word. --raw keeps the on-disk bytes, including that header and " +
+        "is trimmed to the header length word, and logical DOS text stops at the first $00. " +
+        "--raw keeps the on-disk bytes, including that header, last-sector padding, and " +
         "sparse holes as zeros. ProDOS and Pascal logical reads match raw reads. --hex prints a hex dump. " +
         "--to writes the selected view under the configured output root and refuses any other host path. " +
         "JSON is an emudbg/v1 envelope. This command does not read machine memory.";
@@ -65,8 +67,8 @@ public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
     [
         new("--image", null, "path", "Read an offline image instead of a mounted drive.", null),
         new("--hex", null, "flag", "Print a hex dump instead of text.", null),
-        new("--raw", null, "flag", "Print the on-disk bytes, including a DOS A/I/B header.", null),
-        new("--logical", null, "flag", "Print the DOS logical view. This is the default.", "logical"),
+        new("--raw", null, "flag", "Print the on-disk bytes, including a DOS A/I/B header and last-sector padding.", null),
+        new("--logical", null, "flag", "Print the logical view. DOS text stops at the first $00. This is the default.", "logical"),
         new("--to", null, "path", "Write the selected view under the configured output root.", null),
         new("--json", null, "flag", "Emit an emudbg/v1 JSON envelope.", null),
     ];
@@ -110,8 +112,9 @@ public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error(error ?? "Cannot read the file system.");
         }
 
+        var bytes = DiskFileSystemReader.PresentedBytes(file, request.Raw);
         if (exportPath is not null
-            && !DiskFileSystemSupport.TryWriteExport(this.exportRoot?.Directory, exportPath, file.Data.Span, this.logger, out error))
+            && !DiskFileSystemSupport.TryWriteExport(this.exportRoot?.Directory, exportPath, bytes.Span, this.logger, out error))
         {
             return CommandResult.Error(error ?? "Cannot write the export file.");
         }
@@ -129,11 +132,11 @@ public sealed class DiskReadCommand : CommandHandlerBase, ICommandHelp
             file.Path,
             file.View,
             request.Hex ? "hex" : "text",
-            file.Data.Length,
-            Convert.ToHexStringLower(file.Data.Span),
-            request.Hex ? null : DiskFileSystemSupport.ToText(file.Data.Span),
+            bytes.Length,
+            Convert.ToHexStringLower(bytes.Span),
+            request.Hex ? null : DiskFileSystemSupport.ToText(bytes.Span),
             savedTo);
-        var text = DiskFileSystemSupport.FormatFile(payload, request.Hex, file.Data);
+        var text = DiskFileSystemSupport.FormatFile(payload, request.Hex, bytes);
         this.renderer.WriteDiskFile(context.Output, payload, text, request.Json || this.renderer.JsonOutput);
         return CommandResult.Ok();
     }
