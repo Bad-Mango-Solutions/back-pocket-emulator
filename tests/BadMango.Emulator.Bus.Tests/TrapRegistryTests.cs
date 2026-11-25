@@ -1766,6 +1766,59 @@ public class TrapRegistryTests
         });
     }
 
+    /// <summary>
+    /// UnregisterScope removes one owner and leaves the call-trap index the fetch path uses.
+    /// </summary>
+    [Test]
+    public void UnregisterScope_RemovesOnlyThatScope()
+    {
+        TrapHandler handler = (_, _, _) => TrapResult.NotHandled;
+        registry.Register(0x0300, "machine", TrapCategory.UserDefined, handler, "stays");
+        registry.RegisterSlotDependent(0xC610, 6, "card", TrapCategory.SlotFirmware, handler, "card stays");
+        registry.Register(
+            0xBF06,
+            "clock",
+            TrapCategory.OperatingSystem,
+            handler,
+            "session",
+            TrapScope.GuestOsSession);
+        registry.Register(
+            0xBF07,
+            TrapOperation.Read,
+            "clock-read",
+            TrapCategory.OperatingSystem,
+            handler,
+            "session read",
+            TrapScope.GuestOsSession);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(registry.GetTrapInfo(0x0300)!.Value.Scope, Is.EqualTo(TrapScope.Machine));
+            Assert.That(registry.GetAllTraps().Single(trap => trap.Name == "card").Scope, Is.EqualTo(TrapScope.Card));
+            Assert.That(registry.GetTrapInfo(0xBF06)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+            Assert.That(registry.MayHaveCallTrap(0xBF06), Is.True);
+            Assert.That(registry.HasReadTraps, Is.True);
+        });
+
+        int removed = registry.UnregisterScope(TrapScope.GuestOsSession);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(removed, Is.EqualTo(2));
+            Assert.That(registry.HasTrap(0xBF06), Is.False);
+            Assert.That(registry.HasTrap(0xBF07, TrapOperation.Read), Is.False);
+            Assert.That(registry.MayHaveCallTrap(0xBF06), Is.False);
+            Assert.That(registry.MayHaveCallTrap(0x0300), Is.True);
+            Assert.That(registry.HasReadTraps, Is.False);
+            Assert.That(registry.HasTrap(0x0300), Is.True);
+            Assert.That(registry.GetAllTraps().Any(trap => trap.Name == "card"), Is.True);
+            Assert.That(registry.Count, Is.EqualTo(2));
+        });
+
+        var executed = registry.TryExecute(0x0300, mockCpu.Object, mockBus.Object, mockContext.Object);
+        Assert.That(executed.Handled, Is.False);
+    }
+
     // ─── Helper Methods ─────────────────────────────────────────────────────────
 
     /// <summary>

@@ -12,7 +12,8 @@ using BadMango.Emulator.Storage.FileSystems;
 /// <remarks>
 /// The signature is <see cref="Dos33Layout.BootSector.Signature"/>.
 /// Boot 2 is entered at <c>$B700</c> (48K) or <c>$3700</c> (master disk).
-/// Cold start is <c>$9D84</c>. Slot firmware is not part of this profile.
+/// Cold start is <c>$9D84</c>. The file manager and RWTS are session traps.
+/// Slot firmware is not part of this profile.
 /// </remarks>
 public sealed class Dos33GuestOsBootProfile : IGuestOsBootProfile
 {
@@ -30,6 +31,13 @@ public sealed class Dos33GuestOsBootProfile : IGuestOsBootProfile
         new(0xB700, BootMilestoneKind.LoaderEntered),
         new(0x3700, BootMilestoneKind.LoaderEntered),
         new(0x9D84, BootMilestoneKind.KernelReady),
+    ];
+
+    /// <inheritdoc />
+    public IReadOnlyList<GuestOsSessionTrap> SessionTraps { get; } =
+    [
+        new(Dos33VectorPage.FileManagerTarget, "DOS 3.3 file manager"),
+        new(Dos33VectorPage.RwtsTarget, "DOS 3.3 RWTS"),
     ];
 
     /// <inheritdoc />

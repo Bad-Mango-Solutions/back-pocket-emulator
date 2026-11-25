@@ -143,9 +143,13 @@ public class GuestOsBootMonitorTests
             Assert.That(monitor.Milestones, Has.Count.EqualTo(logged));
             Assert.That(registry.HasTrap(0x0801), Is.False);
             Assert.That(registry.HasTrap(0x2000), Is.False);
-            Assert.That(registry.HasTrap(Firmware), Is.False);
             Assert.That(registry.HasTrap(0xB700), Is.False);
             Assert.That(registry.HasTrap(0x9D84), Is.False);
+            Assert.That(registry.HasTrap(Firmware), Is.True);
+            Assert.That(registry.GetTrapInfo(Firmware)!.Value.Scope, Is.EqualTo(TrapScope.Machine));
+            Assert.That(registry.HasTrap(Dos33VectorPage.FileManagerTarget), Is.True);
+            Assert.That(registry.GetTrapInfo(Dos33VectorPage.FileManagerTarget)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+            Assert.That(registry.HasTrap(Dos33VectorPage.RwtsTarget), Is.True);
         });
 
         using var bootOutput = new StringWriter();
@@ -234,9 +238,9 @@ public class GuestOsBootMonitorTests
             Assert.That(monitor.Milestones[^1].Kind, Is.EqualTo(BootMilestoneKind.CustomBootLoaderEntered));
             Assert.That(monitor.Milestones[^1].Detail, Is.EqualTo("boot sector 11 22 33 44 55 66 77 88"));
             Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Id, Is.EqualTo(GuestOsId.None));
-            Assert.That(registry.HasTrap(Firmware), Is.False);
+            Assert.That(registry.HasTrap(Firmware), Is.True);
             Assert.That(registry.HasTrap(0x0801), Is.False);
-            Assert.That(OperatingSystemTraps(registry), Is.Empty);
+            Assert.That(registry.GetTrapInfo(Firmware)!.Value.Scope, Is.EqualTo(TrapScope.Machine));
         });
     }
 
@@ -755,6 +759,217 @@ public class GuestOsBootMonitorTests
         });
     }
 
+    /// <summary>
+    /// A ProDOS session followed by a RAM jump to <c>$C600</c> (<c>PR#6</c>) boots DOS 3.3.
+    /// The old session traps are gone and the DOS session traps are attached at Loader.
+    /// </summary>
+    [Test]
+    public void ProDosThenUserJump_BootsDos33_AndSwapsSessionTraps()
+    {
+        using var machine = BootMachine();
+        var monitor = MonitorOf(machine);
+        var started = new List<GuestOsId>();
+        var ended = new List<GuestOsSessionEventArgs>();
+        monitor.GuestOsSessionStarted += (_, args) => started.Add(args.Id);
+        monitor.GuestOsSessionEnded += (_, args) => ended.Add(args);
+        BootProDosToReady(machine);
+        var registry = Registry(machine);
+        var detector = machine.GetComponent<IGuestOsDetector>()!;
+        registry.Register(
+            0xBF06,
+            "session clock",
+            TrapCategory.OperatingSystem,
+            static (_, _, _) => TrapResult.NotHandled,
+            "DATETIME",
+            TrapScope.GuestOsSession);
+        registry.Register(0x0400, "machine hook", TrapCategory.UserDefined, static (_, _, _) => TrapResult.NotHandled);
+        registry.RegisterSlotDependent(0xC610, Slot, "card hook", TrapCategory.SlotFirmware, static (_, _, _) => TrapResult.NotHandled);
+
+        PlantDos(machine.Cpu);
+        ClearProDosPage(machine.Cpu);
+        JumpToFirmware(machine);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ended, Has.Count.EqualTo(1));
+            Assert.That(ended[0].Id, Is.EqualTo(GuestOsId.ProDos8));
+            Assert.That(ended[0].Stage, Is.EqualTo(GuestOsBootStage.Init));
+            Assert.That(detector.Current.Id, Is.EqualTo(GuestOsId.None));
+            Assert.That(detector.Current.Reason, Is.EqualTo("Guest OS detection has not run."));
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootDeviceSelected));
+            Assert.That(monitor.Milestones[0].Detail, Does.Contain("method user"));
+            Assert.That(Kinds(monitor), Does.Not.Contain(BootMilestoneKind.RomInitEntered));
+            Assert.That(registry.HasTrap(0xBF00), Is.False);
+            Assert.That(registry.HasTrap(0xBF06), Is.False);
+            Assert.That(registry.HasTrap(0x0400), Is.True);
+            Assert.That(registry.HasTrap(0xC610), Is.True);
+            Assert.That(registry.HasTrap(Firmware), Is.True);
+            Assert.That(registry.GetTrapInfo(Firmware)!.Value.Scope, Is.EqualTo(TrapScope.Machine));
+        });
+
+        FinishDosFromBootSector(machine);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Ready));
+            Assert.That(started, Is.EqualTo(new[] { GuestOsId.ProDos8, GuestOsId.Dos33 }));
+            Assert.That(detector.Current.Id, Is.EqualTo(GuestOsId.Dos33));
+            Assert.That(registry.HasTrap(0xBF00), Is.False);
+            Assert.That(registry.HasTrap(0xBF06), Is.False);
+            Assert.That(registry.HasTrap(Dos33VectorPage.FileManagerTarget), Is.True);
+            Assert.That(registry.GetTrapInfo(Dos33VectorPage.FileManagerTarget)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+            Assert.That(registry.HasTrap(Dos33VectorPage.RwtsTarget), Is.True);
+            Assert.That(registry.HasTrap(0x0400), Is.True);
+            Assert.That(registry.HasTrap(0xC610), Is.True);
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.BootDeviceSelected));
+        });
+    }
+
+    /// <summary>A DOS 3.3 session followed by <c>PR#6</c> boots ProDOS and brings the MLI trap back.</summary>
+    [Test]
+    public void Dos33ThenUserJump_BootsProDos_AndSwapsSessionTraps()
+    {
+        using var machine = BootMachine();
+        var monitor = MonitorOf(machine);
+        var started = new List<GuestOsBootStage>();
+        var ended = new List<GuestOsId>();
+        monitor.GuestOsSessionStarted += (_, args) => started.Add(args.Stage);
+        monitor.GuestOsSessionEnded += (_, args) => ended.Add(args.Id);
+        BootDosToReady(machine);
+        var registry = Registry(machine);
+        Assume.That(registry.HasTrap(Dos33VectorPage.RwtsTarget), Is.True);
+
+        PlantProDos(machine.Cpu);
+        JumpToFirmware(machine);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ended, Is.EqualTo(new[] { GuestOsId.Dos33 }));
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.BootRom));
+            Assert.That(registry.HasTrap(Dos33VectorPage.FileManagerTarget), Is.False);
+            Assert.That(registry.HasTrap(Dos33VectorPage.RwtsTarget), Is.False);
+            Assert.That(registry.HasTrap(0xBF00), Is.False);
+            Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Reason, Is.EqualTo("Guest OS detection has not run."));
+        });
+
+        for (var step = 0; step < 5; step++)
+        {
+            machine.Step();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Ready));
+            Assert.That(started, Is.EqualTo(new[] { GuestOsBootStage.Loader, GuestOsBootStage.Loader }));
+            Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Id, Is.EqualTo(GuestOsId.ProDos8));
+            Assert.That(registry.HasTrap(0xBF00), Is.True);
+            Assert.That(registry.GetTrapInfo(0xBF00)!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+            Assert.That(registry.HasTrap(Dos33VectorPage.FileManagerTarget), Is.False);
+            Assert.That(registry.HasTrap(Dos33VectorPage.RwtsTarget), Is.False);
+            Assert.That(registry.HasTrap(Firmware), Is.True);
+        });
+    }
+
+    /// <summary>A monitor-ROM jump to <c>$Cn00</c> (<c>IN#6</c> or <c>C600G</c>) ends the session too.</summary>
+    [Test]
+    public void MonitorRomJump_EndsTheProDosSession()
+    {
+        using var machine = RomBootMachine();
+        var monitor = MonitorOf(machine);
+        GuestOsBootStage? endedAt = null;
+        monitor.GuestOsSessionEnded += (_, args) => endedAt = args.Stage;
+        BootProDosToReady(machine);
+
+        Poke(machine.Cpu, 0xF000, 0x4C, 0x00, 0xC6);
+        machine.Cpu.SetPC(0xF000);
+        machine.Step();
+        machine.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(endedAt, Is.EqualTo(GuestOsBootStage.Init));
+            Assert.That(monitor.Milestones[0].Detail, Does.Contain("method autostart"));
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.BootRom));
+            Assert.That(Registry(machine).HasTrap(0xBF00), Is.False);
+            Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Id, Is.EqualTo(GuestOsId.None));
+        });
+    }
+
+    /// <summary>A warm reset leaves the assigned OS and its session traps in place.</summary>
+    [Test]
+    public void WarmReset_LeavesTheSessionLoaded()
+    {
+        using var machine = BootMachine();
+        var monitor = MonitorOf(machine);
+        var ended = 0;
+        monitor.GuestOsSessionEnded += (_, _) => ended++;
+        BootProDosToReady(machine);
+        var registry = Registry(machine);
+        registry.Register(
+            0xBF06,
+            "session clock",
+            TrapCategory.OperatingSystem,
+            static (_, _, _) => TrapResult.NotHandled,
+            "DATETIME",
+            TrapScope.GuestOsSession);
+        int logged = monitor.Milestones.Count;
+
+        machine.Reset();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ended, Is.EqualTo(0));
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Ready));
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(logged + 1));
+            Assert.That(monitor.Milestones[^1].Detail, Does.Contain("warm"));
+            Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Id, Is.EqualTo(GuestOsId.ProDos8));
+            Assert.That(registry.HasTrap(0xBF00), Is.True);
+            Assert.That(registry.HasTrap(0xBF06), Is.True);
+            Assert.That(registry.HasTrap(Firmware), Is.True);
+        });
+    }
+
+    /// <summary>A cold reset returns to Init, clears the detector, and unloads session traps.</summary>
+    [Test]
+    public void ColdReset_EndsTheSession()
+    {
+        using var machine = BootMachine();
+        var monitor = MonitorOf(machine);
+        GuestOsSessionEventArgs? ended = null;
+        monitor.GuestOsSessionEnded += (_, args) => ended = args;
+        BootProDosToReady(machine);
+        var registry = Registry(machine);
+        registry.Register(
+            0xBF06,
+            "session clock",
+            TrapCategory.OperatingSystem,
+            static (_, _, _) => TrapResult.NotHandled,
+            "DATETIME",
+            TrapScope.GuestOsSession);
+        registry.RegisterSlotDependent(0xC610, Slot, "card hook", TrapCategory.SlotFirmware, static (_, _, _) => TrapResult.NotHandled);
+
+        machine.Reset(hardReset: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ended, Is.Not.Null);
+            Assert.That(ended!.Id, Is.EqualTo(GuestOsId.ProDos8));
+            Assert.That(ended.Stage, Is.EqualTo(GuestOsBootStage.Init));
+            Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Init));
+            Assert.That(monitor.Milestones, Has.Count.EqualTo(1));
+            Assert.That(monitor.Milestones[0].Kind, Is.EqualTo(BootMilestoneKind.RomInitEntered));
+            Assert.That(monitor.Milestones[0].Detail, Does.Contain("cold"));
+            Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Id, Is.EqualTo(GuestOsId.None));
+            Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Reason, Is.EqualTo("Guest OS detection has not run."));
+            Assert.That(registry.HasTrap(0xBF00), Is.False);
+            Assert.That(registry.HasTrap(0xBF06), Is.False);
+            Assert.That(registry.HasTrap(Dos33VectorPage.FileManagerTarget), Is.False);
+            Assert.That(registry.HasTrap(Firmware), Is.True);
+            Assert.That(registry.HasTrap(0xC610), Is.True);
+            Assert.That(registry.GetAllTraps().Single(trap => trap.Name == "card hook").Scope, Is.EqualTo(TrapScope.Card));
+        });
+    }
+
     /// <summary>Two ROM polls of the keyboard data register, with no slot entry, end at NoBootDevice.</summary>
     [Test]
     public void RomKeyboardPoll_EndsAtNoBootDevice()
@@ -777,7 +992,7 @@ public class GuestOsBootMonitorTests
             Assert.That(monitor.Milestones[^1].Detail, Is.EqualTo("ROM keyboard wait, no boot device"));
             Assert.That(monitor.Milestones[^1].Pc, Is.EqualTo(0xF000u));
             Assert.That(Kinds(monitor), Does.Not.Contain(BootMilestoneKind.BootFirmwareEntered));
-            Assert.That(registry.HasTrap(Firmware), Is.False);
+            Assert.That(registry.HasTrap(Firmware), Is.True);
             Assert.That(registry.HasTrap(0xC000, TrapOperation.Read), Is.False);
         });
     }
@@ -874,6 +1089,51 @@ public class GuestOsBootMonitorTests
         {
             Assert.That(milestones[i].At.Value, Is.GreaterThanOrEqualTo(milestones[i - 1].At.Value));
         }
+    }
+
+    private static void BootDosToReady(IMachine machine)
+    {
+        PlantDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        machine.Step();
+        machine.Step();
+        machine.Cpu.SetPC(0x0805);
+        machine.Step();
+        machine.Step();
+        machine.Step();
+    }
+
+    private static void BootProDosToReady(IMachine machine)
+    {
+        PlantProDos(machine.Cpu);
+        machine.Cpu.SetPC(Firmware);
+        for (var step = 0; step < 6; step++)
+        {
+            machine.Step();
+        }
+    }
+
+    private static void JumpToFirmware(IMachine machine)
+    {
+        Poke(machine.Cpu, 0x0300, 0x4C, 0x00, 0xC6);
+        machine.Cpu.SetPC(0x0300);
+        machine.Step();
+        machine.Step();
+    }
+
+    private static void FinishDosFromBootSector(IMachine machine)
+    {
+        machine.Step();
+        machine.Cpu.SetPC(0x0805);
+        machine.Step();
+        machine.Step();
+        machine.Step();
+    }
+
+    private static void ClearProDosPage(ICpu cpu)
+    {
+        Poke(cpu, 0xBF00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+        Poke(cpu, 0xBFFF, 0x00);
     }
 
     private static void PlantDos(ICpu cpu)

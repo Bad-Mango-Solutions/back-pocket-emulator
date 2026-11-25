@@ -370,6 +370,28 @@ public class GuestOsDetectorTests
         });
     }
 
+    /// <summary>Clear drops a published detection back to not-yet-run and raises <see cref="IGuestOsDetector.Changed"/> once.</summary>
+    [Test]
+    public void Clear_DropsTheCachedDetection()
+    {
+        var image = new GuestMemoryImage();
+        image.PlantProDos(0x24, machId: 0x01, iVersion: 7, dateTimeOpcode: 0x60, driver: 0xD000);
+        var detector = CreateDetector(image);
+        var changes = new List<GuestOsId>();
+        detector.Changed += (_, change) => changes.Add(change.Current.Id);
+        detector.Detect();
+
+        detector.Clear();
+        detector.Clear();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(detector.Current.Id, Is.EqualTo(GuestOsId.None));
+            Assert.That(detector.Current.Reason, Is.EqualTo("Guest OS detection has not run."));
+            Assert.That(changes, Is.EqualTo(new[] { GuestOsId.ProDos8, GuestOsId.None }));
+        });
+    }
+
     /// <summary>A lower <see cref="IGuestOsProbe.Order"/> wins even when that probe is supplied last.</summary>
     [Test]
     public void Detect_LowerOrder_WinsWhenSuppliedLast()

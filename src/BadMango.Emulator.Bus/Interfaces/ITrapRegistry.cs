@@ -74,6 +74,10 @@ public interface ITrapRegistry
     /// <param name="category">Classification of the trap for filtering.</param>
     /// <param name="handler">The native implementation delegate.</param>
     /// <param name="description">Optional detailed description for tooling.</param>
+    /// <param name="scope">
+    /// Who owns the trap. Defaults to <see cref="TrapScope.Machine"/>.
+    /// <see cref="TrapScope.GuestOsSession"/> is removed by <see cref="UnregisterScope"/>.
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// Thrown if a call trap is already registered at the specified address in the ROM context.
     /// </exception>
@@ -82,7 +86,8 @@ public interface ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null);
+        string? description = null,
+        TrapScope scope = TrapScope.Machine);
 
     /// <summary>
     /// Registers a trap handler for a specific operation type at an address in the default (ROM) context.
@@ -93,6 +98,7 @@ public interface ITrapRegistry
     /// <param name="category">Classification of the trap for filtering.</param>
     /// <param name="handler">The native implementation delegate.</param>
     /// <param name="description">Optional detailed description for tooling.</param>
+    /// <param name="scope">Who owns the trap. Defaults to <see cref="TrapScope.Machine"/>.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown if a trap for the same operation is already registered at the address in the ROM context.
     /// </exception>
@@ -102,7 +108,8 @@ public interface ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null);
+        string? description = null,
+        TrapScope scope = TrapScope.Machine);
 
     /// <summary>
     /// Registers a call trap handler at a specific address in a specific memory context.
@@ -113,6 +120,7 @@ public interface ITrapRegistry
     /// <param name="category">Classification of the trap for filtering.</param>
     /// <param name="handler">The native implementation delegate.</param>
     /// <param name="description">Optional detailed description for tooling.</param>
+    /// <param name="scope">Who owns the trap. Defaults to <see cref="TrapScope.Machine"/>.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown if a call trap is already registered at the address in the specified context.
     /// </exception>
@@ -122,7 +130,8 @@ public interface ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null);
+        string? description = null,
+        TrapScope scope = TrapScope.Machine);
 
     /// <summary>
     /// Registers a trap handler for a specific operation type at an address in a specific memory context.
@@ -134,6 +143,7 @@ public interface ITrapRegistry
     /// <param name="category">Classification of the trap for filtering.</param>
     /// <param name="handler">The native implementation delegate.</param>
     /// <param name="description">Optional detailed description for tooling.</param>
+    /// <param name="scope">Who owns the trap. Defaults to <see cref="TrapScope.Machine"/>.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown if a trap for the same operation is already registered at the address in the specified context.
     /// </exception>
@@ -144,7 +154,8 @@ public interface ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null);
+        string? description = null,
+        TrapScope scope = TrapScope.Machine);
 
     /// <summary>
     /// Registers a slot-dependent call trap handler.
@@ -155,13 +166,18 @@ public interface ITrapRegistry
     /// <param name="category">Classification of the trap for filtering.</param>
     /// <param name="handler">The native implementation delegate.</param>
     /// <param name="description">Optional detailed description for tooling.</param>
+    /// <param name="scope">
+    /// Who owns the trap. Defaults to <see cref="TrapScope.Card"/>, so card removal
+    /// (<see cref="UnregisterSlotTraps"/>) remains the lifetime and a guest OS reboot leaves it registered.
+    /// </param>
     void RegisterSlotDependent(
         Addr address,
         int slot,
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null);
+        string? description = null,
+        TrapScope scope = TrapScope.Card);
 
     /// <summary>
     /// Registers a slot-dependent trap handler for a specific operation type.
@@ -173,6 +189,7 @@ public interface ITrapRegistry
     /// <param name="category">Classification of the trap for filtering.</param>
     /// <param name="handler">The native implementation delegate.</param>
     /// <param name="description">Optional detailed description for tooling.</param>
+    /// <param name="scope">Who owns the trap. Defaults to <see cref="TrapScope.Card"/>.</param>
     void RegisterSlotDependent(
         Addr address,
         TrapOperation operation,
@@ -180,7 +197,8 @@ public interface ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null);
+        string? description = null,
+        TrapScope scope = TrapScope.Card);
 
     /// <summary>
     /// Registers a call trap handler that targets Language Card RAM at a specific address.
@@ -190,9 +208,10 @@ public interface ITrapRegistry
     /// <param name="category">Classification of the trap for filtering.</param>
     /// <param name="handler">The native implementation delegate.</param>
     /// <param name="description">Optional detailed description for tooling.</param>
+    /// <param name="scope">Who owns the trap. Defaults to <see cref="TrapScope.Machine"/>.</param>
     /// <remarks>
     /// This is a convenience method equivalent to calling
-    /// <see cref="RegisterWithContext(Addr, MemoryContext, string, TrapCategory, TrapHandler, string?)"/>
+    /// <see cref="RegisterWithContext(Addr, MemoryContext, string, TrapCategory, TrapHandler, string?, TrapScope)"/>
     /// with <see cref="MemoryContexts.LanguageCardRam"/>.
     /// </remarks>
     void RegisterLanguageCardRam(
@@ -200,7 +219,8 @@ public interface ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null);
+        string? description = null,
+        TrapScope scope = TrapScope.Machine);
 
     /// <summary>
     /// Registers a Language Card RAM trap handler for a specific operation type.
@@ -211,13 +231,15 @@ public interface ITrapRegistry
     /// <param name="category">Classification of the trap for filtering.</param>
     /// <param name="handler">The native implementation delegate.</param>
     /// <param name="description">Optional detailed description for tooling.</param>
+    /// <param name="scope">Who owns the trap. Defaults to <see cref="TrapScope.Machine"/>.</param>
     void RegisterLanguageCardRam(
         Addr address,
         TrapOperation operation,
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null);
+        string? description = null,
+        TrapScope scope = TrapScope.Machine);
 
     /// <summary>
     /// Unregisters a call trap at the specified address in the default (ROM) context.
@@ -319,6 +341,17 @@ public interface ITrapRegistry
     /// </summary>
     /// <param name="memoryContext">The memory context whose traps should be removed.</param>
     void UnregisterContextTraps(MemoryContext memoryContext);
+
+    /// <summary>
+    /// Unregisters every trap whose <see cref="TrapInfo.Scope"/> is <paramref name="scope"/>.
+    /// </summary>
+    /// <param name="scope">The owner to drop. <see cref="TrapScope.GuestOsSession"/> ends an OS session.</param>
+    /// <returns>How many traps were removed.</returns>
+    /// <remarks>
+    /// Card traps stay until <see cref="UnregisterSlotTraps"/>. Machine traps, including observe-only
+    /// boot traps, stay until they are unregistered by address. This method is not on the instruction path.
+    /// </remarks>
+    int UnregisterScope(TrapScope scope);
 
     /// <summary>
     /// Attempts to execute a call trap at the specified address.
