@@ -157,6 +157,15 @@ public class NullTrapRegistryTests
     }
 
     /// <summary>
+    /// Verifies that UnregisterScope removes nothing.
+    /// </summary>
+    [Test]
+    public void UnregisterScope_ReturnsZero()
+    {
+        Assert.That(NullTrapRegistry.Instance.UnregisterScope(TrapScope.GuestOsSession), Is.EqualTo(0));
+    }
+
+    /// <summary>
     /// Verifies that Clear does not throw.
     /// </summary>
     [Test]

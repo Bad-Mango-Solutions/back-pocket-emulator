@@ -33,6 +33,11 @@ public class GuestOsBootProfileTests
             Assert.That(profile.DescribeMilestone(BootMilestoneKind.LoaderEntered, 0xB700), Is.EqualTo("DOS 3.3 Boot 2 at $B700"));
             Assert.That(profile.DescribeMilestone(BootMilestoneKind.LoaderEntered, 0x3700), Is.EqualTo("DOS 3.3 Boot 2 at $3700"));
             Assert.That(profile.DescribeMilestone(BootMilestoneKind.KernelReady, 0x9D84), Is.EqualTo("DOS 3.3 cold start"));
+            Assert.That(profile.SessionTraps, Is.EqualTo(new[]
+            {
+                new GuestOsSessionTrap(Dos33VectorPage.FileManagerTarget, "DOS 3.3 file manager"),
+                new GuestOsSessionTrap(Dos33VectorPage.RwtsTarget, "DOS 3.3 RWTS"),
+            }));
         });
     }
 
@@ -60,6 +65,7 @@ public class GuestOsBootProfileTests
             }));
             Assert.That(profile.DescribeMilestone(BootMilestoneKind.LoaderEntered, 0x2000), Is.EqualTo("ProDOS loader"));
             Assert.That(profile.DescribeSystemCall(memory, 0x0303), Is.EqualTo("MLI $C8 OPEN"));
+            Assert.That(profile.SessionTraps, Is.Empty);
         });
     }
 }

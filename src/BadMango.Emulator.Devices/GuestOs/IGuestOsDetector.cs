@@ -36,4 +36,13 @@ public interface IGuestOsDetector
     /// <returns>The same value <see cref="Current"/> has after this call.</returns>
     /// <exception cref="InvalidOperationException">If a probe returns an attempt that disagrees with its kind.</exception>
     GuestOsInfo Detect();
+
+    /// <summary>
+    /// Drops the cached detection. <see cref="Current"/> becomes the not-yet-run <see cref="GuestOsId.None"/>.
+    /// </summary>
+    /// <remarks>
+    /// Raises <see cref="Changed"/> when the cache was not already that not-yet-run value.
+    /// A second call does not raise it again. This does not read memory.
+    /// </remarks>
+    void Clear();
 }
