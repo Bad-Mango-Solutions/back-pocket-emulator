@@ -132,18 +132,21 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
                 return CommandResult.UsageError("Usage: os calls [on|off|mli|dos]");
             }
 
-            if (mode != OsCallLogMode.Off)
+            if (mode == OsCallLogMode.Off)
+            {
+                machine.GetComponent<OsCallLog>()?.Attach(machine, mode);
+            }
+            else
             {
                 Enable(machine);
-            }
+                OsCallLog log = machine.GetComponent<OsCallLog>() ?? new OsCallLog(this.logger);
+                if (!machine.HasComponent<OsCallLog>())
+                {
+                    machine.AddComponent(log);
+                }
 
-            OsCallLog log = machine.GetComponent<OsCallLog>() ?? new OsCallLog(this.logger);
-            if (!machine.HasComponent<OsCallLog>())
-            {
-                machine.AddComponent(log);
+                log.Attach(machine, mode);
             }
-
-            log.Attach(machine, mode);
         }
 
         OsCallLogSnapshot snapshot = GuestOsInspection.ReadOsCalls(machine, GuestOsInspection.MaxOsCalls);

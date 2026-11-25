@@ -1004,7 +1004,10 @@ public class GuestOsBootMonitorTests
     public void CallLog_IsOffByDefault()
     {
         using var machine = BootMachine();
+        using var output = new StringWriter();
+        Assert.That(new OsCommand(Logger.None).Execute(Context(machine, output), ["calls", "off"]).Success, Is.True);
         Assert.That(machine.GetComponent<IOsCallLog>(), Is.Null);
+        Assert.That(output.ToString(), Does.Contain("off"));
     }
 
     /// <summary>
