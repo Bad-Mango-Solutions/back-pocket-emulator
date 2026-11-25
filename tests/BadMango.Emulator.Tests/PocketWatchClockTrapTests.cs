@@ -14,6 +14,7 @@ using BadMango.Emulator.Core.Interfaces.Cpu;
 using BadMango.Emulator.Debug.Infrastructure;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Emulation.Cpu;
+using BadMango.Unit.Components;
 
 /// <summary>
 /// ProDOS clock-driver traps for a profile-built PocketWatch card.
@@ -102,7 +103,7 @@ public class PocketWatchClockTrapTests
     [Test]
     public void ClockEntries_HostLocalTime_WritesLocalTimeAt0200()
     {
-        TimeZoneInfo zone = CreatePacificLikeZone();
+        TimeZoneInfo zone = FixedTimeProvider.CreatePacificLikeZone();
         var utc = new DateTimeOffset(2026, 7, 16, 6, 30, 0, TimeSpan.Zero);
         DateTime local = TimeZoneInfo.ConvertTime(utc, zone).DateTime;
         const string ExpectedLocalTime = "07,03,15,23,30";
@@ -288,33 +289,6 @@ public class PocketWatchClockTrapTests
 
     private static string FormatProDos(DateTime time)
         => $"{time.Month:00},{(int)time.DayOfWeek:00},{time.Day:00},{time.Hour:00},{time.Minute:00}";
-
-    private static TimeZoneInfo CreatePacificLikeZone()
-    {
-        TimeZoneInfo.TransitionTime dstStart = TimeZoneInfo.TransitionTime.CreateFloatingDateRule(
-            new DateTime(1, 1, 1, 2, 0, 0),
-            3,
-            2,
-            DayOfWeek.Sunday);
-        TimeZoneInfo.TransitionTime dstEnd = TimeZoneInfo.TransitionTime.CreateFloatingDateRule(
-            new DateTime(1, 1, 1, 2, 0, 0),
-            11,
-            1,
-            DayOfWeek.Sunday);
-        TimeZoneInfo.AdjustmentRule rule = TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(
-            new DateTime(2000, 1, 1),
-            new DateTime(2039, 12, 31),
-            TimeSpan.FromHours(1),
-            dstStart,
-            dstEnd);
-        return TimeZoneInfo.CreateCustomTimeZone(
-            "TestPacific",
-            TimeSpan.FromHours(-8),
-            "Test Pacific",
-            "Test Pacific Standard Time",
-            "Test Pacific Daylight Time",
-            new[] { rule });
-    }
 
     private static void AssertFrozenInstant(PocketWatchCard card)
     {
@@ -544,24 +518,5 @@ public class PocketWatchClockTrapTests
         var registry = machine.GetComponent<ITrapRegistry>();
         Assert.That(registry, Is.Not.Null);
         return registry!.GetAllTraps().Where(trap => trap.Name.StartsWith("PW_", StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// <see cref="TimeProvider"/> that returns one UTC instant in a caller-supplied local zone.
-    /// </summary>
-    private sealed class FixedTimeProvider : TimeProvider
-    {
-        private readonly DateTimeOffset utcNow;
-        private readonly TimeZoneInfo localZone;
-
-        public FixedTimeProvider(DateTimeOffset utcNow, TimeZoneInfo localZone)
-        {
-            this.utcNow = utcNow;
-            this.localZone = localZone;
-        }
-
-        public override TimeZoneInfo LocalTimeZone => localZone;
-
-        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

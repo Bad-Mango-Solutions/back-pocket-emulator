@@ -41,8 +41,8 @@ public sealed class PocketWatchConfig
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <see langword="null"/>, the default, uses the host's local time, including daylight saving time.
-    /// A value, including zero, uses UTC plus that many minutes and does not follow daylight saving time.
+    /// A null offset, which is the default, uses the host's local time, including daylight saving time.
+    /// A set value, including zero, uses UTC plus that many minutes and does not follow daylight saving time.
     /// For example, -300 is a fixed UTC-5 and 60 is a fixed UTC+1.
     /// </para>
     /// <para>

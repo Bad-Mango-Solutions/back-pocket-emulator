@@ -8,6 +8,7 @@ using System.Text.Json;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Core.Configuration;
+using BadMango.Unit.Components;
 
 using Serilog;
 using Serilog.Core;

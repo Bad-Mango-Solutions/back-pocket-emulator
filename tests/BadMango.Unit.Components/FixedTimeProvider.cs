@@ -2,12 +2,12 @@
 // Copyright (c) Bad Mango Solutions. All rights reserved.
 // </copyright>
 
-namespace BadMango.Emulator.Devices.Tests;
+namespace BadMango.Unit.Components;
 
 /// <summary>
 /// <see cref="TimeProvider"/> that returns one UTC instant in a caller-supplied local zone.
 /// </summary>
-internal sealed class FixedTimeProvider : TimeProvider
+public sealed class FixedTimeProvider : TimeProvider
 {
     private readonly DateTimeOffset utcNow;
     private readonly TimeZoneInfo localZone;
