@@ -1481,18 +1481,24 @@ public sealed class DiskIIController : ISlotCard, IDiskController, IResetReceive
             cacheLoadCount++;
         }
 
-        // Advance the spin position for the staged write, then commit one byte to the
-        // nibble cache and mark the track dirty (FR-D8 — sector images defer parse-
-        // back to flush time; nibble images get the byte on flush as a raw write).
+        // One strobe ships one nibble. DOS 3.3's aux loop is 31 cycles, its six-bit
+        // loop is 32, and a self-sync byte is 40. All three are a single slot on a
+        // byte-aligned track. Adding the elapsed byte count and then stepping one
+        // more slot skips every other nibble, so the flushed track no longer decodes
+        // and the sector image keeps its old bytes. A gap of a full extra byte-time
+        // (the shift register ran dry) is the only case that skips slots. The clock
+        // is anchored to this strobe so a 40-cycle sync does not accumulate a skip.
         if (evtContext is not null)
         {
             var elapsed = (ulong)(evtContext.Now - drive.LastUpdateCycle);
-            var byteAdvance = elapsed / CyclesPerByte;
-            if (byteAdvance > 0)
+            var wholeBytes = elapsed / CyclesPerByte;
+            if (wholeBytes > 1)
             {
-                drive.SpinPosition = (int)(((ulong)drive.SpinPosition + byteAdvance) % (ulong)drive.CachedTrack!.Length);
-                drive.LastUpdateCycle += new Cycle(byteAdvance * CyclesPerByte);
+                var skip = wholeBytes - 1;
+                drive.SpinPosition = (int)(((ulong)drive.SpinPosition + skip) % (ulong)drive.CachedTrack!.Length);
             }
+
+            drive.LastUpdateCycle = evtContext.Now;
         }
 
         drive.CachedTrack![drive.SpinPosition] = writeShift;
