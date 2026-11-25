@@ -10,7 +10,7 @@ using BadMango.Emulator.Devices.GuestOs;
 using Serilog;
 
 /// <summary>
-/// Shows the detected guest OS, the boot milestone log, and the OS call log.
+/// Shows the detected guest OS, the boot milestone log, file loads, and the OS call log.
 /// </summary>
 public sealed class OsCommand : CommandHandlerBase, ICommandHelp
 {
@@ -30,19 +30,21 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
     /// <param name="logger">Logger used when <c>os on</c> installs the monitor.</param>
     /// <exception cref="ArgumentNullException">If <paramref name="logger"/> is <see langword="null"/>.</exception>
     public OsCommand(ILogger logger)
-        : base("os", "Show the guest OS and boot log")
+        : base("os", "Show the guest OS, boot log, file loads, and OS calls")
     {
         ArgumentNullException.ThrowIfNull(logger);
         this.logger = logger;
     }
 
     /// <inheritdoc/>
-    public string Synopsis => "os [boot|on|calls]";
+    public string Synopsis => "os [boot|files|on|calls]";
 
     /// <inheritdoc/>
     public string DetailedDescription =>
         "Shows the guest operating system in memory and the boot stage. " +
-        "os boot lists the milestone log. os on installs the boot monitor when the profile left it off. " +
+        "os boot lists the milestone log. os files lists file-load progress, one line per file: " +
+        "BASIC.SYSTEM 6656/10240 (65%), or BASIC.SYSTEM 6656 when the size is unknown. " +
+        "os on installs the boot monitor when the profile left it off. " +
         "os calls shows the OS call log. os calls on, off, mli, or dos chooses which calls are recorded. " +
         "The monitor's traps return not-handled, so guest-visible behavior does not change.";
 
@@ -54,6 +56,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
     [
         "os                      Show the detected guest OS and boot stage",
         "os boot                 List boot milestones",
+        "os files                List file-load progress",
         "os on                   Turn the boot monitor on",
         "os calls                List recorded MLI and DOS calls",
         "os calls mli            Record ProDOS MLI calls",
@@ -69,7 +72,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
     public IReadOnlyList<string> SeeAlso { get; } = ["trapmon", "statmon"];
 
     /// <inheritdoc/>
-    public override string Usage => "os [boot|on|calls [on|off|mli|dos]]";
+    public override string Usage => "os [boot|files|on|calls [on|off|mli|dos]]";
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
@@ -83,7 +86,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
 
         if (args.Length > 2)
         {
-            return CommandResult.UsageError("Usage: os [boot|on|calls [on|off|mli|dos]]");
+            return CommandResult.UsageError("Usage: os [boot|files|on|calls [on|off|mli|dos]]");
         }
 
         if (args.Length >= 1 && string.Equals(args[0], "calls", StringComparison.OrdinalIgnoreCase))
@@ -93,7 +96,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
 
         if (args.Length > 1)
         {
-            return CommandResult.UsageError("Usage: os [boot|on|calls [on|off|mli|dos]]");
+            return CommandResult.UsageError("Usage: os [boot|files|on|calls [on|off|mli|dos]]");
         }
 
         if (args.Length == 1)
@@ -104,6 +107,12 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
                 return CommandResult.Ok();
             }
 
+            if (string.Equals(args[0], "files", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Output.WriteLine(GuestOsInspection.FormatFileActivity(GuestOsInspection.ReadFileActivity(machine)));
+                return CommandResult.Ok();
+            }
+
             if (string.Equals(args[0], "on", StringComparison.OrdinalIgnoreCase))
             {
                 Enable(machine);
@@ -111,7 +120,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
                 return CommandResult.Ok("Guest OS boot monitor is on.");
             }
 
-            return CommandResult.UsageError("Usage: os [boot|on|calls [on|off|mli|dos]]");
+            return CommandResult.UsageError("Usage: os [boot|files|on|calls [on|off|mli|dos]]");
         }
 
         context.Output.WriteLine(GuestOsInspection.FormatGuestOs(GuestOsInspection.ReadGuestOs(machine)));

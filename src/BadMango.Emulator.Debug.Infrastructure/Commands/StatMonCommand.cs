@@ -50,7 +50,7 @@ public sealed class StatMonCommand : CommandHandlerBase, ICommandHelp
     public string DetailedDescription =>
         "Opens a status monitor window that displays active machine metrics in real-time. " +
         "The window shows CPU registers (A, X, Y, P, SP, PC), machine state " +
-        "(Off/Running/Paused/Stopped/Halted/WAI), the detected guest OS and boot stage, " +
+        "(Off/Running/Paused/Stopped/Halted/WAI), the detected guest OS, boot stage, and current file load, " +
         "performance metrics (IPS, cycles, MHz), " +
         "annunciator visualization with scrolling history and fade effects, " +
         "and device extension panels (e.g., PocketWatch time display). " +

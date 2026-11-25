@@ -121,6 +121,35 @@ public class ProDosMliCallTests
         });
     }
 
+    /// <summary>OPEN, READ, GET_EOF, and GET_FILE_INFO expose the returned file fields.</summary>
+    [Test]
+    public void FileResults_ReadRefTransCountEofAndBlocks()
+    {
+        var memory = new GuestMemoryImage();
+        memory.Poke(0x0303, 0xCA);
+        memory.Poke(0x0304, 0x00);
+        memory.Poke(0x0305, 0x04);
+        memory.Poke(0x0401, 0x03);
+        memory.Poke(0x0405, 0x07);
+        memory.Poke(0x0406, 0x00);
+        memory.Poke(0x0407, 0x10);
+        memory.Poke(0x0402, 0x00);
+        memory.Poke(0x0403, 0x28);
+        memory.Poke(0x0404, 0x00);
+        memory.Poke(0x0408, 0x14);
+        memory.Poke(0x0409, 0x00);
+        ProDosMliCall call = ProDosMliCall.Decode(memory, 0x0302);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(call.ReadRef(memory), Is.EqualTo(0x03));
+            Assert.That(call.ReadOpenRef(memory), Is.EqualTo(0x07));
+            Assert.That(call.ReadTransCount(memory), Is.EqualTo(0x1000));
+            Assert.That(call.ReadValue24(memory), Is.EqualTo(0x002800u));
+            Assert.That(call.ReadBlocks(memory), Is.EqualTo(0x0014));
+        });
+    }
+
     /// <summary><c>off</c>, <c>mli</c>, <c>dos</c>, <c>all</c>, and <c>on</c> parse. Anything else does not.</summary>
     [Test]
     public void TryParseMode_AcceptsTheProfileTokens()
