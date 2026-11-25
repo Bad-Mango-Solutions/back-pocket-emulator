@@ -172,6 +172,7 @@ public static class MachineFactory
                 detector,
                 BootSequenceMonitor.CreateStandardProfiles());
             monitor.Attach(machine);
+            BootLoadTracker.Install(machine, guestLogger, monitor);
             return monitor;
         });
     }
