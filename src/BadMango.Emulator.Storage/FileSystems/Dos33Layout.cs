@@ -196,6 +196,34 @@ public static class Dos33Layout
         }
     }
 
+    /// <summary>
+    /// Counts free and used sectors in a VTOC bitmap.
+    /// </summary>
+    /// <param name="vtoc">The VTOC sector.</param>
+    /// <param name="trackCount">Tracks in the image. Every sector of each track is tested.</param>
+    /// <returns>
+    /// Free sectors are those whose bitmap bit is set. Total is <paramref name="trackCount"/> times 16.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException">If <paramref name="trackCount"/> is negative or a bitmap byte falls outside <paramref name="vtoc"/>.</exception>
+    public static VolumeSpace CountFreeSectors(ReadOnlySpan<byte> vtoc, int trackCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(trackCount);
+        var total = trackCount * DefaultSectorsPerTrack;
+        var free = 0;
+        for (var track = 0; track < trackCount; track++)
+        {
+            for (var sector = 0; sector < DefaultSectorsPerTrack; sector++)
+            {
+                if (IsSectorFree(vtoc, track, sector))
+                {
+                    free++;
+                }
+            }
+        }
+
+        return new VolumeSpace(free, total - free, total);
+    }
+
     private static int LogicalPayloadLength(int header, ReadOnlySpan<byte> raw)
     {
         if (header == 0)

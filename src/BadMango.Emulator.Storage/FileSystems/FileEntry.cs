@@ -47,6 +47,12 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// For ProDOS it is <c>blocks_used</c>, including index blocks. For Pascal it is
 /// <c>end block − start block</c>. <see cref="UnitSize"/> is 256 for DOS and 512 otherwise.
 /// </para>
+/// <para>
+/// <see cref="Created"/> and <see cref="Modified"/> are the ProDOS directory words.
+/// A zero date word is a stamp whose <see cref="ProdosTimestamp.HasDate"/> is clear.
+/// DOS 3.3 and Pascal catalogs do not store dates, so those readers leave both stamps at
+/// the default zero date.
+/// </para>
 /// </remarks>
 public sealed record FileEntry
 {
@@ -67,6 +73,8 @@ public sealed record FileEntry
     /// Host form of <paramref name="name"/>. <see langword="null"/> or empty uses <paramref name="name"/>.
     /// DOS inverse and flashing names pass the escaped form from <see cref="AppleCatalogName"/>.
     /// </param>
+    /// <param name="created">ProDOS creation stamp. The default is a zero date word.</param>
+    /// <param name="modified">ProDOS modification stamp. The default is a zero date word.</param>
     /// <exception cref="ArgumentException">If <paramref name="path"/> or <paramref name="name"/> is empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException">If a size is negative or <paramref name="unitSize"/> is not positive.</exception>
     public FileEntry(
@@ -80,7 +88,9 @@ public sealed record FileEntry
         bool isLocked,
         bool isDirectory,
         FileStorageKind storageKind,
-        string? displayName = null)
+        string? displayName = null,
+        ProdosTimestamp created = default,
+        ProdosTimestamp modified = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentException.ThrowIfNullOrEmpty(name);
@@ -99,6 +109,8 @@ public sealed record FileEntry
         this.IsLocked = isLocked;
         this.IsDirectory = isDirectory;
         this.StorageKind = storageKind;
+        this.Created = created;
+        this.Modified = modified;
     }
 
     /// <summary>Gets the volume-relative path.</summary>
@@ -147,4 +159,12 @@ public sealed record FileEntry
     /// <summary>Gets the on-disk storage kind.</summary>
     /// <value>The storage kind readers use to choose a decoder.</value>
     public FileStorageKind StorageKind { get; }
+
+    /// <summary>Gets the ProDOS creation stamp.</summary>
+    /// <value>A zero date word when the catalog has no creation date.</value>
+    public ProdosTimestamp Created { get; }
+
+    /// <summary>Gets the ProDOS modification stamp.</summary>
+    /// <value>A zero date word when the catalog has no modification date.</value>
+    public ProdosTimestamp Modified { get; }
 }

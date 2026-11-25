@@ -49,9 +49,11 @@ public sealed class DiskCatCommand : CommandHandlerBase, ICommandHelp
     /// <inheritdoc/>
     public string DetailedDescription =>
         "Lists a volume root when the path is omitted, empty, or '/'. A ProDOS subdirectory path " +
-        "lists that directory. DOS 3.3 and Pascal are flat. Inverse and flashing catalog characters " +
-        "are escaped so they stay visible on a host terminal. JSON is an emudbg/v1 envelope. " +
-        "'disk catalog' runs this same command.";
+        "lists that directory. DOS 3.3 and Pascal are flat. A ProDOS listing uses the 2.4.3 CATALOG " +
+        "columns (type, blocks, modified, created, endfile, aux type) and a blocks free/used/total " +
+        "footer from the volume bitmap. DOS 3.3 shows the type letter, sector count, and a VTOC " +
+        "sectors free/used/total footer. Inverse and flashing catalog characters are escaped so they " +
+        "stay visible on a host terminal. JSON is an emudbg/v1 envelope. 'disk catalog' runs this same command.";
 
     /// <inheritdoc/>
     public IReadOnlyList<CommandOption> Options { get; } =

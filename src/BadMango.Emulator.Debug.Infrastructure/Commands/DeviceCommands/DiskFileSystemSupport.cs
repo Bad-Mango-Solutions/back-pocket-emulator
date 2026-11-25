@@ -19,6 +19,20 @@ using Serilog;
 /// </summary>
 internal static class DiskFileSystemSupport
 {
+    private const int CatalogBannerGap = 33;
+
+    private const int CatalogNameWidth = 16;
+
+    private const int CatalogTypeWidth = 6;
+
+    private const int CatalogBlocksWidth = 4;
+
+    private const int CatalogStampWidth = 15;
+
+    private const int CatalogStampGap = 2;
+
+    private const int CatalogEofWidth = 7;
+
     /// <summary>Which file-system command is being parsed.</summary>
     internal enum Verb
     {
@@ -448,17 +462,25 @@ internal static class DiskFileSystemSupport
                 entry.EofBytes,
                 entry.AllocatedUnits,
                 entry.IsLocked,
-                entry.IsDirectory);
+                entry.IsDirectory,
+                ToTimestamp(entry.Created),
+                ToTimestamp(entry.Modified));
         }
 
         var path = string.IsNullOrEmpty(requestedPath) ? "/" : requestedPath;
+        var space = fileSystem.Allocation;
+        var unit = fileSystem.Kind == AppleFileSystemKind.Dos33 ? "sector" : "block";
         return new DiskCatalogPayload(
             session.Source,
             session.Location,
             fileSystem.Kind.ToString(),
             AppleCatalogName.EscapePlain(fileSystem.VolumeName),
             path,
-            entries);
+            entries,
+            space.FreeUnits,
+            space.UsedUnits,
+            space.TotalUnits,
+            unit);
     }
 
     /// <summary>Formats <c>disk cat</c> text.</summary>
@@ -466,33 +488,17 @@ internal static class DiskFileSystemSupport
     /// <returns>The human-readable catalog. Display names are already escaped.</returns>
     internal static string FormatCatalog(DiskCatalogPayload payload)
     {
-        var text = new StringBuilder();
-        text.Append(KindLabel(payload.Kind));
-        text.Append(" volume ");
-        text.Append(payload.VolumeName);
-        text.Append('\n');
-        text.Append("Directory: ");
-        text.Append(payload.Path);
-        text.Append('\n');
-        if (payload.Entries.Count == 0)
+        if (payload.Kind == nameof(AppleFileSystemKind.Prodos))
         {
-            text.Append("(empty)");
-            text.Append('\n');
-            return text.ToString();
+            return FormatProdosCatalog(payload);
         }
 
-        foreach (var entry in payload.Entries)
+        if (payload.Kind == nameof(AppleFileSystemKind.Dos33))
         {
-            text.Append(entry.Locked ? '*' : ' ');
-            text.Append(entry.Directory ? 'D' : ' ');
-            text.Append(entry.FileType.PadRight(4));
-            text.Append(entry.EofBytes.ToString(CultureInfo.InvariantCulture).PadLeft(8));
-            text.Append("  ");
-            text.Append(entry.DisplayName);
-            text.Append('\n');
+            return FormatDosCatalog(payload);
         }
 
-        return text.ToString();
+        return FormatSimpleCatalog(payload);
     }
 
     /// <summary>Formats <c>disk read</c> text.</summary>
@@ -584,6 +590,163 @@ internal static class DiskFileSystemSupport
         nameof(AppleFileSystemKind.Pascal) => "Pascal",
         _ => kind,
     };
+
+    private static string FormatProdosCatalog(DiskCatalogPayload payload)
+    {
+        var text = new StringBuilder();
+        text.Append("CATALOG DISK");
+        text.Append(' ', CatalogBannerGap);
+        if (payload.Source == "drive"
+            && DiskRuntimeHelpers.TryParseSlotDrive(payload.Location, out var slot, out var drive, out _))
+        {
+            text.Append("SLOT ");
+            text.Append(slot.ToString(CultureInfo.InvariantCulture));
+            text.Append("  DRIVE ");
+            text.Append(drive.ToString(CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            text.Append("IMAGE ");
+            text.Append(payload.Location);
+        }
+
+        text.Append('\n');
+        text.Append('/');
+        text.Append(payload.VolumeName);
+        if (!string.IsNullOrEmpty(payload.Path) && payload.Path != "/")
+        {
+            if (!payload.Path.StartsWith('/'))
+            {
+                text.Append('/');
+            }
+
+            text.Append(payload.Path);
+        }
+
+        text.Append("\n\n");
+        text.Append(" NAME            TYPE  BLKS  MODIFIED         CREATED          ENDFILE SUBTYPE\n");
+        foreach (var entry in payload.Entries)
+        {
+            AppendProdosRow(text, entry);
+        }
+
+        text.Append('\n');
+        AppendAllocation(text, payload);
+        return text.ToString();
+    }
+
+    private static void AppendProdosRow(StringBuilder text, DiskCatalogEntryPayload entry)
+    {
+        text.Append(entry.Locked ? '*' : ' ');
+        text.Append(FitLeft(entry.DisplayName, CatalogNameWidth));
+        text.Append(FitLeft(entry.FileType, CatalogTypeWidth));
+        text.Append(FitRight(entry.AllocatedUnits, CatalogBlocksWidth));
+        text.Append(' ', CatalogStampGap);
+        text.Append(FitLeft(FormatStamp(entry.Modified), CatalogStampWidth));
+        text.Append(' ', CatalogStampGap);
+        text.Append(FitLeft(FormatStamp(entry.Created), CatalogStampWidth));
+        text.Append(' ', CatalogStampGap);
+        text.Append(FitRight(entry.EofBytes, CatalogEofWidth));
+        if (entry.AuxType != 0)
+        {
+            text.Append(" A=$");
+            text.Append(entry.AuxType.ToString("X4", CultureInfo.InvariantCulture));
+        }
+
+        text.Append('\n');
+    }
+
+    private static string FormatDosCatalog(DiskCatalogPayload payload)
+    {
+        var text = new StringBuilder();
+        text.Append("DISK VOLUME ");
+        text.Append(payload.VolumeName);
+        text.Append("\n\n");
+        foreach (var entry in payload.Entries)
+        {
+            text.Append(entry.Locked ? '*' : ' ');
+            text.Append(entry.FileType);
+            text.Append(' ');
+            text.Append(entry.AllocatedUnits.ToString("000", CultureInfo.InvariantCulture));
+            text.Append(' ');
+            text.Append(entry.DisplayName);
+            text.Append('\n');
+        }
+
+        text.Append('\n');
+        AppendAllocation(text, payload);
+        return text.ToString();
+    }
+
+    private static string FormatSimpleCatalog(DiskCatalogPayload payload)
+    {
+        var text = new StringBuilder();
+        text.Append(KindLabel(payload.Kind));
+        text.Append(" volume ");
+        text.Append(payload.VolumeName);
+        text.Append('\n');
+        text.Append("Directory: ");
+        text.Append(payload.Path);
+        text.Append('\n');
+        if (payload.Entries.Count == 0)
+        {
+            text.Append("(empty)");
+            text.Append('\n');
+        }
+        else
+        {
+            foreach (var entry in payload.Entries)
+            {
+                text.Append(entry.Locked ? '*' : ' ');
+                text.Append(entry.Directory ? 'D' : ' ');
+                text.Append(entry.FileType.PadRight(4));
+                text.Append(entry.EofBytes.ToString(CultureInfo.InvariantCulture).PadLeft(8));
+                text.Append("  ");
+                text.Append(entry.DisplayName);
+                text.Append('\n');
+            }
+        }
+
+        text.Append('\n');
+        AppendAllocation(text, payload);
+        return text.ToString();
+    }
+
+    private static void AppendAllocation(StringBuilder text, DiskCatalogPayload payload)
+    {
+        var label = payload.Unit == "sector" ? "SECTORS" : "BLOCKS";
+        text.Append(label);
+        text.Append(" FREE: ");
+        text.Append(payload.FreeUnits.ToString(CultureInfo.InvariantCulture));
+        text.Append("     ");
+        text.Append(label);
+        text.Append(" USED: ");
+        text.Append(payload.UsedUnits.ToString(CultureInfo.InvariantCulture));
+        text.Append("     TOTAL ");
+        text.Append(label);
+        text.Append(": ");
+        text.Append(payload.TotalUnits.ToString(CultureInfo.InvariantCulture));
+        text.Append('\n');
+    }
+
+    private static DiskCatalogTimestamp? ToTimestamp(ProdosTimestamp stamp) =>
+        stamp.HasDate
+            ? new DiskCatalogTimestamp(stamp.Year, stamp.Month, stamp.Day, stamp.Hour, stamp.Minute)
+            : null;
+
+    private static string FormatStamp(DiskCatalogTimestamp? stamp) =>
+        stamp is null
+            ? "<NO DATE>"
+            : ProdosTimestamp.FormatCatalog(stamp.Year, stamp.Month, stamp.Day, stamp.Hour, stamp.Minute);
+
+    private static string FitLeft(string value, int width) =>
+        value.Length >= width ? value : value.PadRight(width);
+
+    private static string FitRight(int value, int width)
+    {
+        var text = value.ToString(CultureInfo.InvariantCulture);
+        return text.Length >= width ? text : text.PadLeft(width);
+    }
 
     private static bool TryBindSource(Verb verb, string? image, List<string> positionals, out string? slotDrive, out string? path, out string? error)
     {
@@ -928,7 +1091,7 @@ internal static class DiskFileSystemSupport
     private static string FileTypeLabel(AppleFileSystemKind kind, FileEntry entry) => kind switch
     {
         AppleFileSystemKind.Dos33 => DosLabel(entry.FileType),
-        AppleFileSystemKind.Prodos => ProdosLabel(entry.FileType),
+        AppleFileSystemKind.Prodos => ProdosFileTypes.CatalogName(entry.FileType),
         AppleFileSystemKind.Pascal => PascalLabel(entry.FileType),
         _ => entry.FileType.ToString("X2", CultureInfo.InvariantCulture),
     };
@@ -949,16 +1112,6 @@ internal static class DiskFileSystemSupport
             _ => fileType.ToString("X2", CultureInfo.InvariantCulture),
         };
     }
-
-    private static string ProdosLabel(byte fileType) => fileType switch
-    {
-        (byte)ProdosFileType.Text => "TXT",
-        (byte)ProdosFileType.Binary => "BIN",
-        (byte)ProdosFileType.Directory => "DIR",
-        (byte)ProdosFileType.Applesoft => "BAS",
-        (byte)ProdosFileType.Sys => "SYS",
-        _ => fileType.ToString("X2", CultureInfo.InvariantCulture),
-    };
 
     private static string PascalLabel(byte fileType)
     {

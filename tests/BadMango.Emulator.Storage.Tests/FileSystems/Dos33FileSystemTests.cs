@@ -912,6 +912,41 @@ public class Dos33FileSystemTests
         });
     }
 
+    /// <summary>Free, used, and total sectors come from the VTOC bitmap, not the sum of catalog sector counts.</summary>
+    [Test]
+    public void Allocation_MatchesTheVtocBitmap()
+    {
+        var builder = new Dos33ImageBuilder(35, 254);
+        builder.AddFile("NOTE", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0x11 } });
+        builder.AddFile("CODE", Dos33FileType.Binary, true, false, new byte[]?[] { new byte[] { 0x00, 0x08, 0x01, 0x00, 0x22 } });
+        var fixture = builder.Build();
+        var fs = Open(fixture);
+        var vtocAt = ((Dos33Layout.VtocTrack * Dos33Layout.DefaultSectorsPerTrack) + Dos33Layout.VtocSector) * Dos33Layout.SectorSize;
+        var vtoc = fixture.Image.Span.Slice(vtocAt, Dos33Layout.SectorSize);
+        var total = fixture.TrackCount * Dos33Layout.DefaultSectorsPerTrack;
+        var free = 0;
+        for (var track = 0; track < fixture.TrackCount; track++)
+        {
+            for (var sector = 0; sector < Dos33Layout.DefaultSectorsPerTrack; sector++)
+            {
+                if (Dos33Layout.IsSectorFree(vtoc, track, sector))
+                {
+                    free++;
+                }
+            }
+        }
+
+        var summed = fs.ListDirectory(null).Entries.Sum(entry => entry.AllocatedUnits);
+        Assert.Multiple(() =>
+        {
+            Assert.That(fs.Allocation.FreeUnits, Is.EqualTo(free));
+            Assert.That(fs.Allocation.UsedUnits, Is.EqualTo(total - free));
+            Assert.That(fs.Allocation.TotalUnits, Is.EqualTo(total));
+            Assert.That(free, Is.GreaterThan(0));
+            Assert.That(fs.Allocation.UsedUnits, Is.Not.EqualTo(summed));
+        });
+    }
+
     private static void AssertLogical(Dos33FileSystem fs, Dos33Fixture fixture, string name, byte[] expected)
     {
         var entry = fixture.Entries.Single(item => item.Name == name);

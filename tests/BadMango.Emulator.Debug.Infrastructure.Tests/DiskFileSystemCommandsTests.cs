@@ -4,11 +4,13 @@
 
 namespace BadMango.Emulator.Debug.Infrastructure.Tests;
 
+using System.Globalization;
 using System.Text.Json;
 
 using Autofac;
 
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure.Commands.DeviceCommands;
 using BadMango.Emulator.Storage.FileSystems;
 using BadMango.Emulator.Storage.Formats;
@@ -314,6 +316,224 @@ public sealed class DiskFileSystemCommandsTests
             Assert.That(result.Success, Is.True, result.Message);
             Assert.That(this.output.ToString(), Does.Contain("NOTE.TEXT"));
             Assert.That(this.output.ToString(), Does.Contain("Pascal volume PASCAL"));
+            Assert.That(this.output.ToString(), Does.Contain("BLOCKS FREE: 1     BLOCKS USED: 7     TOTAL BLOCKS: 8"));
+        });
+    }
+
+    /// <summary>
+    /// A ProDOS catalog uses named types, dates, aux type, and bitmap totals.
+    /// </summary>
+    [Test]
+    public void Cat_ProdosImage_PrintsCatalogColumnsAndBitmapFooter()
+    {
+        var builder = new ProdosImageBuilder(ProdosLayout.StandardFloppyBlocks, "SAMPLE");
+        var february = ProdosTimestamp.Encode(18, 2, 13, 9, 9);
+        var december = ProdosTimestamp.Encode(23, 12, 30, 2, 43);
+        builder.AddSeedling("VIEW.README", ProdosFileType.Applesoft, 0x0801, new byte[512], false);
+        builder.SetDates(february, february);
+        builder.AddSeedling("BITSY.BOOT", ProdosFileType.Sys, 0, new byte[365], false);
+        builder.SetDates(february, february);
+        builder.AddSeedling("BASIC.SYSTEM", ProdosFileType.Sys, 0, new byte[21], false);
+        builder.SetDates(december, december);
+        builder.AddSeedling("CD.EXT", ProdosFileType.Text, 0, new byte[10], false);
+        builder.SetFileType(0xF1);
+        builder.SetDates(february, february);
+        builder.AddSeedling("FASTDSK", ProdosFileType.Binary, 0x8E00, new byte[19], false);
+        builder.SetDates(february, february);
+        builder.AddSeedling("NODATE", ProdosFileType.Text, 0, new byte[] { 1 }, false);
+        builder.AddSeedling("LOCKED", ProdosFileType.Binary, 0, new byte[] { 1 }, true);
+        foreach (var named in new (byte Type, string Name)[]
+        {
+            (0x01, "BAD"),
+            (0x19, "ADB"),
+            (0x1A, "AWP"),
+            (0x1B, "ASP"),
+            (0xB3, "S16"),
+            (0xEF, "PAS"),
+            (0xF0, "CMD"),
+            (0xFA, "INT"),
+            (0xFB, "IVR"),
+            (0xFD, "VAR"),
+            (0xFE, "REL"),
+        })
+        {
+            builder.AddSeedling(named.Name, ProdosFileType.Text, 0, new byte[] { 1 }, false);
+            builder.SetFileType(named.Type);
+        }
+
+        var fixture = builder.Build();
+        var path = this.Write(fixture.Image, "catalog.hdv");
+        var text = this.catalog.Execute(this.context, ["--image", path]);
+        var textOutput = this.output.ToString();
+        this.ClearOutput();
+        var json = this.catalog.Execute(this.context, ["--image", path, "--json"]);
+        using var document = JsonDocument.Parse(this.output.ToString());
+        var payload = document.RootElement.GetProperty("payload");
+        var readme = payload.GetProperty("entries").EnumerateArray().Single(entry => entry.GetProperty("name").GetString() == "VIEW.README");
+        var nodate = payload.GetProperty("entries").EnumerateArray().Single(entry => entry.GetProperty("name").GetString() == "NODATE");
+        var custom = payload.GetProperty("entries").EnumerateArray().Single(entry => entry.GetProperty("name").GetString() == "CD.EXT");
+        var free = 0;
+        var bitmapAt = ProdosLayout.BitmapPointer(fixture.BlockCount) * ProdosLayout.BlockSize;
+        var bitmap = fixture.Image.Span.Slice(bitmapAt, ProdosLayout.BitmapBlockCount(fixture.BlockCount) * ProdosLayout.BlockSize);
+        for (var block = 0; block < fixture.BlockCount; block++)
+        {
+            if (ProdosLayout.IsBlockFree(bitmap, block))
+            {
+                free++;
+            }
+        }
+
+        var footer = string.Format(
+            CultureInfo.InvariantCulture,
+            "BLOCKS FREE: {0}     BLOCKS USED: {1}     TOTAL BLOCKS: {2}",
+            free,
+            fixture.BlockCount - free,
+            fixture.BlockCount);
+        Assert.Multiple(() =>
+        {
+            Assert.That(text.Success, Is.True, text.Message);
+            Assert.That(textOutput, Does.Contain("IMAGE " + path));
+            Assert.That(textOutput, Does.Contain("/SAMPLE"));
+            Assert.That(textOutput, Does.Contain(" NAME            TYPE  BLKS  MODIFIED         CREATED          ENDFILE SUBTYPE"));
+            Assert.That(textOutput, Does.Contain(" VIEW.README     BAS      1  13-FEB-18  9:09  13-FEB-18  9:09      512 A=$0801"));
+            Assert.That(textOutput, Does.Contain(" BITSY.BOOT      SYS      1  13-FEB-18  9:09  13-FEB-18  9:09      365"));
+            Assert.That(textOutput, Does.Contain(" BASIC.SYSTEM    SYS      1  30-DEC-23  2:43  30-DEC-23  2:43       21"));
+            Assert.That(textOutput, Does.Contain(" CD.EXT          $F1      1  13-FEB-18  9:09  13-FEB-18  9:09       10"));
+            Assert.That(textOutput, Does.Contain(" FASTDSK         BIN      1  13-FEB-18  9:09  13-FEB-18  9:09       19 A=$8E00"));
+            Assert.That(textOutput, Does.Contain(" NODATE          TXT      1  <NO DATE>        <NO DATE>              1"));
+            Assert.That(textOutput, Does.Contain("*LOCKED          BIN      1  <NO DATE>        <NO DATE>              1"));
+            Assert.That(textOutput, Does.Contain(" BAD             BAD      1  <NO DATE>        <NO DATE>              1"));
+            Assert.That(textOutput, Does.Contain(" ADB             ADB      1"));
+            Assert.That(textOutput, Does.Contain(" AWP             AWP      1"));
+            Assert.That(textOutput, Does.Contain(" ASP             ASP      1"));
+            Assert.That(textOutput, Does.Contain(" S16             S16      1"));
+            Assert.That(textOutput, Does.Contain(" PAS             PAS      1"));
+            Assert.That(textOutput, Does.Contain(" CMD             CMD      1"));
+            Assert.That(textOutput, Does.Contain(" INT             INT      1"));
+            Assert.That(textOutput, Does.Contain(" IVR             IVR      1"));
+            Assert.That(textOutput, Does.Contain(" VAR             VAR      1"));
+            Assert.That(textOutput, Does.Contain(" REL             REL      1"));
+            Assert.That(textOutput, Does.Not.Contain("A=$0000"));
+            Assert.That(textOutput, Does.Contain(footer));
+            Assert.That(textOutput.TrimEnd(), Does.EndWith(footer));
+            Assert.That(json.Success, Is.True, json.Message);
+            Assert.That(readme.GetProperty("fileType").GetString(), Is.EqualTo("BAS"));
+            Assert.That(readme.GetProperty("auxType").GetInt32(), Is.EqualTo(0x0801));
+            Assert.That(readme.GetProperty("eofBytes").GetInt32(), Is.EqualTo(512));
+            Assert.That(readme.GetProperty("allocatedUnits").GetInt32(), Is.EqualTo(1));
+            Assert.That(readme.GetProperty("created").GetProperty("year").GetInt32(), Is.EqualTo(2018));
+            Assert.That(readme.GetProperty("created").GetProperty("month").GetInt32(), Is.EqualTo(2));
+            Assert.That(readme.GetProperty("created").GetProperty("day").GetInt32(), Is.EqualTo(13));
+            Assert.That(readme.GetProperty("created").GetProperty("hour").GetInt32(), Is.EqualTo(9));
+            Assert.That(readme.GetProperty("created").GetProperty("minute").GetInt32(), Is.EqualTo(9));
+            Assert.That(readme.GetProperty("modified").GetProperty("year").GetInt32(), Is.EqualTo(2018));
+            Assert.That(nodate.GetProperty("created").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(nodate.GetProperty("modified").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(custom.GetProperty("fileType").GetString(), Is.EqualTo("$F1"));
+            Assert.That(payload.GetProperty("freeUnits").GetInt32(), Is.EqualTo(free));
+            Assert.That(payload.GetProperty("usedUnits").GetInt32(), Is.EqualTo(fixture.BlockCount - free));
+            Assert.That(payload.GetProperty("totalUnits").GetInt32(), Is.EqualTo(fixture.BlockCount));
+            Assert.That(payload.GetProperty("unit").GetString(), Is.EqualTo("block"));
+        });
+    }
+
+    /// <summary>A DOS 3.3 catalog keeps type letters and takes its footer from the VTOC bitmap.</summary>
+    [Test]
+    public void Cat_DosImage_PrintsTypeLettersAndSectorFooter()
+    {
+        var builder = new Dos33ImageBuilder(35, 254);
+        builder.AddFile("NOTE", Dos33FileType.Text, false, false, new byte[]?[] { new byte[] { 0xC8 } });
+        builder.AddFile("CODE", Dos33FileType.Binary, true, false, new byte[]?[] { new byte[] { 0x00, 0x08, 0x01, 0x00, 0x22 } });
+        var fixture = builder.Build();
+        var path = this.Write(fixture.Image, "catalog.do");
+        var text = this.catalog.Execute(this.context, ["--image", path]);
+        var textOutput = this.output.ToString();
+        this.ClearOutput();
+        var json = this.catalog.Execute(this.context, ["--image", path, "--json"]);
+        using var document = JsonDocument.Parse(this.output.ToString());
+        var payload = document.RootElement.GetProperty("payload");
+        var note = payload.GetProperty("entries").EnumerateArray().Single(entry => entry.GetProperty("name").GetString() == "NOTE");
+        var vtocAt = ((Dos33Layout.VtocTrack * Dos33Layout.DefaultSectorsPerTrack) + Dos33Layout.VtocSector) * Dos33Layout.SectorSize;
+        var vtoc = fixture.Image.Span.Slice(vtocAt, Dos33Layout.SectorSize);
+        var total = fixture.TrackCount * Dos33Layout.DefaultSectorsPerTrack;
+        var free = 0;
+        for (var track = 0; track < fixture.TrackCount; track++)
+        {
+            for (var sector = 0; sector < Dos33Layout.DefaultSectorsPerTrack; sector++)
+            {
+                if (Dos33Layout.IsSectorFree(vtoc, track, sector))
+                {
+                    free++;
+                }
+            }
+        }
+
+        var footer = string.Format(
+            CultureInfo.InvariantCulture,
+            "SECTORS FREE: {0}     SECTORS USED: {1}     TOTAL SECTORS: {2}",
+            free,
+            total - free,
+            total);
+        Assert.Multiple(() =>
+        {
+            Assert.That(text.Success, Is.True, text.Message);
+            Assert.That(textOutput, Does.Contain("DISK VOLUME 254"));
+            Assert.That(textOutput, Does.Contain(" T "));
+            Assert.That(textOutput, Does.Contain("NOTE"));
+            Assert.That(textOutput, Does.Contain("*B "));
+            Assert.That(textOutput, Does.Contain("CODE"));
+            Assert.That(textOutput, Does.Not.Contain("MODIFIED"));
+            Assert.That(textOutput, Does.Contain(footer));
+            Assert.That(json.Success, Is.True, json.Message);
+            Assert.That(note.GetProperty("fileType").GetString(), Is.EqualTo("T"));
+            Assert.That(note.GetProperty("created").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(payload.GetProperty("freeUnits").GetInt32(), Is.EqualTo(free));
+            Assert.That(payload.GetProperty("usedUnits").GetInt32(), Is.EqualTo(total - free));
+            Assert.That(payload.GetProperty("totalUnits").GetInt32(), Is.EqualTo(total));
+            Assert.That(payload.GetProperty("unit").GetString(), Is.EqualTo("sector"));
+        });
+    }
+
+    /// <summary>A mounted-drive banner names the slot and drive.</summary>
+    [Test]
+    public void FormatCatalog_ProdosDrive_UsesSlotAndDrive()
+    {
+        var created = new DiskCatalogTimestamp(2018, 2, 13, 9, 9);
+        var payload = new DiskCatalogPayload(
+            "drive",
+            "6:1",
+            nameof(AppleFileSystemKind.Prodos),
+            "PRODOS.2.4.3",
+            "/",
+            [
+                new DiskCatalogEntryPayload(
+                    "VIEW.README",
+                    "VIEW.README",
+                    "VIEW.README",
+                    "BAS",
+                    0xFC,
+                    0x0801,
+                    512,
+                    1,
+                    false,
+                    false,
+                    created,
+                    created),
+            ],
+            123,
+            157,
+            280,
+            "block");
+
+        var text = DiskFileSystemSupport.FormatCatalog(payload);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("CATALOG DISK"));
+            Assert.That(text, Does.Contain("SLOT 6  DRIVE 1"));
+            Assert.That(text, Does.Contain("/PRODOS.2.4.3"));
+            Assert.That(text, Does.Contain(" VIEW.README     BAS      1  13-FEB-18  9:09  13-FEB-18  9:09      512 A=$0801"));
+            Assert.That(text, Does.Contain("BLOCKS FREE: 123     BLOCKS USED: 157     TOTAL BLOCKS: 280"));
         });
     }
 
@@ -647,7 +867,8 @@ public sealed class DiskFileSystemCommandsTests
         {
             Assert.That(prodosCat.Success, Is.True, prodosCat.Message);
             Assert.That(prodosOutput, Does.Contain("NOTE"));
-            Assert.That(prodosOutput, Does.Contain("ProDOS"));
+            Assert.That(prodosOutput, Does.Contain("SLOT 6  DRIVE 1"));
+            Assert.That(prodosOutput, Does.Contain("/BLANK/SUB"));
             Assert.That(pascalRead.Success, Is.True, pascalRead.Message);
             Assert.That(this.output.ToString(), Does.Contain("Hi"));
             Assert.That(this.output.ToString(), Does.Contain("Pascal"));

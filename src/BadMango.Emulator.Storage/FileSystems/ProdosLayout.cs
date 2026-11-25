@@ -187,6 +187,30 @@ public static class ProdosLayout
     }
 
     /// <summary>
+    /// Counts free and used blocks from a volume bitmap.
+    /// </summary>
+    /// <param name="bitmap">The volume bitmap bytes, not the whole disk image.</param>
+    /// <param name="totalBlocks">Blocks named by the volume header. Each one is tested.</param>
+    /// <returns>
+    /// Free blocks are those whose bitmap bit is set. Used is <paramref name="totalBlocks"/> minus free.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException">If <paramref name="totalBlocks"/> is negative or a bit falls outside <paramref name="bitmap"/>.</exception>
+    public static VolumeSpace CountFreeBlocks(ReadOnlySpan<byte> bitmap, int totalBlocks)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(totalBlocks);
+        var free = 0;
+        for (var block = 0; block < totalBlocks; block++)
+        {
+            if (IsBlockFree(bitmap, block))
+            {
+                free++;
+            }
+        }
+
+        return new VolumeSpace(free, totalBlocks - free, totalBlocks);
+    }
+
+    /// <summary>
     /// Returns whether <paramref name="name"/> is a legal on-disk ProDOS name.
     /// </summary>
     /// <param name="name">Uppercase name bytes, without the length nibble.</param>
@@ -308,11 +332,23 @@ public static class ProdosLayout
         /// <summary>Offset of the 24-bit end-of-file.</summary>
         public const int EofOffset = 0x15;
 
+        /// <summary>Offset of the little-endian creation date.</summary>
+        public const int CreationDateOffset = 0x18;
+
+        /// <summary>Offset of the little-endian creation time. It follows <see cref="CreationDateOffset"/>.</summary>
+        public const int CreationTimeOffset = 0x1A;
+
         /// <summary>Offset of the access byte. Headers use the same entry-relative offset.</summary>
         public const int AccessOffset = 0x1E;
 
         /// <summary>Offset of the little-endian auxiliary type.</summary>
         public const int AuxTypeOffset = 0x1F;
+
+        /// <summary>Offset of the little-endian modification date.</summary>
+        public const int ModificationDateOffset = 0x21;
+
+        /// <summary>Offset of the little-endian modification time. It follows <see cref="ModificationDateOffset"/>.</summary>
+        public const int ModificationTimeOffset = 0x23;
 
         /// <summary>Offset of the directory key block that contains the entry.</summary>
         public const int HeaderPointerOffset = 0x25;

@@ -63,6 +63,12 @@ namespace BadMango.Emulator.Storage.FileSystems;
 /// <see cref="InvalidOperationException"/>, <see cref="IOException"/>, or
 /// <see cref="ObjectDisposedException"/> from the sector or block reader.
 /// </para>
+/// <para>
+/// <see cref="Allocation"/> is the volume bitmap, not the sum of catalog allocation counts.
+/// ProDOS counts blocks <c>0 .. total-1</c> in the volume bitmap (a set bit is free) against
+/// the header total. DOS 3.3 counts every sector in the VTOC bitmap. Pascal counts directory
+/// blocks plus each file's block span, and treats a gap between files as free.
+/// </para>
 /// </remarks>
 public interface IAppleFileSystem
 {
@@ -79,6 +85,15 @@ public interface IAppleFileSystem
     /// </summary>
     /// <value>The file system the reader opened.</value>
     AppleFileSystemKind Kind { get; }
+
+    /// <summary>
+    /// Gets free, used, and total allocation units.
+    /// </summary>
+    /// <value>
+    /// ProDOS blocks from the volume bitmap, DOS 3.3 sectors from the VTOC bitmap,
+    /// or Pascal blocks from the directory and the file spans.
+    /// </value>
+    VolumeSpace Allocation { get; }
 
     /// <summary>
     /// Lists one directory.

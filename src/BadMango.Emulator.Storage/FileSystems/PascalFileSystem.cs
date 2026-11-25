@@ -90,6 +90,7 @@ public sealed class PascalFileSystem : IAppleFileSystem
         this.VolumeName = ReadName(directory.Slice(PascalLayout.VolumeHeader.NameOffset, PascalLayout.VolumeHeader.NameCapacity + 1));
         this.files = ParseFiles(directory, blocks.BlockCount, out var error);
         this.catalogError = error;
+        this.Allocation = CountAllocation(directory, blocks.BlockCount, this.files);
         if (this.catalogError is null)
         {
             this.logger.Information(
@@ -112,6 +113,9 @@ public sealed class PascalFileSystem : IAppleFileSystem
 
     /// <inheritdoc />
     public AppleFileSystemKind Kind => AppleFileSystemKind.Pascal;
+
+    /// <inheritdoc />
+    public VolumeSpace Allocation { get; }
 
     /// <inheritdoc />
     public DirectoryListing ListDirectory(string? path)
@@ -368,6 +372,22 @@ public sealed class PascalFileSystem : IAppleFileSystem
         }
 
         return new string(chars);
+    }
+
+    private static VolumeSpace CountAllocation(ReadOnlySpan<byte> directory, int blockCount, CatalogFile[] catalog)
+    {
+        var used = ReadU16(directory, PascalLayout.VolumeHeader.NextBlockOffset);
+        for (var i = 0; i < catalog.Length; i++)
+        {
+            used += catalog[i].EndBlock - catalog[i].StartBlock;
+        }
+
+        if ((uint)used > (uint)blockCount)
+        {
+            used = blockCount;
+        }
+
+        return new VolumeSpace(blockCount - used, used, blockCount);
     }
 
     private static int ReadU16(ReadOnlySpan<byte> data, int offset) => data[offset] | (data[offset + 1] << 8);
