@@ -5,7 +5,6 @@
 namespace BadMango.Emulator.Devices;
 
 using BadMango.Emulator.Bus;
-using BadMango.Emulator.Bus.Interfaces;
 
 /// <summary>
 /// Extension methods for <see cref="MachineBuilder"/> providing Language Card support.
@@ -60,39 +59,6 @@ public static class LanguageCardExtensions
 
                 // Configure memory during the memory configuration phase.
                 // This sets up the required layers and swap groups BEFORE device.Initialize() is called.
-                b.ConfigureMemory((bus, registry) =>
-                {
-                    device.ConfigureMemory(bus, registry);
-                });
-
-                return device;
-            });
-        }
-
-        /// <summary>
-        /// Registers the Language Card device factory for profile-based loading.
-        /// </summary>
-        /// <param name="romTargetFactory">
-        /// Legacy parameter for backward compatibility. This parameter is ignored;
-        /// the Language Card now uses layer deactivation to show ROM instead of a
-        /// passthrough variant.
-        /// </param>
-        /// <returns>This builder instance for method chaining.</returns>
-        /// <remarks>
-        /// <para>
-        /// This overload is provided for backward compatibility with existing code
-        /// that passes a ROM target factory. The factory parameter is ignored.
-        /// </para>
-        /// </remarks>
-        [Obsolete("Use RegisterLanguageCardFactory() instead. The romTargetFactory parameter is no longer used.")]
-        public MachineBuilder RegisterLanguageCardFactory(Func<MachineBuilder, IBusTarget> romTargetFactory)
-        {
-            // Ignore romTargetFactory - we now use layer deactivation instead
-            return builder.RegisterMotherboardDeviceFactory("languagecard", b =>
-            {
-                var device = new LanguageCardDevice();
-
-                // Configure memory during the memory configuration phase.
                 b.ConfigureMemory((bus, registry) =>
                 {
                     device.ConfigureMemory(bus, registry);

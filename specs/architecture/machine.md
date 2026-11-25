@@ -139,13 +139,6 @@ when #562 folds Bus and Emulation into Core. The Systems source path does not mo
 > `MachineProfileSerializerTests`); target: `tests/BadMango.Emulator.Core.Tests`
 > (namespace unchanged). Systems does not gain a test project.
 
-> **Pending removal (#563):** `WithMinimalCompositeIOHandler` on
-> `Pocket2eMachineBuilderExtensions`, and
-> `RegisterLanguageCardFactory(Func<MachineBuilder, IBusTarget>)`. Both are
-> obsolete and have no callers. Intended removal. They are not the construction
-> API. `RegisterCompositeIOHandler` and the parameterless
-> `RegisterLanguageCardFactory` are the methods the profile path calls.
-
 > **Conditional removal (#566):** `IBringUpHandler`, `BringUpHandlerBase`,
 > `IBringUpResult`, `BringUpResult`, `BringUpValidationResult`,
 > `IProvisioningBundle`, `ProvisioningBundle`, `IMachineConstants`, and
