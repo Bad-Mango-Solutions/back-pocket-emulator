@@ -10,7 +10,6 @@ using System.Globalization;
 using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
-using BadMango.Emulator.Storage.FileSystems;
 
 using Microsoft.Extensions.Options;
 
@@ -221,7 +220,7 @@ public sealed class IoTools
                 return this.Fail("disk_read_file", error ?? "Cannot read the file system.");
             }
 
-            ReadOnlyMemory<byte> bytes = PresentedBytes(file, raw);
+            ReadOnlyMemory<byte> bytes = DiskFileSystemReader.PresentedBytes(file, raw);
             int cap = this.options.Value.MaxDiskFileBytes;
             if (bytes.Length > cap)
             {
@@ -246,17 +245,6 @@ public sealed class IoTools
         {
             return this.Fail("disk_read_file", ex.Message, ex);
         }
-    }
-
-    private static ReadOnlyMemory<byte> PresentedBytes(DiskVolumeFile file, bool raw)
-    {
-        if (raw || !file.LogicalText || file.Kind != nameof(AppleFileSystemKind.Dos33))
-        {
-            return file.Data;
-        }
-
-        int zero = file.Data.Span.IndexOf((byte)0);
-        return zero < 0 ? file.Data : file.Data[..zero];
     }
 
     private static bool TrySlotDrive(int? slot, int? drive, out string? slotDrive, out string? error)

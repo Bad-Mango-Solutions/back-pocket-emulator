@@ -353,6 +353,166 @@ public sealed class DiskFileSystemCommandsTests
         });
     }
 
+    /// <summary>
+    /// Logical DOS 3.3 text stops at the first <c>$00</c> for text, hex, JSON, and <c>--to</c>.
+    /// <c>--raw</c> keeps the last-sector padding, and a sector with no <c>$00</c> stays whole.
+    /// </summary>
+    [Test]
+    public void Read_DosText_StopsAtFirstZero()
+    {
+        var builder = new Dos33ImageBuilder(35, 254);
+        builder.AddFile(
+            "NOTE",
+            Dos33FileType.Text,
+            false,
+            false,
+            new byte[]?[] { new byte[] { 0xC8, 0xC9, 0x8D, 0x00, 0xD4, 0xC8, 0xC5, 0xD2, 0xC5 } });
+        var full = new byte[Dos33Layout.SectorSize];
+        Array.Fill(full, (byte)0xC1);
+        builder.AddFile("FULL", Dos33FileType.Text, false, false, new byte[]?[] { full });
+        var path = this.Write(builder.Build().Image, "text.do");
+        var presented = new byte[] { 0xC8, 0xC9, 0x8D };
+
+        var printed = this.read.Execute(this.context, ["--image", path, "NOTE"]);
+        var printedOutput = this.output.ToString();
+        this.ClearOutput();
+        var hex = this.read.Execute(this.context, ["--image", path, "NOTE", "--hex"]);
+        var hexOutput = this.output.ToString();
+        this.ClearOutput();
+        var json = this.read.Execute(this.context, ["--image", path, "NOTE", "--json", "--to", "note.bin"]);
+        using var document = JsonDocument.Parse(this.output.ToString());
+        var exported = File.ReadAllBytes(Path.Join(this.exportRoot, "note.bin"));
+        this.ClearOutput();
+        var raw = this.read.Execute(this.context, ["--image", path, "NOTE", "--raw", "--json", "--to", "note.raw"]);
+        using var rawDocument = JsonDocument.Parse(this.output.ToString());
+        var rawExported = File.ReadAllBytes(Path.Join(this.exportRoot, "note.raw"));
+        this.ClearOutput();
+        var fullRead = this.read.Execute(this.context, ["--image", path, "FULL", "--json"]);
+        using var fullDocument = JsonDocument.Parse(this.output.ToString());
+        var payload = document.RootElement.GetProperty("payload");
+        var rawPayload = rawDocument.RootElement.GetProperty("payload");
+        var fullPayload = fullDocument.RootElement.GetProperty("payload");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(printed.Success, Is.True, printed.Message);
+            Assert.That(printedOutput, Does.Contain("HI\n"));
+            Assert.That(printedOutput, Does.Contain("logical 3 bytes"));
+            Assert.That(printedOutput, Does.Not.Contain("\\x00"));
+            Assert.That(printedOutput, Does.Not.Contain("THERE"));
+            Assert.That(hex.Success, Is.True, hex.Message);
+            Assert.That(hexOutput, Does.Contain("0000: C8 C9 8D\n"));
+            Assert.That(hexOutput, Does.Not.Contain("0010:"));
+            Assert.That(hexOutput, Does.Not.Contain("D4"));
+            Assert.That(json.Success, Is.True, json.Message);
+            Assert.That(payload.GetProperty("view").GetString(), Is.EqualTo("logical"));
+            Assert.That(payload.GetProperty("length").GetInt32(), Is.EqualTo(presented.Length));
+            Assert.That(payload.GetProperty("data").GetString(), Is.EqualTo(Convert.ToHexStringLower(presented)));
+            Assert.That(payload.GetProperty("text").GetString(), Is.EqualTo("HI\n"));
+            Assert.That(exported, Is.EqualTo(presented));
+            Assert.That(raw.Success, Is.True, raw.Message);
+            Assert.That(rawPayload.GetProperty("view").GetString(), Is.EqualTo("raw"));
+            Assert.That(rawPayload.GetProperty("length").GetInt32(), Is.EqualTo(Dos33Layout.SectorSize));
+            Assert.That(rawPayload.GetProperty("data").GetString(), Does.StartWith("c8c98d00d4c8c5d2c5"));
+            Assert.That(rawExported, Has.Length.EqualTo(Dos33Layout.SectorSize));
+            Assert.That(rawExported[3], Is.EqualTo(0));
+            Assert.That(rawExported[^1], Is.EqualTo(0));
+            Assert.That(fullRead.Success, Is.True, fullRead.Message);
+            Assert.That(fullPayload.GetProperty("length").GetInt32(), Is.EqualTo(Dos33Layout.SectorSize));
+            Assert.That(this.read.DetailedDescription, Does.Contain("first $00").And.Contain("last-sector padding"));
+            Assert.That(this.read.Options.Single(option => option.Name == "--raw").Description, Does.Contain("padding"));
+            Assert.That(this.read.Options.Single(option => option.Name == "--logical").Description, Does.Contain("$00"));
+        });
+    }
+
+    /// <summary>
+    /// Logical DOS binary, Applesoft, and Integer reads match the header length word.
+    /// <c>--raw</c> keeps the header and the last-sector pad.
+    /// </summary>
+    [Test]
+    public void Read_DosHeaderedFiles_MatchTheLengthWord()
+    {
+        var builder = new Dos33ImageBuilder(35, 254);
+        builder.AddFile("BIN", Dos33FileType.Binary, false, false, new byte[]?[] { PaddedSector(new byte[] { 0x00, 0x08, 0x02, 0x00, 0x11, 0x22 }, 0xFF) });
+        builder.AddFile("BAS", Dos33FileType.Applesoft, false, false, new byte[]?[] { PaddedSector(new byte[] { 0x03, 0x00, 0x01, 0x02, 0x03 }, 0xEE) });
+        builder.AddFile("INT", Dos33FileType.Integer, false, false, new byte[]?[] { PaddedSector(new byte[] { 0x01, 0x00, 0x42 }, 0xDD) });
+        var path = this.Write(builder.Build().Image, "headers.do");
+
+        var binary = this.ReadFileBytes(path, "BIN", raw: false);
+        var binaryRaw = this.ReadFileBytes(path, "BIN", raw: true);
+        var basic = this.ReadFileBytes(path, "BAS", raw: false);
+        var basicRaw = this.ReadFileBytes(path, "BAS", raw: true);
+        var integer = this.ReadFileBytes(path, "INT", raw: false);
+        var integerRaw = this.ReadFileBytes(path, "INT", raw: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(binary, Is.EqualTo(new byte[] { 0x11, 0x22 }));
+            Assert.That(binaryRaw, Has.Length.EqualTo(Dos33Layout.SectorSize));
+            Assert.That(binaryRaw.AsSpan(0, 6).ToArray(), Is.EqualTo(new byte[] { 0x00, 0x08, 0x02, 0x00, 0x11, 0x22 }));
+            Assert.That(binaryRaw[6], Is.EqualTo(0xFF));
+            Assert.That(basic, Is.EqualTo(new byte[] { 0x01, 0x02, 0x03 }));
+            Assert.That(basicRaw, Has.Length.EqualTo(Dos33Layout.SectorSize));
+            Assert.That(basicRaw[0], Is.EqualTo(0x03));
+            Assert.That(basicRaw[5], Is.EqualTo(0xEE));
+            Assert.That(integer, Is.EqualTo(new byte[] { 0x42 }));
+            Assert.That(integerRaw, Has.Length.EqualTo(Dos33Layout.SectorSize));
+            Assert.That(integerRaw[0], Is.EqualTo(0x01));
+            Assert.That(integerRaw[3], Is.EqualTo(0xDD));
+        });
+    }
+
+    /// <summary>
+    /// ProDOS and Pascal logical reads are the directory length, including zeros inside that length.
+    /// </summary>
+    [Test]
+    public void Read_ProdosAndPascal_HonorDirectoryEof()
+    {
+        var prodosBuilder = new ProdosImageBuilder(ProdosLayout.StandardFloppyBlocks, "EOFVOL");
+        var noteBytes = new byte[] { 0x48, 0x69, 0x00, 0x21 };
+        prodosBuilder.AddSeedling("NOTE", ProdosFileType.Text, 0, noteBytes, false);
+        var tail = new byte[6];
+        tail[0] = 0x10;
+        tail[5] = 0x20;
+        prodosBuilder.AddSapling("SPARSE", ProdosFileType.Binary, 0, new byte[]?[] { null, tail }, false);
+        var prodos = this.Write(prodosBuilder.Build().Image, "eof-pro.hdv");
+        var pascalBuilder = new PascalImageBuilder(8, "EOFVOL");
+        pascalBuilder.AddFile("NOTE.TEXT", PascalFileKind.Text, noteBytes);
+        pascalBuilder.AddFile("CODE.CODE", PascalFileKind.Code, new byte[] { 0x01, 0x02, 0x03 });
+        var pascal = this.Write(pascalBuilder.Build().Image, "eof-pas.hdv");
+
+        var note = this.read.Execute(this.context, ["--image", prodos, "NOTE", "--json", "--to", "note.bin"]);
+        using var noteJson = JsonDocument.Parse(this.output.ToString());
+        var noteFile = File.ReadAllBytes(Path.Join(this.exportRoot, "note.bin"));
+        this.ClearOutput();
+        var sparse = this.ReadFileBytes(prodos, "SPARSE", raw: false);
+        var pascalText = this.read.Execute(this.context, ["--image", pascal, "NOTE.TEXT", "--json"]);
+        using var pascalTextJson = JsonDocument.Parse(this.output.ToString());
+        this.ClearOutput();
+        var pascalCode = this.ReadFileBytes(pascal, "CODE.CODE", raw: true);
+        var notePayload = noteJson.RootElement.GetProperty("payload");
+        var pascalPayload = pascalTextJson.RootElement.GetProperty("payload");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(note.Success, Is.True, note.Message);
+            Assert.That(notePayload.GetProperty("length").GetInt32(), Is.EqualTo(noteBytes.Length));
+            Assert.That(notePayload.GetProperty("data").GetString(), Is.EqualTo(Convert.ToHexStringLower(noteBytes)));
+            Assert.That(notePayload.GetProperty("text").GetString(), Is.EqualTo("Hi\\x00!"));
+            Assert.That(noteFile, Is.EqualTo(noteBytes));
+            Assert.That(sparse, Has.Length.EqualTo(ProdosLayout.BlockSize + tail.Length));
+            Assert.That(sparse[0], Is.EqualTo(0));
+            Assert.That(sparse[ProdosLayout.BlockSize - 1], Is.EqualTo(0));
+            Assert.That(sparse[ProdosLayout.BlockSize], Is.EqualTo(0x10));
+            Assert.That(sparse[^1], Is.EqualTo(0x20));
+            Assert.That(pascalText.Success, Is.True, pascalText.Message);
+            Assert.That(pascalPayload.GetProperty("length").GetInt32(), Is.EqualTo(noteBytes.Length));
+            Assert.That(pascalPayload.GetProperty("data").GetString(), Is.EqualTo(Convert.ToHexStringLower(noteBytes)));
+            Assert.That(pascalPayload.GetProperty("text").GetString(), Is.EqualTo("Hi\\x00!"));
+            Assert.That(pascalCode, Is.EqualTo(new byte[] { 0x01, 0x02, 0x03 }));
+        });
+    }
+
     /// <summary>ProDOS and Pascal logical reads match the raw bytes.</summary>
     [Test]
     public void Read_ProdosAndPascal_LogicalMatchesRaw()
@@ -642,6 +802,14 @@ public sealed class DiskFileSystemCommandsTests
         }
     }
 
+    private static byte[] PaddedSector(byte[] head, byte pad)
+    {
+        var sector = new byte[Dos33Layout.SectorSize];
+        Array.Fill(sector, pad);
+        head.CopyTo(sector, 0);
+        return sector;
+    }
+
     private static bool TryLink(string link, string target, bool file)
     {
         try
@@ -661,6 +829,19 @@ public sealed class DiskFileSystemCommandsTests
         {
             return false;
         }
+    }
+
+    private byte[] ReadFileBytes(string image, string name, bool raw)
+    {
+        string[] args = raw
+            ? ["--image", image, name, "--raw", "--json"]
+            : ["--image", image, name, "--json"];
+        var result = this.read.Execute(this.context, args);
+        Assert.That(result.Success, Is.True, result.Message);
+        using var document = JsonDocument.Parse(this.output.ToString());
+        var data = Convert.FromHexString(document.RootElement.GetProperty("payload").GetProperty("data").GetString()!);
+        this.ClearOutput();
+        return data;
     }
 
     private Dos33Fixture DosVolume()
