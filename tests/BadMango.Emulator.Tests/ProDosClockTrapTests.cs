@@ -112,6 +112,82 @@ public class ProDosClockTrapTests
     }
 
     /// <summary>
+    /// Verifies that a detect-only profile observes <c>$BF00</c>, sets MACHID, and does not handle the call.
+    /// </summary>
+    [Test]
+    public void DetectOnly_MliCallSetsMachId_WithoutHandling()
+    {
+        using IMachine machine = Build(includeClock: true, detect: true, bootLog: false);
+        Power(machine);
+        ICpu cpu = machine.Cpu;
+        PlantPage(cpu, 0x60);
+        cpu.Poke8(0xBF01, 0x00);
+        cpu.Poke8(0xBF02, 0x00);
+        machine.GetComponent<IGuestOsDetector>()!.Detect();
+
+        var handled = new List<bool>();
+        machine.GetComponent<ITrapRegistryObserver>()!.TrapInvoked += (info, result, _) =>
+        {
+            if (info.Name == "ProDOS MLI")
+            {
+                handled.Add(result.Handled);
+            }
+        };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Registry(machine).HasTrap(0xBF00), Is.True);
+            Assert.That(Registry(machine).HasTrap(0xBF06), Is.True);
+            Assert.That(cpu.Peek8(MachId) & 0x01, Is.EqualTo(0));
+        });
+
+        WriteProgram(cpu, Program, 0x20, 0x00, 0xBF, 0x00);
+        cpu.SetPC(Program);
+        machine.Step();
+        machine.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handled, Is.EqualTo(new[] { false }));
+            Assert.That(cpu.GetPC(), Is.EqualTo(0x0000u), "The JMP at $BF00 still runs.");
+            Assert.That(cpu.Peek8(MachId) & 0x01, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a detect-only session sees an RTS stored at <c>$BF06</c> on the next MLI call.
+    /// </summary>
+    [Test]
+    public void DetectOnly_RtsStoreOnMliCall_InstallsTheTrap()
+    {
+        using IMachine machine = Build(includeClock: true, detect: true, bootLog: false);
+        Power(machine);
+        ICpu cpu = machine.Cpu;
+        PlantPage(cpu, 0x4C);
+        machine.GetComponent<IGuestOsDetector>()!.Detect();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Registry(machine).HasTrap(0xBF06), Is.False);
+            Assert.That(Registry(machine).HasTrap(0xBF00), Is.True);
+        });
+
+        cpu.Poke8(0xBF06, 0x60);
+        cpu.Poke8(0xBF01, 0x00);
+        cpu.Poke8(0xBF02, 0x00);
+        WriteProgram(cpu, Program, 0x20, 0x00, 0xBF, 0x00);
+        cpu.SetPC(Program);
+        machine.Step();
+        machine.Step();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Registry(machine).HasTrap(0xBF06), Is.True);
+            Assert.That(cpu.Peek8(MachId) & 0x01, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
     /// Verifies that an absent global page executes the byte at <c>$BF06</c>.
     /// </summary>
     [Test]
@@ -309,6 +385,7 @@ public class ProDosClockTrapTests
         {
             Assert.That(monitor.Stage, Is.EqualTo(GuestOsBootStage.Ready));
             Assert.That(Registry(machine).HasTrap(0xBF06), Is.True);
+            Assert.That(Registry(machine).GetTrapInfo(0xBF00)?.Name, Is.Not.EqualTo("ProDOS MLI"));
             Assert.That(cpu.Peek8(MachId) & 0x01, Is.EqualTo(0), "MACHID waits for the first MLI call.");
         });
 

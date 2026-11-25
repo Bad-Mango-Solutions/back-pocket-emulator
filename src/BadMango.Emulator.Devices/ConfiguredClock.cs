@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Devices;
 
+using System.Globalization;
+
 using BadMango.Emulator.Core.Configuration;
 
 using Interfaces;
@@ -82,10 +84,17 @@ internal sealed class ConfiguredClock : IClockSource
         {
             case "frozen":
                 useHostTime = false;
-                fixedTime = !string.IsNullOrEmpty(config.FrozenTime) &&
-                    DateTime.TryParse(config.FrozenTime, out DateTime parsedTime)
-                        ? parsedTime
-                        : DefaultFrozenTime;
+                fixedTime = DefaultFrozenTime;
+                if (!string.IsNullOrEmpty(config.FrozenTime) &&
+                    DateTime.TryParse(
+                        config.FrozenTime,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind,
+                        out DateTime parsedTime))
+                {
+                    fixedTime = parsedTime;
+                }
+
                 break;
 
             case "host":
