@@ -22,17 +22,26 @@ using KeyboardModifiers = BadMango.Emulator.Devices.KeyboardModifiers;
 /// <remarks>
 /// <para>
 /// Traps return <see cref="TrapResult.NotHandled"/> and use <see cref="TrapCategory.OperatingSystem"/>.
-/// <c>$Cn00</c> is armed for every occupied slot whose card has firmware, on reset and power-on.
+/// <c>$Cn00</c> is armed for every occupied slot whose card has firmware, on reset and power-on,
+/// with <see cref="TrapScope.Machine"/>, and stays armed after the OS is ready so the next boot is visible.
 /// <c>$0801</c> is armed after that firmware runs. Later addresses come from
-/// <see cref="IGuestOsBootProfile"/> and are removed once the boot reaches a terminal stage.
-/// A profile that lists a system-call address keeps that one trap so subscribers can see the calls.
+/// <see cref="IGuestOsBootProfile"/>. Boot-progress traps are removed once the boot reaches a terminal stage.
+/// A system-call address and <see cref="IGuestOsBootProfile.SessionTraps"/> use
+/// <see cref="TrapScope.GuestOsSession"/> and stay until the session ends.
+/// </para>
+/// <para>
+/// A cold start (power-on, hard reset, or Open Apple held when RESET releases) ends the guest OS session:
+/// <see cref="GuestOsId.None"/>, <see cref="GuestOsBootStage.Init"/>, a cleared detector cache, a fresh boot log,
+/// and every <see cref="TrapScope.GuestOsSession"/> trap unregistered. A user reboot
+/// (<see cref="BootMilestoneKind.BootDeviceSelected"/> by <c>PR#6</c>, <c>IN#6</c>, <c>C600G</c>, or any jump to
+/// <c>$Cn00</c> while a session is active) does the same, then the new boot runs. A warm reset unloads nothing.
+/// The session's traps are attached again at <see cref="GuestOsBootStage.Loader"/>, or at
+/// <see cref="GuestOsBootStage.Ready"/> when the detector publishes an OS with no milestone.
 /// </para>
 /// <para>
 /// A boot sector that matches no profile ends at <see cref="GuestOsBootStage.CustomBoot"/>.
 /// A recognized boot whose probe does not confirm the profile ends at <see cref="GuestOsBootStage.Unknown"/>.
-/// A cold reset (power-on, hard reset, or Open Apple held when RESET releases) returns the stage to
-/// <see cref="GuestOsBootStage.Init"/> and logs <see cref="BootMilestoneKind.RomInitEntered"/> first.
-/// A warm reset logs that milestone and leaves the stage where it is, until slot firmware runs.
+/// A warm reset logs <see cref="BootMilestoneKind.RomInitEntered"/> and leaves the stage where it is, until slot firmware runs.
 /// When no milestone was seen, <see cref="PublishFromDetector"/> asks <see cref="IGuestOsDetector"/>
 /// and sets <see cref="GuestOsBootStage.Ready"/> if an operating system is already in memory.
 /// </para>
@@ -53,7 +62,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
     private readonly ProfilePlan[] plans;
     private readonly List<BootMilestone> milestones = [];
     private readonly Dictionary<ushort, int> nextStep = [];
-    private readonly HashSet<ushort> ramTraps = [];
+    private readonly Dictionary<ushort, TrapScope> ramTraps = [];
     private readonly List<FirmwareTrap> firmwareTraps = [];
 
     private IMachine? machine;
@@ -70,6 +79,8 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
     private bool keyboardTrapArmed;
     private int romKeyboardPolls;
     private ushort resetVector;
+    private bool sessionActive;
+    private GuestOsId sessionOs;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BootSequenceMonitor"/> class.
@@ -100,6 +111,12 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
 
     /// <inheritdoc />
     public event EventHandler<BootMilestone>? MilestoneReached;
+
+    /// <inheritdoc />
+    public event EventHandler<GuestOsSessionEventArgs>? GuestOsSessionStarted;
+
+    /// <inheritdoc />
+    public event EventHandler<GuestOsSessionEventArgs>? GuestOsSessionEnded;
 
     /// <summary>Raised on every entry to a profile's system-call address after that trap is armed.</summary>
     public event EventHandler<GuestOsSystemCallEventArgs>? SystemCallObserved;
@@ -167,7 +184,9 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
         var info = this.detector.Detect();
         if (this.stage == GuestOsBootStage.None && this.milestones.Count == 0 && info.Id != GuestOsId.None)
         {
+            this.active = this.FindPlan(info.Id);
             this.SetStage(GuestOsBootStage.Ready);
+            this.EnsureSession(info.Id, GuestOsBootStage.Ready, armCalls: true);
         }
 
         return info;
@@ -222,11 +241,13 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
         this.resetVector = vector;
         if (cold)
         {
+            GuestOsId? ended = this.TakeSession(endCachedDetection: true);
             this.PrepareForBoot();
             this.openAppleSelection = openApple;
             this.Record(cycle, BootMilestoneKind.RomInitEntered, vector, this.DescribeInit(vector, cold: true), null);
             this.SetStage(GuestOsBootStage.Init);
             this.ArmKeyboardPoll();
+            this.RaiseSessionEnded(ended);
             return;
         }
 
@@ -314,7 +335,8 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
                 $"Boot firmware slot {capturedSlot}",
                 TrapCategory.OperatingSystem,
                 (cpu, bus, context) => this.OnFirmware(capturedSlot, cardName, cpu, bus, context),
-                "Observe-only boot firmware entry.");
+                "Observe-only boot firmware entry.",
+                TrapScope.Machine);
             this.firmwareTraps.Add(new FirmwareTrap(address, capturedSlot));
         }
     }
@@ -332,27 +354,29 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
         this.firmwareTraps.Clear();
     }
 
-    private void ArmRam(ushort address)
+    private void ArmRam(ushort address, TrapScope scope, string? name = null)
     {
-        if (this.registry is null || !this.ramTraps.Add(address))
+        if (this.registry is null || this.ramTraps.ContainsKey(address))
         {
             return;
         }
 
         var captured = address;
+        this.ramTraps.Add(captured, scope);
         this.registry.Register(
             captured,
-            $"Boot milestone ${captured:X4}",
+            name ?? $"Boot milestone ${captured:X4}",
             TrapCategory.OperatingSystem,
             (cpu, _, context) => this.Dispatch(captured, cpu, context),
-            "Observe-only boot milestone.");
+            scope == TrapScope.GuestOsSession ? "Guest OS session trap." : "Observe-only boot milestone.",
+            scope);
     }
 
     private void DisarmRam()
     {
         if (this.registry is not null)
         {
-            foreach (var address in this.ramTraps)
+            foreach (ushort address in this.ramTraps.Keys)
             {
                 this.registry.Unregister(address);
             }
@@ -369,9 +393,52 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
         }
     }
 
+    private void DisarmBootWatch()
+    {
+        var remove = new List<ushort>();
+        foreach (var pair in this.ramTraps)
+        {
+            if (pair.Value != TrapScope.Machine)
+            {
+                continue;
+            }
+
+            this.registry?.Unregister(pair.Key);
+            remove.Add(pair.Key);
+        }
+
+        foreach (ushort address in remove)
+        {
+            this.ramTraps.Remove(address);
+        }
+    }
+
+    private void ForgetSessionAddresses()
+    {
+        var remove = new List<ushort>();
+        foreach (var pair in this.ramTraps)
+        {
+            if (pair.Value == TrapScope.GuestOsSession)
+            {
+                remove.Add(pair.Key);
+            }
+        }
+
+        foreach (ushort address in remove)
+        {
+            this.ramTraps.Remove(address);
+        }
+    }
+
     private TrapResult OnFirmware(int slot, string cardName, ICpu cpu, IMemoryBus bus, IEventContext context)
     {
         var pc = cpu.GetPC();
+        string method = this.SelectMethod(cpu, bus, pc);
+        if (this.IsReboot(method))
+        {
+            this.BeginUserReboot();
+        }
+
         if (!this.deviceSelected && (this.stage == GuestOsBootStage.Init || this.warmMayBoot))
         {
             if (this.warmMayBoot && this.stage != GuestOsBootStage.Init)
@@ -379,7 +446,6 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
                 this.RestartBootWatch();
             }
 
-            string method = this.SelectMethod(cpu, bus, pc);
             this.Record(
                 context.Now,
                 BootMilestoneKind.BootDeviceSelected,
@@ -393,6 +459,14 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
             this.DisarmKeyboardPoll();
         }
 
+        if (this.stage is GuestOsBootStage.Ready
+            or GuestOsBootStage.Unknown
+            or GuestOsBootStage.CustomBoot
+            or GuestOsBootStage.NoBootDevice)
+        {
+            return TrapResult.NotHandled;
+        }
+
         this.Record(
             context.Now,
             BootMilestoneKind.BootFirmwareEntered,
@@ -404,7 +478,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
             this.SetStage(GuestOsBootStage.BootRom);
         }
 
-        this.ArmRam(BootSectorAddress);
+        this.ArmRam(BootSectorAddress, TrapScope.Machine);
         return TrapResult.NotHandled;
     }
 
@@ -479,6 +553,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
                 this.Record(cycle, BootMilestoneKind.LoaderEntered, pc, profile.DescribeMilestone(BootMilestoneKind.LoaderEntered, address), profile.Id);
                 this.SetStage(GuestOsBootStage.Loader);
                 this.ArmAfterLoader();
+                this.EnsureSession(profile.Id, GuestOsBootStage.Loader, armCalls: false);
             }
 
             return TrapResult.NotHandled;
@@ -524,7 +599,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
             }
 
             this.nextStep[address] = 0;
-            this.ArmRam(address);
+            this.ArmRam(address, TrapScope.Machine);
         }
     }
 
@@ -550,46 +625,30 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
             }
 
             this.nextStep[address] = index;
-            this.ArmRam(address);
+            var scope = this.active.HasSystemCall(address) ? TrapScope.GuestOsSession : TrapScope.Machine;
+            this.ArmRam(address, scope);
         }
     }
 
     private void Finish(GuestOsBootStage terminal)
     {
         this.SetStage(terminal);
-        this.DisarmRam();
-        this.DisarmFirmware();
+        this.DisarmBootWatch();
         this.DisarmKeyboardPoll();
-        if (terminal != GuestOsBootStage.Ready || this.active is null)
+        if (terminal == GuestOsBootStage.Ready && this.active is not null)
         {
-            this.nextStep.Clear();
+            this.ArmSystemCalls(this.active);
+            this.EnsureSession(this.active.Profile.Id, GuestOsBootStage.Ready, armCalls: false);
             return;
         }
 
-        foreach (var address in this.active.Addresses)
+        if (this.sessionActive)
         {
-            if (!this.active.TryGetSteps(address, out var steps))
-            {
-                continue;
-            }
-
-            var callIndex = -1;
-            for (var i = 0; i < steps.Length; i++)
-            {
-                if (steps[i].IsSystemCall)
-                {
-                    callIndex = i;
-                }
-            }
-
-            if (callIndex < 0)
-            {
-                continue;
-            }
-
-            this.nextStep[address] = callIndex;
-            this.ArmRam(address);
+            GuestOsId? ended = this.TakeSession(endCachedDetection: false);
+            this.RaiseSessionEnded(ended);
         }
+
+        this.nextStep.Clear();
     }
 
     private void RaiseSystemCall(ushort address, ICpu cpu, IEventContext context)
@@ -619,9 +678,158 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
         return null;
     }
 
+    private GuestOsId? TakeSession(bool endCachedDetection)
+    {
+        bool hadSession = this.sessionActive;
+        GuestOsId ended = hadSession ? this.sessionOs : this.detector.Current.Id;
+        this.registry?.UnregisterScope(TrapScope.GuestOsSession);
+        this.ForgetSessionAddresses();
+        this.detector.Clear();
+        this.sessionActive = false;
+        this.sessionOs = GuestOsId.None;
+        if (!hadSession && (!endCachedDetection || ended == GuestOsId.None))
+        {
+            return null;
+        }
+
+        return ended;
+    }
+
+    private void BeginUserReboot()
+    {
+        GuestOsId? ended = this.TakeSession(endCachedDetection: true);
+        this.DisarmBootWatch();
+        this.active = null;
+        this.BootSectorReentries = 0;
+        this.bootSectorClassified = false;
+        this.systemCallRecorded = false;
+        this.warmMayBoot = false;
+        this.deviceSelected = false;
+        this.openAppleSelection = false;
+        this.nextStep.Clear();
+        this.milestones.Clear();
+        this.DisarmKeyboardPoll();
+        this.SetStage(GuestOsBootStage.Init);
+        this.RaiseSessionEnded(ended);
+    }
+
+    private bool IsReboot(string method)
+    {
+        if (this.warmMayBoot || method is not ("user" or "autostart"))
+        {
+            return false;
+        }
+
+        if (this.stage is GuestOsBootStage.None
+            or GuestOsBootStage.Init
+            or GuestOsBootStage.BootDeviceSelected
+            or GuestOsBootStage.BootRom)
+        {
+            return false;
+        }
+
+        if (this.sessionActive || this.detector.Current.Id != GuestOsId.None)
+        {
+            return true;
+        }
+
+        return this.stage is GuestOsBootStage.Ready
+            or GuestOsBootStage.CustomBoot
+            or GuestOsBootStage.Unknown
+            or GuestOsBootStage.NoBootDevice;
+    }
+
+    private void EnsureSession(GuestOsId id, GuestOsBootStage atStage, bool armCalls)
+    {
+        if (this.sessionActive || id == GuestOsId.None)
+        {
+            return;
+        }
+
+        if (this.active is not null)
+        {
+            if (armCalls)
+            {
+                this.ArmSystemCalls(this.active);
+            }
+
+            this.ArmProfileSessionTraps();
+        }
+
+        this.sessionActive = true;
+        this.sessionOs = id;
+        this.logger.Information("Guest OS session started: {GuestOsId}", id);
+        this.GuestOsSessionStarted?.Invoke(this, new GuestOsSessionEventArgs(id, atStage));
+    }
+
+    private void ArmSystemCalls(ProfilePlan plan)
+    {
+        foreach (ushort address in plan.Addresses)
+        {
+            if (!plan.TryGetSteps(address, out var steps))
+            {
+                continue;
+            }
+
+            var callIndex = -1;
+            for (var i = 0; i < steps.Length; i++)
+            {
+                if (steps[i].IsSystemCall)
+                {
+                    callIndex = i;
+                }
+            }
+
+            if (callIndex < 0)
+            {
+                continue;
+            }
+
+            this.nextStep[address] = callIndex;
+            this.ArmRam(address, TrapScope.GuestOsSession);
+        }
+    }
+
+    private void ArmProfileSessionTraps()
+    {
+        if (this.active is null)
+        {
+            return;
+        }
+
+        foreach (GuestOsSessionTrap trap in this.active.Profile.SessionTraps)
+        {
+            this.ArmRam(trap.Address, TrapScope.GuestOsSession, trap.Name);
+        }
+    }
+
+    private ProfilePlan? FindPlan(GuestOsId id)
+    {
+        foreach (var plan in this.plans)
+        {
+            if (plan.Profile.Id == id)
+            {
+                return plan;
+            }
+        }
+
+        return null;
+    }
+
+    private void RaiseSessionEnded(GuestOsId? ended)
+    {
+        if (ended is not GuestOsId endedId)
+        {
+            return;
+        }
+
+        this.logger.Information("Guest OS session ended: {GuestOsId}", endedId);
+        this.GuestOsSessionEnded?.Invoke(this, new GuestOsSessionEventArgs(endedId, this.stage));
+    }
+
     private void RestartBootWatch()
     {
-        this.DisarmRam();
+        this.DisarmBootWatch();
         this.active = null;
         this.BootSectorReentries = 0;
         this.bootSectorClassified = false;

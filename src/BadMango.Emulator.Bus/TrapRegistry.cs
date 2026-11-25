@@ -202,9 +202,10 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
-        Register(address, TrapOperation.Call, name, category, handler, description);
+        Register(address, TrapOperation.Call, name, category, handler, description, scope);
     }
 
     /// <inheritdoc />
@@ -214,9 +215,10 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
-        RegisterWithContext(address, operation, MemoryContexts.Rom, name, category, handler, description);
+        RegisterWithContext(address, operation, MemoryContexts.Rom, name, category, handler, description, scope);
     }
 
     /// <inheritdoc />
@@ -226,9 +228,10 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
-        RegisterWithContext(address, TrapOperation.Call, memoryContext, name, category, handler, description);
+        RegisterWithContext(address, TrapOperation.Call, memoryContext, name, category, handler, description, scope);
     }
 
     /// <inheritdoc />
@@ -239,7 +242,8 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(handler);
@@ -260,6 +264,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
             Handler = handler,
             Description = description,
             MemoryContext = memoryContext,
+            Scope = scope,
         };
 
         traps[key] = entry;
@@ -278,9 +283,10 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Card)
     {
-        RegisterSlotDependent(address, TrapOperation.Call, slot, name, category, handler, description);
+        RegisterSlotDependent(address, TrapOperation.Call, slot, name, category, handler, description, scope);
     }
 
     /// <inheritdoc />
@@ -291,7 +297,8 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Card)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(handler);
@@ -318,6 +325,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
             SlotNumber = slot,
             RequiresExpansionRom = requiresExpansionRom,
             MemoryContext = MemoryContexts.Rom,
+            Scope = scope,
         };
 
         traps[key] = entry;
@@ -335,9 +343,10 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
-        RegisterLanguageCardRam(address, TrapOperation.Call, name, category, handler, description);
+        RegisterLanguageCardRam(address, TrapOperation.Call, name, category, handler, description, scope);
     }
 
     /// <inheritdoc />
@@ -347,9 +356,10 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
-        RegisterWithContext(address, operation, MemoryContexts.LanguageCardRam, name, category, handler, description);
+        RegisterWithContext(address, operation, MemoryContexts.LanguageCardRam, name, category, handler, description, scope);
     }
 
     /// <inheritdoc />
@@ -448,6 +458,24 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
             NoteRemoved(key.Address, key.Operation);
             TrapUnregistered?.Invoke(key.Address, key.Operation, key.MemoryContext);
         }
+    }
+
+    /// <inheritdoc />
+    public int UnregisterScope(TrapScope scope)
+    {
+        var keysToRemove = traps
+            .Where(kvp => kvp.Value.Scope == scope)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            traps.Remove(key);
+            NoteRemoved(key.Address, key.Operation);
+            TrapUnregistered?.Invoke(key.Address, key.Operation, key.MemoryContext);
+        }
+
+        return keysToRemove.Count;
     }
 
     /// <inheritdoc />
@@ -1067,6 +1095,11 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
         public MemoryContext MemoryContext { get; set; } = MemoryContexts.Rom;
 
         /// <summary>
+        /// Gets or sets who owns this trap. Not consulted by <see cref="TryExecute(Addr, TrapOperation, ICpu, IMemoryBus, IEventContext)"/>.
+        /// </summary>
+        public TrapScope Scope { get; set; } = TrapScope.Machine;
+
+        /// <summary>
         /// Creates a TrapInfo from this entry.
         /// </summary>
         /// <returns>The trap information.</returns>
@@ -1079,6 +1112,7 @@ public sealed class TrapRegistry : ITrapRegistry, ITrapRegistryObserver
             Description,
             IsEnabled,
             SlotNumber,
-            MemoryContext);
+            MemoryContext,
+            Scope);
     }
 }

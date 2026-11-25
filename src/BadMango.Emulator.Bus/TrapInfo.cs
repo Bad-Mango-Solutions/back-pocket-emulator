@@ -41,6 +41,9 @@ namespace BadMango.Emulator.Bus;
 /// <param name="MemoryContext">
 /// The memory context this trap targets. Defaults to <see cref="MemoryContexts.Rom"/>.
 /// </param>
+/// <param name="Scope">
+/// Who owns the trap. Defaults to <see cref="TrapScope.Machine"/>.
+/// </param>
 public readonly record struct TrapInfo(
     Addr Address,
     string Name,
@@ -50,7 +53,8 @@ public readonly record struct TrapInfo(
     string? Description,
     bool IsEnabled,
     int? SlotNumber,
-    MemoryContext MemoryContext)
+    MemoryContext MemoryContext,
+    TrapScope Scope = TrapScope.Machine)
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="TrapInfo"/> struct with the default ROM context.
@@ -63,6 +67,7 @@ public readonly record struct TrapInfo(
     /// <param name="description">Optional detailed description for tooling.</param>
     /// <param name="isEnabled">Whether this trap is currently enabled.</param>
     /// <param name="slotNumber">For slot-dependent traps, the slot number.</param>
+    /// <param name="scope">Who owns the trap. Defaults to <see cref="TrapScope.Machine"/>.</param>
     public TrapInfo(
         Addr address,
         string name,
@@ -71,8 +76,9 @@ public readonly record struct TrapInfo(
         TrapHandler handler,
         string? description,
         bool isEnabled,
-        int? slotNumber)
-        : this(address, name, category, operation, handler, description, isEnabled, slotNumber, MemoryContexts.Rom)
+        int? slotNumber,
+        TrapScope scope = TrapScope.Machine)
+        : this(address, name, category, operation, handler, description, isEnabled, slotNumber, MemoryContexts.Rom, scope)
     {
     }
 

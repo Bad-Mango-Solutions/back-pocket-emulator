@@ -30,6 +30,22 @@ public interface IBootSequenceMonitor
     /// <summary>Raised when a boot milestone is recorded.</summary>
     event EventHandler<BootMilestone>? MilestoneReached;
 
+    /// <summary>
+    /// Raised when a recognized boot reaches <see cref="GuestOsBootStage.Loader"/>,
+    /// or when <see cref="GuestOsBootStage.Ready"/> is published from the detector with no milestone.
+    /// </summary>
+    event EventHandler<GuestOsSessionEventArgs>? GuestOsSessionStarted;
+
+    /// <summary>
+    /// Raised when a cold start or a user reboot ends the guest OS session.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GuestOsSessionEventArgs.Stage"/> is <see cref="GuestOsBootStage.Init"/>
+    /// and the detector cache is already <see cref="GuestOsId.None"/>. Session-scoped traps are already gone.
+    /// A warm reset does not raise this event.
+    /// </remarks>
+    event EventHandler<GuestOsSessionEventArgs>? GuestOsSessionEnded;
+
     /// <summary>Gets the current boot stage.</summary>
     /// <value>
     /// <see cref="GuestOsBootStage.None"/> before reset, then <see cref="GuestOsBootStage.Init"/>

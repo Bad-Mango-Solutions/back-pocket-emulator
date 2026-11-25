@@ -14,7 +14,8 @@ using BadMango.Emulator.Storage.FileSystems;
 /// The signature is <see cref="ProdosLayout.BootBlock.Signature"/>.
 /// The first entry at <c>$2000</c> is the loader. The second entry at <c>$2000</c>,
 /// or the first entry at <c>$BF00</c>, means the kernel and the system program are up.
-/// Later <c>$BF00</c> entries are MLI calls. The monitor owns that trap and fans the calls out.
+/// Later <c>$BF00</c> entries are MLI calls. The monitor owns that trap, scopes it to the guest OS
+/// session, and fans the calls out. A clock driver registers <c>$BF06</c> with the same scope.
 /// </para>
 /// <para>Slot firmware is not part of this profile.</para>
 /// </remarks>

@@ -35,6 +35,15 @@ public interface IGuestOsBootProfile
     IReadOnlyList<GuestOsBootTrap> MilestoneTraps { get; }
 
     /// <summary>
+    /// Gets the call traps installed for one session of this OS and removed when that session ends.
+    /// </summary>
+    /// <value>
+    /// Address and name pairs. Empty when this OS has no session traps beyond its milestone traps.
+    /// The ProDOS MLI hook is a milestone trap, so this list stays empty for ProDOS 8.
+    /// </value>
+    IReadOnlyList<GuestOsSessionTrap> SessionTraps => [];
+
+    /// <summary>
     /// Returns whether <paramref name="sector"/> starts with one of <see cref="BootSectorSignatures"/>.
     /// </summary>
     /// <param name="sector">The first-stage loader bytes. The source of those bytes is not part of this contract.</param>

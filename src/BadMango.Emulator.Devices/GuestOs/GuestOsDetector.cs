@@ -102,6 +102,19 @@ public sealed class GuestOsDetector : IGuestOsDetector
         return this.current;
     }
 
+    /// <inheritdoc />
+    public void Clear()
+    {
+        if (this.current == NotDetected)
+        {
+            return;
+        }
+
+        var previous = this.current;
+        this.current = NotDetected;
+        this.Changed?.Invoke(this, new GuestOsChangedEventArgs(previous, NotDetected));
+    }
+
     private static void ValidateAttempt(IGuestOsProbe probe, GuestOsProbeAttempt attempt)
     {
         ArgumentNullException.ThrowIfNull(attempt);

@@ -51,7 +51,8 @@ public sealed class NullTrapRegistry : ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
         throw new NotSupportedException("Cannot register traps on the null trap registry.");
     }
@@ -63,7 +64,8 @@ public sealed class NullTrapRegistry : ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
         throw new NotSupportedException("Cannot register traps on the null trap registry.");
     }
@@ -75,7 +77,8 @@ public sealed class NullTrapRegistry : ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
         throw new NotSupportedException("Cannot register traps on the null trap registry.");
     }
@@ -88,7 +91,8 @@ public sealed class NullTrapRegistry : ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
         throw new NotSupportedException("Cannot register traps on the null trap registry.");
     }
@@ -100,7 +104,8 @@ public sealed class NullTrapRegistry : ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Card)
     {
         throw new NotSupportedException("Cannot register traps on the null trap registry.");
     }
@@ -113,7 +118,8 @@ public sealed class NullTrapRegistry : ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Card)
     {
         throw new NotSupportedException("Cannot register traps on the null trap registry.");
     }
@@ -124,7 +130,8 @@ public sealed class NullTrapRegistry : ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
         throw new NotSupportedException("Cannot register traps on the null trap registry.");
     }
@@ -136,7 +143,8 @@ public sealed class NullTrapRegistry : ITrapRegistry
         string name,
         TrapCategory category,
         TrapHandler handler,
-        string? description = null)
+        string? description = null,
+        TrapScope scope = TrapScope.Machine)
     {
         throw new NotSupportedException("Cannot register traps on the null trap registry.");
     }
@@ -171,6 +179,9 @@ public sealed class NullTrapRegistry : ITrapRegistry
     public void UnregisterContextTraps(MemoryContext memoryContext)
     {
     }
+
+    /// <inheritdoc />
+    public int UnregisterScope(TrapScope scope) => 0;
 
     /// <inheritdoc />
     public TrapResult TryExecute(Addr address, ICpu cpu, IMemoryBus bus, IEventContext context)
