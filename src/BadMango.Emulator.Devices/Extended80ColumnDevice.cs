@@ -32,7 +32,7 @@ using Interfaces;
 /// <item><description>$C002/$C003: RAMRD off/on - Read from auxiliary RAM ($0200-$BFFF)</description></item>
 /// <item><description>$C004/$C005: RAMWRT off/on - Write to auxiliary RAM ($0200-$BFFF)</description></item>
 /// <item><description>$C006/$C007: SETSLOTCX/SETINTCX - Peripheral/internal ROM at $C100-$CFFF</description></item>
-/// <item><description>$C008/$C009: SETSTDZP/SETALTZP - Standard/alternate zero page and stack</description></item>
+    /// <item><description>$C008/$C009: SETSTDZP/SETALTZP - Standard/alternate zero page, stack, and language-card RAM</description></item>
 /// <item><description>$C00A/$C00B: SETINTC3/SETSLOTC3 - Internal/slot ROM at $C300</description></item>
 /// <item><description>$C00C/$C00D: 80COLOFF/80COLON - 40/80-column display mode</description></item>
 /// </list>
@@ -97,6 +97,7 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
 
     private IMemoryBus? bus;
     private IVideoDevice? videoDevice;
+    private IAuxiliaryLanguageCard? auxiliaryLanguageCard;
     private IInternalRomHandler? internalRomHandler;
     private Extended80ColumnPage0Target? page0Target; // Reference to the page 0 composite target
     private int deviceId;
@@ -297,6 +298,7 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
 
         // Get the video device from the machine context
         videoDevice = context.GetComponent<IVideoDevice>();
+        auxiliaryLanguageCard = context.GetComponent<IAuxiliaryLanguageCard>();
 
         // Get the internal ROM handler (CompositeIOTarget) to register our expansion ROM
         internalRomHandler = context.GetComponent<IInternalRomHandler>();
@@ -892,6 +894,10 @@ public sealed class Extended80ColumnDevice : IMotherboardDevice, ISoftSwitchProv
     /// </remarks>
     private void ApplyState()
     {
+        // ALTZP selects the auxiliary language-card RAM. The page table is updated
+        // here, when the switch changes, so later reads do not ask which bank is on.
+        auxiliaryLanguageCard?.SetAuxiliaryBank(altzp);
+
         // INTCXROM and SLOTC3ROM: Control internal ROM overlay via CompositeIOTarget
         // These always work, even when layers aren't configured
         if (internalRomHandler is not null)
