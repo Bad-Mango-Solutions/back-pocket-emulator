@@ -102,6 +102,70 @@ public static class GuestOsInspection
         return string.Join(Environment.NewLine, lines);
     }
 
+    /// <summary>Reads the file-load timeline.</summary>
+    /// <param name="machine">The machine to read. May be <see langword="null"/>.</param>
+    /// <returns>
+    /// The rows. <see cref="FileActivitySnapshot.Enabled"/> is false when no tracker is installed.
+    /// </returns>
+    public static FileActivitySnapshot ReadFileActivity(IMachine? machine)
+    {
+        var tracker = machine?.GetComponent<IFileLoadTracker>();
+        if (tracker is null)
+        {
+            return new FileActivitySnapshot(false, null, []);
+        }
+
+        var files = tracker.Files;
+        var lines = new FileActivityLine[files.Count];
+        for (var i = 0; i < files.Count; i++)
+        {
+            lines[i] = ToLine(files[i]);
+        }
+
+        FileActivityLine? current = tracker.Current is FileLoadProgress progress ? ToLine(progress) : null;
+        return new FileActivitySnapshot(true, current, lines);
+    }
+
+    /// <summary>Formats the file-load timeline as console text.</summary>
+    /// <param name="activity">The timeline to format.</param>
+    /// <returns>
+    /// One <see cref="FileActivityLine.Line"/> per file, oldest first.
+    /// <c>File activity is off.</c> when the tracker is absent, and <c>No file activity.</c> when it is empty.
+    /// </returns>
+    public static string FormatFileActivity(FileActivitySnapshot activity)
+    {
+        ArgumentNullException.ThrowIfNull(activity);
+        if (!activity.Enabled)
+        {
+            return "File activity is off.";
+        }
+
+        if (activity.Files.Count == 0)
+        {
+            return "No file activity.";
+        }
+
+        var lines = new string[activity.Files.Count];
+        for (var i = 0; i < activity.Files.Count; i++)
+        {
+            lines[i] = activity.Files[i].Line;
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static FileActivityLine ToLine(FileLoadProgress progress) =>
+        new(
+            progress.Path,
+            progress.Label,
+            progress.Size,
+            progress.BytesRead,
+            progress.Position,
+            progress.OpenedAtCycle,
+            progress.RefNum,
+            progress.Active,
+            progress.FormatLine());
+
     private static GuestOsSnapshot FromInfo(GuestOsInfo info, GuestOsBootStage stage) =>
         new(info.Id.Value, info.DisplayName, info.VersionLabel, info.Reason, stage.ToString());
 

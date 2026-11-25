@@ -221,6 +221,28 @@ public sealed class InspectionTools
         }
     }
 
+    /// <summary>
+    /// Reads the file-load timeline.
+    /// </summary>
+    /// <returns>
+    /// An emudbg envelope whose payload is the current load and every row, oldest first.
+    /// Each row's <c>line</c> is <c>BASIC.SYSTEM 6656/10240 (65%)</c>, or <c>BASIC.SYSTEM 6656</c> when the size is unknown.
+    /// </returns>
+    [McpServerTool(Name = "get_file_activity", UseStructuredContent = true)]
+    [Description("Get the guest file-load timeline. Each line is BASIC.SYSTEM 6656/10240 (65%) when the size is known, or BASIC.SYSTEM 6656 when it is not. RefNum is the ProDOS ref; a pre-MLI row leaves it null and matches on path. Enabled is false when the boot log is off. Current is the file being loaded.")]
+    public object GetFileActivity()
+    {
+        try
+        {
+            FileActivitySnapshot activity = GuestOsInspection.ReadFileActivity(this.context.Machine);
+            return DebugEnvelope<FileActivitySnapshot>.Create(activity);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return this.Fail("get_file_activity", ex.Message, ex);
+        }
+    }
+
     private static MemoryReadReceipt ToReceipt(MemoryBlock block)
     {
         var reports = new List<MemoryFaultLine>();

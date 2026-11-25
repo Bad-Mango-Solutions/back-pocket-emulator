@@ -42,6 +42,7 @@ public static class GuestOsMonitorInstaller
                 existing.PrepareForBoot();
             }
 
+            ProDosFileLoadTracker.Install(machine, existing);
             return;
         }
 
@@ -55,6 +56,7 @@ public static class GuestOsMonitorInstaller
         var monitor = new BootSequenceMonitor(logger, detector, BootSequenceMonitor.CreateStandardProfiles());
         monitor.Attach(machine);
         machine.AddComponent(monitor);
+        ProDosFileLoadTracker.Install(machine, monitor);
         machine.GetComponent<ProDosClockDevice>()?.Bind(machine);
         monitor.PublishFromDetector();
     }

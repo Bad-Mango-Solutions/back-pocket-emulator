@@ -49,6 +49,7 @@ public sealed class LifecycleMcpClientTests
                 "disk_list_files",
                 "disk_read_file",
                 "get_boot_log",
+                "get_file_activity",
                 "get_guest_os",
                 "get_registers",
                 "get_screen_text",

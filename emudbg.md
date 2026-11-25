@@ -76,6 +76,8 @@ The next milestone on the first `$Cn00` transfer is `BootDeviceSelected` (stage 
 
 `get_guest_os` and `get_boot_log` return the same stage and milestone names. Milestone `detail` carries the cold/warm and method tokens above.
 
+`os files` lists file-load progress, one line per file, oldest first. A known size prints `BASIC.SYSTEM 6656/10240 (65%)`. An unknown size prints `BASIC.SYSTEM 6656`. Text-mode `statmon` appends `Load:` and that same line while a file is loading. `get_file_activity` returns the same rows: `line` is that text, `refNum` is the ProDOS ref (null for a pre-MLI row, which matches on path), and `current` is the file being loaded. The tracker is off unless the boot log is on, and a cold start or a user reboot clears it.
+
 ## Interactive use
 
 ```text

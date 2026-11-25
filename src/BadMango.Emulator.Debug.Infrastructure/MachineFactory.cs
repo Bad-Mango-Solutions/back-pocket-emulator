@@ -141,7 +141,8 @@ public static class MachineFactory
     /// <param name="profile">The profile whose <c>guestOs</c> section is read.</param>
     /// <remarks>
     /// Both flags off registers nothing, so the instruction loop gains no boot trap.
-    /// <c>bootLog</c> attaches <see cref="BootSequenceMonitor"/> with the DOS 3.3 and ProDOS 8 profiles.
+    /// <c>bootLog</c> attaches <see cref="BootSequenceMonitor"/> with the DOS 3.3 and ProDOS 8 profiles,
+    /// and the ProDOS file-load tracker that listens to that monitor.
     /// </remarks>
     private static void AttachGuestOs(MachineBuilder builder, MachineProfile profile)
     {
@@ -172,6 +173,7 @@ public static class MachineFactory
                 detector,
                 BootSequenceMonitor.CreateStandardProfiles());
             monitor.Attach(machine);
+            ProDosFileLoadTracker.Install(machine, monitor);
             return monitor;
         });
     }

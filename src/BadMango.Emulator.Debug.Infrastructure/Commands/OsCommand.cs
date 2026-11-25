@@ -29,19 +29,21 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
     /// <param name="logger">Logger used when <c>os on</c> installs the monitor.</param>
     /// <exception cref="ArgumentNullException">If <paramref name="logger"/> is <see langword="null"/>.</exception>
     public OsCommand(ILogger logger)
-        : base("os", "Show the guest OS and boot log")
+        : base("os", "Show the guest OS, boot log, and file loads")
     {
         ArgumentNullException.ThrowIfNull(logger);
         this.logger = logger;
     }
 
     /// <inheritdoc/>
-    public string Synopsis => "os [boot|on]";
+    public string Synopsis => "os [boot|files|on]";
 
     /// <inheritdoc/>
     public string DetailedDescription =>
         "Shows the guest operating system in memory and the boot stage. " +
-        "os boot lists the milestone log. os on installs the boot monitor when the profile left it off. " +
+        "os boot lists the milestone log. os files lists file-load progress, one line per file: " +
+        "BASIC.SYSTEM 6656/10240 (65%), or BASIC.SYSTEM 6656 when the size is unknown. " +
+        "os on installs the boot monitor when the profile left it off. " +
         "The monitor's traps return not-handled, so guest-visible behavior does not change.";
 
     /// <inheritdoc/>
@@ -52,6 +54,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
     [
         "os                      Show the detected guest OS and boot stage",
         "os boot                 List boot milestones",
+        "os files                List file-load progress",
         "os on                   Turn the boot monitor on",
     ];
 
@@ -62,7 +65,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
     public IReadOnlyList<string> SeeAlso { get; } = ["trapmon", "statmon"];
 
     /// <inheritdoc/>
-    public override string Usage => "os [boot|on]";
+    public override string Usage => "os [boot|files|on]";
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
@@ -76,7 +79,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
 
         if (args.Length > 1)
         {
-            return CommandResult.UsageError("Usage: os [boot|on]");
+            return CommandResult.UsageError("Usage: os [boot|files|on]");
         }
 
         if (args.Length == 1)
@@ -87,6 +90,12 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
                 return CommandResult.Ok();
             }
 
+            if (string.Equals(args[0], "files", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Output.WriteLine(GuestOsInspection.FormatFileActivity(GuestOsInspection.ReadFileActivity(machine)));
+                return CommandResult.Ok();
+            }
+
             if (string.Equals(args[0], "on", StringComparison.OrdinalIgnoreCase))
             {
                 Enable(machine);
@@ -94,7 +103,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
                 return CommandResult.Ok("Guest OS boot monitor is on.");
             }
 
-            return CommandResult.UsageError("Usage: os [boot|on]");
+            return CommandResult.UsageError("Usage: os [boot|files|on]");
         }
 
         context.Output.WriteLine(GuestOsInspection.FormatGuestOs(GuestOsInspection.ReadGuestOs(machine)));

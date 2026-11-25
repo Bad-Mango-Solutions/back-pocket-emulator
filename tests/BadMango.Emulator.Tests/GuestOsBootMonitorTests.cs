@@ -13,6 +13,7 @@ using BadMango.Emulator.Core.Interfaces.Cpu;
 using BadMango.Emulator.Debug.Abstractions;
 using BadMango.Emulator.Debug.Infrastructure;
 using BadMango.Emulator.Debug.Infrastructure.Commands;
+using BadMango.Emulator.Debug.Infrastructure.Status;
 using BadMango.Emulator.Debug.Mcp;
 using BadMango.Emulator.Devices;
 using BadMango.Emulator.Devices.GuestOs;
@@ -218,6 +219,197 @@ public class GuestOsBootMonitorTests
             Assert.That(machine.GetComponent<IGuestOsDetector>()!.Current.Id, Is.EqualTo(GuestOsId.ProDos8));
         });
         AssertIncreasingCycles(monitor.Milestones);
+    }
+
+    /// <summary>The boot log off installs no file tracker and prints no load line.</summary>
+    [Test]
+    public void BootLogOff_DoesNotTrackFileLoads()
+    {
+        using var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: false));
+        using var output = new StringWriter();
+
+        Assert.That(machine.GetComponent<IFileLoadTracker>(), Is.Null);
+        Assert.That(new OsCommand(Logger.None).Execute(Context(machine, output), ["files"]).Success, Is.True);
+        Assert.That(output.ToString().Trim(), Is.EqualTo("File activity is off."));
+        Assert.That(GuestOsStatusText.FormatMachineLine(machine), Does.Not.Contain("Load:"));
+    }
+
+    /// <summary><c>os on</c> installs one tracker and still registers no trap until a call returns.</summary>
+    [Test]
+    public void OsOn_InstallsFileTracker_WithoutReturnTraps()
+    {
+        using var off = MachineFactory.CreateMachine(CreateProfile(bootLog: false));
+        using var output = new StringWriter();
+        Assert.That(new OsCommand(Logger.None).Execute(Context(off, output), ["on"]).Success, Is.True);
+        Assert.That(off.GetComponent<IFileLoadTracker>(), Is.Not.Null);
+        Assert.That(Registry(off).IsEmpty, Is.True);
+
+        using var on = MachineFactory.CreateMachine(CreateProfile(bootLog: true));
+        var tracker = on.GetComponent<IFileLoadTracker>();
+        using var again = new StringWriter();
+        Assert.That(new OsCommand(Logger.None).Execute(Context(on, again), ["on"]).Success, Is.True);
+        Assert.That(on.GetComponents<IFileLoadTracker>().Count(), Is.EqualTo(1));
+        Assert.That(on.GetComponent<IFileLoadTracker>(), Is.SameAs(tracker));
+    }
+
+    /// <summary>A caller can feed the same row and line the MLI tracker uses.</summary>
+    [Test]
+    public void Report_FeedsTheSharedFileLine()
+    {
+        using var machine = MachineFactory.CreateMachine(CreateProfile(bootLog: true));
+        var tracker = machine.GetComponent<IFileLoadTracker>()!;
+        tracker.Report(new FileLoadProgress("PRODOS", 1024, 512, 512, 10, null, true));
+        tracker.Report(new FileLoadProgress("PRODOS", 1024, 1024, 1024, 10, null, true));
+        tracker.Report(new FileLoadProgress("A", null, 1, 1, 1, 1, true));
+        tracker.Report(new FileLoadProgress("B", null, 2, 2, 2, 2, true));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracker.Files, Has.Count.EqualTo(3));
+            Assert.That(tracker.Files[0].FormatLine(), Is.EqualTo("PRODOS 1024/1024 (100%)"));
+            Assert.That(tracker.Files[1].BytesRead, Is.EqualTo(1u));
+            Assert.That(tracker.Files[2].BytesRead, Is.EqualTo(2u));
+            Assert.That(tracker.Current!.Value.Path, Is.EqualTo("B"));
+            Assert.That(GuestOsStatusText.FormatMachineLine(machine), Does.Contain("Load: B 2"));
+        });
+
+        tracker.Clear();
+        Assert.That(tracker.Files, Is.Empty);
+        Assert.That(tracker.Current, Is.Null);
+    }
+
+    /// <summary>
+    /// OPEN, GET_FILE_INFO, GET_EOF, READ, SET_MARK, and CLOSE track two refs.
+    /// The return trap is observe-only and dies with the guest-OS session.
+    /// </summary>
+    [Test]
+    public void ProDosMli_TracksEachOpenFile_AndKeepsTheGuestRunning()
+    {
+        using var machine = BootMachine();
+        BootProDosToReady(machine);
+        var cpu = machine.Cpu;
+        var tracker = machine.GetComponent<IFileLoadTracker>()!;
+        PlantMliStub(cpu);
+        Poke(cpu, 0x1010, 0xA5);
+        PlantPath(cpu, 0x0500, "BASIC.SYSTEM");
+        PlantPath(cpu, 0x0510, "DRIVER");
+        PlantPath(cpu, 0x0520, "/DISK/");
+        Poke(cpu, 0x04F0, 0x01, 0x20, 0x05);
+        Poke(cpu, 0x0400, 0x03, 0x00, 0x05, 0x00, 0x20, 0x00);
+        Poke(cpu, 0x0430, 0x03, 0x10, 0x05, 0x00, 0x22, 0x00);
+        Poke(cpu, 0x04E0, 0x0A, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+        Poke(cpu, 0x0460, 0x02, 0x01, 0x00, 0x00, 0x00);
+        Poke(cpu, 0x0490, 0x04, 0x01, 0x00, 0x30, 0x00, 0x10, 0xFF, 0xFF);
+        Poke(cpu, 0x04C0, 0x02, 0x01, 0x00, 0x00, 0x00);
+        Poke(cpu, 0x04B0, 0x04, 0x02, 0x00, 0x40, 0x64, 0x00, 0xFF, 0xFF);
+        Poke(cpu, 0x04D0, 0x01, 0x01);
+
+        RunMli(machine, 0xC6, 0x04F0, [], 0);
+        RunMli(machine, 0xC4, 0x04E0, [0x1E, 0x00], 0x04E8);
+        var sawReturn = false;
+        RunMli(machine, 0xC8, 0x0400, [0x01], 0x0405, () =>
+        {
+            sawReturn = true;
+            var info = Registry(machine).GetTrapInfo(0x1006);
+            Assert.That(info, Is.Not.Null);
+            Assert.That(info!.Value.Scope, Is.EqualTo(TrapScope.GuestOsSession));
+            Assert.That(info.Value.Name, Is.EqualTo("MLI file return"));
+            Assert.That(tracker.Files, Is.Empty);
+        });
+
+        var basic = tracker.Files[0];
+        Assert.Multiple(() =>
+        {
+            Assert.That(sawReturn, Is.True);
+            Assert.That(basic.Path, Is.EqualTo("/DISK/BASIC.SYSTEM"));
+            Assert.That(basic.RefNum, Is.EqualTo((byte)1));
+            Assert.That(basic.Size, Is.EqualTo(15360u));
+            Assert.That(basic.BytesRead, Is.EqualTo(0u));
+            Assert.That(cpu.Peek8(0x0405), Is.EqualTo(0x01));
+        });
+
+        RunMli(machine, 0xC4, 0x04E0, [0x28, 0x00], 0x04E8);
+        Assert.That(tracker.Files[0].Size, Is.EqualTo(20480u));
+        RunMli(machine, 0xD1, 0x0460, [0x00, 0x28, 0x00], 0x0462);
+        Assert.That(tracker.Files[0].Size, Is.EqualTo(10240u));
+
+        RunMli(machine, 0xC8, 0x0430, [0x02], 0x0435);
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracker.Files, Has.Count.EqualTo(2));
+            Assert.That(tracker.Files[1].Path, Is.EqualTo("/DISK/DRIVER"));
+            Assert.That(tracker.Files[1].RefNum, Is.EqualTo((byte)2));
+            Assert.That(tracker.Files[1].Size, Is.Null);
+        });
+
+        Poke(cpu, 0x0496, 0xFF, 0xFF);
+        RunMli(machine, 0xCA, 0x0490, [0x00, 0x10], 0x0496);
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracker.Files[0].BytesRead, Is.EqualTo(4096u));
+            Assert.That(tracker.Files[0].Position, Is.EqualTo(4096u));
+            Assert.That(tracker.Files[1].BytesRead, Is.EqualTo(0u));
+        });
+
+        RunMli(machine, 0xCE, 0x04C0, [], 0);
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracker.Files[0].Position, Is.EqualTo(0u));
+            Assert.That(tracker.Files[0].BytesRead, Is.EqualTo(4096u));
+        });
+
+        Poke(cpu, 0x0496, 0xFF, 0xFF);
+        RunMli(machine, 0xCA, 0x0490, [0x00, 0x0A], 0x0496);
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracker.Files[0].FormatLine(), Is.EqualTo("BASIC.SYSTEM 6656/10240 (65%)"));
+            Assert.That(tracker.Files[0].Position, Is.EqualTo(2560u));
+            Assert.That(tracker.Files[0].BytesRead, Is.EqualTo(6656u));
+        });
+
+        Poke(cpu, 0x04B6, 0xFF, 0xFF);
+        RunMli(machine, 0xCA, 0x04B0, [0x64, 0x00], 0x04B6);
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracker.Files[1].FormatLine(), Is.EqualTo("DRIVER 100"));
+            Assert.That(tracker.Files[0].BytesRead, Is.EqualTo(6656u));
+            Assert.That(tracker.Current!.Value.RefNum, Is.EqualTo((byte)2));
+        });
+
+        RunMli(machine, 0xCC, 0x04D0, [], 0);
+        Poke(cpu, 0x0496, 0xFF, 0xFF);
+        RunMli(machine, 0xCA, 0x0490, [0xE7, 0x03], 0x0496);
+
+        using var filesOutput = new StringWriter();
+        Assert.That(new OsCommand(Logger.None).Execute(Context(machine, filesOutput), ["files"]).Success, Is.True);
+        using var inspectionOutput = new StringWriter();
+        var tools = new InspectionTools(new Mock<IDebugSession>().Object, Context(machine, inspectionOutput), Logger.None);
+        var activity = (DebugEnvelope<FileActivitySnapshot>)tools.GetFileActivity();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracker.Files[0].BytesRead, Is.EqualTo(6656u));
+            Assert.That(tracker.Files[0].Active, Is.False);
+            Assert.That(tracker.Files[1].Active, Is.True);
+            Assert.That(filesOutput.ToString().Trim(), Is.EqualTo("BASIC.SYSTEM 6656/10240 (65%)" + Environment.NewLine + "DRIVER 100"));
+            Assert.That(GuestOsStatusText.FormatMachineLine(machine), Does.Contain("Load: DRIVER 100"));
+            Assert.That(activity.Payload.Enabled, Is.True);
+            Assert.That(activity.Payload.Files, Has.Count.EqualTo(2));
+            Assert.That(activity.Payload.Files[0].Line, Is.EqualTo("BASIC.SYSTEM 6656/10240 (65%)"));
+            Assert.That(activity.Payload.Files[1].Line, Is.EqualTo("DRIVER 100"));
+            Assert.That(activity.Payload.Current!.Line, Is.EqualTo("DRIVER 100"));
+            Assert.That(activity.Payload.Current.RefNum, Is.EqualTo((byte)2));
+            Assert.That(cpu.Peek8(0x1010), Is.EqualTo(0xA5));
+            Assert.That(Registry(machine).HasTrap(0x1006), Is.False);
+        });
+
+        JumpToFirmware(machine);
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracker.Files, Is.Empty);
+            Assert.That(tracker.Current, Is.Null);
+            Assert.That(Registry(machine).HasTrap(0x1006), Is.False);
+        });
     }
 
     /// <summary>An unrecognized boot sector ends at CustomBoot, leaves the OS at None, and drops the traps.</summary>
@@ -1146,6 +1338,58 @@ public class GuestOsBootMonitorTests
         PlantJmp(cpu, 0x03D6, 0xAAFD);
         PlantJmp(cpu, 0x03D9, 0xB7B5);
         PlantJmp(cpu, 0x03EA, 0xA851);
+    }
+
+    private static void RunMli(IMachine machine, byte command, ushort parameter, byte[] written, ushort writtenAt, Action? afterEntry = null)
+    {
+        var cpu = machine.Cpu;
+        const ushort site = 0x1000;
+        const ushort returnAddress = 0x1006;
+        Poke(cpu, site, 0x20, 0x00, 0xBF, command, (byte)parameter, (byte)(parameter >> 8), 0xEA);
+        Poke(cpu, 0x0020, (byte)written.Length);
+        if (written.Length > 0)
+        {
+            Poke(cpu, 0x0030, written);
+        }
+
+        Poke(cpu, 0x0021, (byte)writtenAt, (byte)(writtenAt >> 8));
+        Poke(cpu, 0x0023, (byte)(returnAddress & 0xFF), (byte)(returnAddress >> 8));
+        cpu.Registers.X.SetByte(0x5A);
+        cpu.SetPC(site);
+        machine.Step();
+        machine.Step();
+        afterEntry?.Invoke();
+
+        var guard = 0;
+        while (cpu.GetPC() != returnAddress + 1 && guard < 48)
+        {
+            machine.Step();
+            guard++;
+        }
+
+        Assert.That(cpu.GetPC(), Is.EqualTo((uint)(returnAddress + 1)), $"MLI ${command:X2} did not return");
+        Assert.That(cpu.Registers.X.GetByte(), Is.EqualTo(0x5A));
+        Assert.That(Registry(machine).HasTrap(returnAddress), Is.False);
+    }
+
+    private static void PlantMliStub(ICpu cpu)
+    {
+        // $BF00 stays a JMP so the global page still looks like ProDOS. The stub copies
+        // $20 bytes from $0030 to ($21) and JMPs through ($23). Count zero copies nothing.
+        Poke(cpu, 0xBF00, 0x4C, 0x10, 0xBF);
+        Poke(cpu, 0xBF10, 0xA0, 0x00, 0xC4, 0x20, 0xF0, 0x08, 0xB9, 0x30, 0x00, 0x91, 0x21, 0xC8, 0xD0, 0xF4, 0x6C, 0x23, 0x00);
+    }
+
+    private static void PlantPath(ICpu cpu, ushort address, string text)
+    {
+        var bytes = new byte[text.Length + 1];
+        bytes[0] = (byte)text.Length;
+        for (var i = 0; i < text.Length; i++)
+        {
+            bytes[i + 1] = (byte)text[i];
+        }
+
+        Poke(cpu, address, bytes);
     }
 
     private static void PlantProDos(ICpu cpu)

@@ -53,6 +53,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="State:" Foreground="Gray" Margin="0,0,10,4" />
@@ -67,8 +68,11 @@
                     <TextBlock Grid.Row="1" Grid.Column="2" Text="Stage:" Foreground="Gray" Margin="0,0,10,4" />
                     <TextBlock Grid.Row="1" Grid.Column="3" x:Name="BootStageText" Text="—" Margin="0,0,0,4" />
                     
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="WAI Duration:" Foreground="Gray" Margin="0,0,10,0" />
-                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="WaiDurationText" Text="0s" Margin="0,0,20,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="WAI Duration:" Foreground="Gray" Margin="0,0,10,4" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="WaiDurationText" Text="0s" Margin="0,0,20,4" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Load:" Foreground="Gray" Margin="0,0,10,0" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" x:Name="LoadText" Text="—" TextWrapping="Wrap" Margin="0,0,0,0" />
                 </Grid>
             </StackPanel>
         </Border>
