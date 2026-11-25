@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>BadMango.Emulator.CpuCycleSpike.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BadMango.Unit.Components\BadMango.Unit.Components.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Emulation\BadMango.Emulator.Emulation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Vectors\wdc65c02-slice.json">
+      <LogicalName>wdc65c02-slice.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>
