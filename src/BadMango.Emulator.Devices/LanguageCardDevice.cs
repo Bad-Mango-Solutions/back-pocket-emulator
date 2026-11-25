@@ -29,10 +29,10 @@ using BadMango.Emulator.Core;
 /// <para>
 /// This device owns its physical memory and configures the bus layers and swap
 /// groups during initialization. The main 16K is the motherboard language-card
-/// RAM. A second 16K, selected by <see cref="IAuxiliaryLanguageCard.SetAuxiliaryBank"/>,
-/// is the auxiliary language-card RAM that ALTZP maps on an Apple IIe. Both banks
-/// share the $C080-$C08F switches. The page table names the selected RAM directly,
-/// so a memory read does not consult ALTZP.
+/// RAM. A second 16K, owned here and selected by <see cref="IAuxiliaryLanguageCard.SetAuxiliaryBank"/>,
+/// is what ALTZP maps at $D000-$FFFF. It is not a slice of the extended 80-column
+/// card's 64K. Both banks share the $C080-$C08F switches. The page table names the
+/// selected RAM directly, so a memory read does not consult ALTZP.
 /// </para>
 /// </remarks>
 [DeviceType("languagecard")]
@@ -183,8 +183,8 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         bank2Target = new(bank2Memory.Slice(0, D000BankSize), "LC_Bank2");
         highTarget = new(highMemory.Slice(0, E000Size), "LC_E000");
 
-        // The IIe auxiliary language-card RAM. Bank 2 of $D000 occupies the $C000
-        // hole of the 64K aux card; bank 1 and $E000-$FFFF occupy $D000-$FFFF.
+        // Separate auxiliary language-card RAM. ALTZP selects these targets.
+        // They are not stored in the extended 80-column card's 64K array.
         auxBank1Memory = new(D000BankSize, "LC_Aux_Bank1");
         auxBank2Memory = new(D000BankSize, "LC_Aux_Bank2");
         auxHighMemory = new(E000Size, "LC_Aux_E000");
