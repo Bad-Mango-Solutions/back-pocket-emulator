@@ -363,7 +363,7 @@ public partial class DebugCommandsTests
         var (ioBus, controller) = CreatePage2SoftSwitchBus();
         ProvePage2RespondsToCpuWrite(ioBus, controller);
 
-        string path = Path.Combine(Path.GetTempPath(), $"load-softswitch-{Guid.NewGuid():N}.bin");
+        string path = Path.Combine(Path.GetTempPath(), Path.GetFileName($"load-softswitch-{Guid.NewGuid():N}.bin"));
         File.WriteAllBytes(path, [0x00]);
         try
         {
