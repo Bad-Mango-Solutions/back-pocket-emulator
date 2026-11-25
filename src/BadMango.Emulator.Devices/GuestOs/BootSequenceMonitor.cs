@@ -121,6 +121,15 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
     /// <summary>Raised on every entry to a profile's system-call address after that trap is armed.</summary>
     public event EventHandler<GuestOsSystemCallEventArgs>? SystemCallObserved;
 
+    /// <summary>
+    /// Raised when a <see cref="IGuestOsBootProfile.SessionTraps"/> address is entered.
+    /// </summary>
+    /// <remarks>
+    /// The handler runs before the entry opcode. Nobody listening means the invoke is skipped,
+    /// so a DOS file-manager or RWTS trap stays a null check when the OS call log is off.
+    /// </remarks>
+    public event GuestOsSessionTrapHandler? SessionTrapEntered;
+
     /// <inheritdoc />
     public GuestOsBootStage Stage => this.stage;
 
@@ -286,14 +295,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
         return string.Join(' ', parts);
     }
 
-    private static ushort ReadReturnTarget(ICpu cpu)
-    {
-        uint stackPointer = cpu.Registers.SP.GetByte();
-        uint lowAddress = 0x0100u + ((stackPointer + 1u) & 0xFFu);
-        uint highAddress = 0x0100u + ((stackPointer + 2u) & 0xFFu);
-        uint stacked = cpu.Peek8(lowAddress) | ((uint)cpu.Peek8(highAddress) << 8);
-        return (ushort)(stacked + 1u);
-    }
+    private static ushort ReadReturnTarget(ICpu cpu) => (ushort)(ProDosMliCall.ReadStackedReturn(cpu) + 1u);
 
     private void ClearBoot()
     {
@@ -532,6 +534,7 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
     {
         if (this.active is null || !this.nextStep.TryGetValue(address, out var index))
         {
+            this.NotifySessionTrap(address, cpu, context);
             return TrapResult.NotHandled;
         }
 
@@ -649,6 +652,27 @@ public sealed class BootSequenceMonitor : IBootSequenceMonitor, IResetReceiver, 
         }
 
         this.nextStep.Clear();
+    }
+
+    private void NotifySessionTrap(ushort address, ICpu cpu, IEventContext context)
+    {
+        GuestOsSessionTrapHandler? entered = this.SessionTrapEntered;
+        if (entered is null || this.active is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<GuestOsSessionTrap> traps = this.active.Profile.SessionTraps;
+        for (int index = 0; index < traps.Count; index++)
+        {
+            if (traps[index].Address != address)
+            {
+                continue;
+            }
+
+            entered(address, cpu, context.Now);
+            return;
+        }
     }
 
     private void RaiseSystemCall(ushort address, ICpu cpu, IEventContext context)

@@ -65,6 +65,10 @@ public class GuestOsBootProfileTests
             }));
             Assert.That(profile.DescribeMilestone(BootMilestoneKind.LoaderEntered, 0x2000), Is.EqualTo("ProDOS loader"));
             Assert.That(profile.DescribeSystemCall(memory, 0x0303), Is.EqualTo("MLI $C8 OPEN"));
+            memory.Poke(0x0303, 0x40);
+            Assert.That(profile.DescribeSystemCall(memory, 0x0303), Is.EqualTo("MLI $40 ALLOC_INTERRUPT"));
+            memory.Poke(0x0303, 0xFF);
+            Assert.That(profile.DescribeSystemCall(memory, 0x0303), Is.EqualTo("MLI $FF CALL"));
             Assert.That(profile.SessionTraps, Is.Empty);
         });
     }

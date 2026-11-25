@@ -366,8 +366,10 @@ Time uses the same fields as a PocketWatch card. `timezoneOffset` null, the defa
 | `frozenTime` | ISO 8601 time used when `timeSource` is `frozen` |
 
 ```json
-"guestOs": { "detect": true, "bootLog": true }
+"guestOs": { "detect": true, "bootLog": true, "callLog": "off" }
 ```
+
+`callLog` is `off` (the default), `mli`, `dos`, or `all`. `on` means `all`. `off` installs nothing and does not watch calls. Any other value installs the boot monitor when `bootLog` is false, because the call log reads that monitor's observe-only hooks. Recorded calls are Debug log lines, `os calls`, and the MCP tool `get_os_calls`.
 
 ---
 

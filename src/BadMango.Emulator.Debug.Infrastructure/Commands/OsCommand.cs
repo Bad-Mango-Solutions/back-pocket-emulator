@@ -5,11 +5,12 @@
 namespace BadMango.Emulator.Debug.Infrastructure.Commands;
 
 using BadMango.Emulator.Bus.Interfaces;
+using BadMango.Emulator.Devices.GuestOs;
 
 using Serilog;
 
 /// <summary>
-/// Shows the detected guest OS and the boot milestone log, and can turn the monitor on.
+/// Shows the detected guest OS, the boot milestone log, and the OS call log.
 /// </summary>
 public sealed class OsCommand : CommandHandlerBase, ICommandHelp
 {
@@ -36,12 +37,13 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
     }
 
     /// <inheritdoc/>
-    public string Synopsis => "os [boot|on]";
+    public string Synopsis => "os [boot|on|calls]";
 
     /// <inheritdoc/>
     public string DetailedDescription =>
         "Shows the guest operating system in memory and the boot stage. " +
         "os boot lists the milestone log. os on installs the boot monitor when the profile left it off. " +
+        "os calls shows the OS call log. os calls on, off, mli, or dos chooses which calls are recorded. " +
         "The monitor's traps return not-handled, so guest-visible behavior does not change.";
 
     /// <inheritdoc/>
@@ -53,16 +55,21 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
         "os                      Show the detected guest OS and boot stage",
         "os boot                 List boot milestones",
         "os on                   Turn the boot monitor on",
+        "os calls                List recorded MLI and DOS calls",
+        "os calls mli            Record ProDOS MLI calls",
+        "os calls off            Stop recording OS calls",
     ];
 
     /// <inheritdoc/>
-    public string? SideEffects => "os on registers observe-only boot traps when the monitor was off.";
+    public string? SideEffects =>
+        "os on registers observe-only boot traps when the monitor was off. " +
+        "os calls on, mli, or dos does that too and subscribes the call log. os calls off unsubscribes it.";
 
     /// <inheritdoc/>
     public IReadOnlyList<string> SeeAlso { get; } = ["trapmon", "statmon"];
 
     /// <inheritdoc/>
-    public override string Usage => "os [boot|on]";
+    public override string Usage => "os [boot|on|calls [on|off|mli|dos]]";
 
     /// <inheritdoc/>
     public override CommandResult Execute(ICommandContext context, string[] args)
@@ -74,9 +81,19 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
             return CommandResult.Error("No machine is attached.");
         }
 
+        if (args.Length > 2)
+        {
+            return CommandResult.UsageError("Usage: os [boot|on|calls [on|off|mli|dos]]");
+        }
+
+        if (args.Length >= 1 && string.Equals(args[0], "calls", StringComparison.OrdinalIgnoreCase))
+        {
+            return Calls(context, machine, args);
+        }
+
         if (args.Length > 1)
         {
-            return CommandResult.UsageError("Usage: os [boot|on]");
+            return CommandResult.UsageError("Usage: os [boot|on|calls [on|off|mli|dos]]");
         }
 
         if (args.Length == 1)
@@ -94,7 +111,7 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
                 return CommandResult.Ok("Guest OS boot monitor is on.");
             }
 
-            return CommandResult.UsageError("Usage: os [boot|on]");
+            return CommandResult.UsageError("Usage: os [boot|on|calls [on|off|mli|dos]]");
         }
 
         context.Output.WriteLine(GuestOsInspection.FormatGuestOs(GuestOsInspection.ReadGuestOs(machine)));
@@ -104,5 +121,33 @@ public sealed class OsCommand : CommandHandlerBase, ICommandHelp
     private void Enable(IMachine machine)
     {
         GuestOsMonitorInstaller.Install(machine, this.logger, clearExistingLog: false);
+    }
+
+    private CommandResult Calls(ICommandContext context, IMachine machine, string[] args)
+    {
+        if (args.Length == 2)
+        {
+            if (!OsCallLog.TryParseMode(args[1], out OsCallLogMode mode))
+            {
+                return CommandResult.UsageError("Usage: os calls [on|off|mli|dos]");
+            }
+
+            if (mode != OsCallLogMode.Off)
+            {
+                Enable(machine);
+            }
+
+            OsCallLog log = machine.GetComponent<OsCallLog>() ?? new OsCallLog(this.logger);
+            if (!machine.HasComponent<OsCallLog>())
+            {
+                machine.AddComponent(log);
+            }
+
+            log.Attach(machine, mode);
+        }
+
+        OsCallLogSnapshot snapshot = GuestOsInspection.ReadOsCalls(machine, GuestOsInspection.MaxOsCalls);
+        context.Output.WriteLine(GuestOsInspection.FormatCallLog(snapshot));
+        return CommandResult.Ok($"OS call log: {snapshot.Mode}");
     }
 }
