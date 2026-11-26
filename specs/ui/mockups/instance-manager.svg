@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="900" viewBox="0 0 1440 900" role="img">
+  <title>Instance manager</title>
+  <!-- Geometric pocket marks are stand-ins for the Open Pocket and Closed Pocket glyphs. They are not traced from the character ROM. -->
+  <rect x="0" y="0" width="1440" height="900" rx="0" fill="#141311" stroke="none" stroke-width="1" />
+  <rect x="0" y="0" width="1440" height="32" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <rect x="0" y="31" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="16" y="16.0" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">App</text>
+  <rect x="0" y="32" width="1440" height="48" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <rect x="0" y="79" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <image href="../../../back-pocket-logo.png" x="16" y="42" width="28" height="28" preserveAspectRatio="xMidYMid meet"/>
+  <text x="52" y="56" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">Instances</text>
+  <rect x="1318.40625" y="42" width="105.59375" height="28" rx="2" fill="#F29A2E" stroke="#F29A2E" stroke-width="1" />
+  <text x="1371.203125" y="56.0" fill="#1A1208" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle" dominant-baseline="central">Add instance</text>
+  <rect x="480" y="80" width="1" height="820" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <rect x="0" y="80" width="2" height="72" rx="0" fill="#F29A2E" stroke="none" stroke-width="1" />
+  <clipPath id="thumb1"><rect x="16" y="89" width="96" height="54" rx="2"/></clipPath>
+  <g clip-path="url(#thumb1)">
+  <rect x="16" y="89" width="96" height="54" rx="0" fill="#0C0B09" stroke="none" stroke-width="1" />
+  <text x="22" y="103" fill="#B7E39A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="9" font-weight="400" text-anchor="start" dominant-baseline="central">]RUN</text>
+  <text x="22" y="115" fill="#B7E39A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="9" font-weight="400" text-anchor="start" dominant-baseline="central">HELLO</text>
+  <text x="22" y="127" fill="#B7E39A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="9" font-weight="400" text-anchor="start" dominant-baseline="central">HELLO</text>
+  </g>
+  <text x="128" y="106" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Workshop</text>
+  <text x="128" y="128" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Pocket2e</text>
+  <text x="193.234375" y="128" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">In-process</text>
+  <circle cx="280.265625" cy="128" r="3" fill="#F29A2E"/>
+  <text x="289.265625" y="128" fill="#F29A2E" font-family="Inter, sans-serif" font-size="12" font-weight="500" text-anchor="start" dominant-baseline="central">Running</text>
+  <rect x="0" y="151" width="480" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <clipPath id="thumb2"><rect x="16" y="161" width="96" height="54" rx="2"/></clipPath>
+  <g clip-path="url(#thumb2)">
+  <rect x="16" y="161" width="96" height="54" rx="0" fill="#0C0B09" stroke="none" stroke-width="1" />
+  <text x="22" y="177" fill="#B7E39A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="9" font-weight="400" text-anchor="start" dominant-baseline="central">]</text>
+  <rect x="30" y="171" width="6" height="10" rx="0" fill="#B7E39A" stroke="none" stroke-width="1" />
+  </g>
+  <text x="128" y="178" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Shelf</text>
+  <text x="128" y="200" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">PocketGS</text>
+  <text x="195.578125" y="200" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Local host</text>
+  <text x="279.609375" y="200" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Paused</text>
+  <rect x="0" y="223" width="480" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <clipPath id="thumb3"><rect x="16" y="233" width="96" height="54" rx="2"/></clipPath>
+  <g clip-path="url(#thumb3)">
+  <rect x="16" y="233" width="96" height="54" rx="0" fill="#0C0B09" stroke="none" stroke-width="1" />
+  </g>
+  <text x="128" y="250" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Lab</text>
+  <text x="128" y="272" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Pocket2e</text>
+  <text x="193.234375" y="272" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Remote</text>
+  <text x="248.453125" y="272" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Reconnecting</text>
+  <rect x="0" y="295" width="480" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="512" y="112" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">Workshop</text>
+  <rect x="512" y="136" width="896" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="512" y="164" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Profile</text>
+  <text x="512" y="186" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Pocket2e  ·  128 KB  ·  65C02</text>
+  <text x="512" y="226" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Launch</text>
+  <rect x="512" y="244" width="28" height="16" rx="8" fill="none" stroke="#4A453C" stroke-width="1" />
+  <circle cx="520" cy="252" r="5" fill="#4A453C"/>
+  <text x="552" y="252" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Start paused</text>
+  <text x="512" y="292" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Connectivity</text>
+  <rect x="512" y="310" width="243.234375" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="556.6015625" y="324.0" fill="#F29A2E" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle" dominant-baseline="central">In-process</text>
+  <rect x="601.203125" y="310" width="1" height="28" rx="0" fill="#4A453C" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="643.8984375" y="324.0" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Local host</text>
+  <rect x="686.59375" y="310" width="1" height="28" rx="0" fill="#4A453C" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="720.9140625" y="324.0" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Remote</text>
+  <text x="512" y="358" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Loopback  ·  healthy</text>
+  <rect x="512" y="392" width="57.15625" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="540.578125" y="406.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Open</text>
+  <rect x="577.15625" y="392" width="62.671875" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="608.4921875" y="406.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Power</text>
+  <rect x="512" y="448" width="896" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <rect x="512" y="472" width="128.984375" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="576.4921875" y="486.0" fill="#E15A4A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Remove instance</text>
+</svg>

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="1010" viewBox="0 0 1440 1010" role="img">
+  <title>Platform settings</title>
+  <!-- Geometric pocket marks are stand-ins for the Open Pocket and Closed Pocket glyphs. They are not traced from the character ROM. -->
+  <rect x="0" y="0" width="1440" height="1400" rx="0" fill="#141311" stroke="none" stroke-width="1" />
+  <rect x="0" y="0" width="1440" height="32" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <rect x="0" y="31" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="16" y="16.0" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">App</text>
+  <rect x="0" y="32" width="1440" height="48" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <rect x="0" y="79" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="56" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">Platform</text>
+  <text x="32" y="112" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">App</text>
+  <text x="32" y="140" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Theme, library, and startup.</text>
+  <text x="32" y="168" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Theme</text>
+  <rect x="32" y="176" width="171.265625" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="57.625" y="190.0" fill="#F29A2E" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle" dominant-baseline="central">Dark</text>
+  <rect x="83.25" y="176" width="1" height="28" rx="0" fill="#4A453C" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="109.453125" y="190.0" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Light</text>
+  <rect x="135.65625" y="176" width="1" height="28" rx="0" fill="#4A453C" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="169.4609375" y="190.0" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">System</text>
+  <text x="32" y="226" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Library</text>
+  <text x="32" y="248" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">~/BackPocket/Library</text>
+  <rect x="32" y="272" width="28" height="16" rx="8" fill="none" stroke="#4A453C" stroke-width="1" />
+  <circle cx="52" cy="280" r="5" fill="#F29A2E"/>
+  <text x="72" y="280" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Reopen the last machine windows</text>
+  <text x="32" y="316" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Logging</text>
+  <text x="90.234375" y="316" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Information</text>
+  <text x="32" y="344" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Packages</text>
+  <rect x="192" y="330" width="171.359375" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="277.6796875" y="344.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Open package manager</text>
+  <rect x="32" y="372" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="408" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">Host services</text>
+  <text x="32" y="440" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Printer and serial</text>
+  <text x="1340.671875" y="440" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Connected</text>
+  <rect x="32" y="458" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="476" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Network</text>
+  <text x="1388.9375" y="476" fill="#8E8278" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Off</text>
+  <rect x="32" y="494" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="512" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Host folder</text>
+  <text x="1340.671875" y="512" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Connected</text>
+  <rect x="32" y="530" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="548" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Clipboard paste</text>
+  <text x="1390.375" y="548" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">On</text>
+  <rect x="32" y="566" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="584" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Gamepads</text>
+  <text x="1388.9375" y="584" fill="#8E8278" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Off</text>
+  <rect x="32" y="602" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="620" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Audio out</text>
+  <text x="1340.671875" y="620" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Connected</text>
+  <rect x="32" y="638" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="664" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">Media library</text>
+  <text x="32" y="692" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Shared by every instance. Drive panels insert from here.</text>
+  <text x="32" y="720" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">tools.po</text>
+  <text x="252" y="720" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">140 KB</text>
+  <text x="372" y="720" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">ProDOS</text>
+  <rect x="32" y="736" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="758" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">notes.dsk</text>
+  <text x="252" y="758" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">140 KB</text>
+  <text x="372" y="758" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">DOS 3.3</text>
+  <rect x="32" y="774" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="796" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">blank.po</text>
+  <text x="252" y="796" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">800 KB</text>
+  <text x="372" y="796" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">ProDOS</text>
+  <rect x="32" y="812" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <rect x="32" y="824" width="78.09375" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="71.046875" y="838.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Add files</text>
+  <rect x="118.09375" y="824" width="92.828125" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="164.5078125" y="838.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">New image</text>
+  <rect x="32" y="874" width="1376" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="910" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">About</text>
+  <image href="../../../back-pocket-logo.png" x="32" y="930" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>
+  <text x="96" y="946" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">Back Pocket</text>
+  <text x="96" y="970" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">bpui</text>
+</svg>
