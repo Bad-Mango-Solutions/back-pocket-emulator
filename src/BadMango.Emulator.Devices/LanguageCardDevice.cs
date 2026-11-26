@@ -577,31 +577,6 @@ public sealed class LanguageCardDevice : IMotherboardDevice, ISoftSwitchProvider
         // Note: Layers are inactive by default, so we don't need to explicitly deactivate
     }
 
-    /// <summary>
-    /// Configures the Language Card memory layers and swap groups on the bus.
-    /// </summary>
-    /// <param name="bus">The memory bus to configure.</param>
-    /// <param name="registry">The device registry for ID generation.</param>
-    /// <param name="romTarget">
-    /// Legacy parameter for backward compatibility. This parameter is ignored;
-    /// the Language Card now uses layer deactivation to show ROM instead of a
-    /// passthrough variant.
-    /// </param>
-    /// <remarks>
-    /// <para>
-    /// This overload is provided for backward compatibility with existing code
-    /// that passes a ROM target. The ROM target parameter is ignored because
-    /// the Language Card now deactivates its layers to let the underlying base
-    /// ROM mapping show through.
-    /// </para>
-    /// </remarks>
-    [Obsolete("Use ConfigureMemory(IMemoryBus, IDeviceRegistry) instead. The romTarget parameter is no longer used.")]
-    public void ConfigureMemory(IMemoryBus bus, IDeviceRegistry registry, IBusTarget romTarget)
-    {
-        // Ignore romTarget - we now use layer deactivation instead
-        ConfigureMemory(bus, registry);
-    }
-
     //// ??? Private Methods ????????????????????????????????????????????????????????
 
     private void InitializeHandlers()

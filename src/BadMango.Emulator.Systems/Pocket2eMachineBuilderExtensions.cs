@@ -608,38 +608,6 @@ public static class Pocket2eMachineBuilderExtensions
             irqHandler: 0xFA40);  // Typical IRQ/BRK handler
     }
 
-    /// <summary>
-    /// Registers the minimal composite-io handler for profile-based loading.
-    /// </summary>
-    /// <param name="builder">The machine builder to configure.</param>
-    /// <returns>The configured builder for method chaining.</returns>
-    /// <remarks>
-    /// <para>
-    /// This method registers the "composite-io" handler with only the minimal
-    /// infrastructure required: an IOPageDispatcher and SlotManager.
-    /// </para>
-    /// <para>
-    /// Use this for minimal profiles that only need the I/O page with soft switches
-    /// and slot management, but do NOT need:
-    /// <list type="bullet">
-    /// <item><description>128KB RAM (64KB main + 64KB auxiliary)</description></item>
-    /// <item><description>Language Card (16KB RAM bank at $D000-$FFFF)</description></item>
-    /// <item><description>Auxiliary memory controller</description></item>
-    /// </list>
-    /// </para>
-    /// </remarks>
-    [Obsolete("Use MachineBuilderExtensions.RegisterCompositeIOHandler instead for profile-based loading.")]
-    public static MachineBuilder WithMinimalCompositeIOHandler(this MachineBuilder builder)
-    {
-        ArgumentNullException.ThrowIfNull(builder, nameof(builder));
-
-        // Only set up the slot manager - no extra RAM, Language Card, or Auxiliary Memory
-        builder.WithSlotManager();
-
-        // Delegate to the new extension method
-        return builder.RegisterCompositeIOHandler();
-    }
-
     private static ICpu CreatePocket2eCpu(IEventContext context)
     {
         return new Cpu65C02(context);
