@@ -16,55 +16,48 @@
   <text x="102.375" y="104" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Installed</text>
   <text x="177.859375" y="104" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Updates</text>
   <text x="235.296875" y="104" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">1</text>
-  <text x="32" y="140" fill="#8E8278" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Clean-room modules, firmware, and device packages.</text>
+  <text x="32" y="140" fill="#8E8278" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Clean-room modules, templates, devices, firmware, and disk images.</text>
   <rect x="0" y="160" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
-  <rect x="640" y="161" width="1" height="739" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
-  <rect x="24" y="173" width="32" height="32" rx="2" fill="#100F0D" stroke="#4A453C" stroke-width="1" />
-  <circle cx="40" cy="189" r="6" fill="none" stroke="#9C958A" stroke-width="1.25"/>
-  <circle cx="40" cy="189" r="2" fill="#9C958A"/>
-  <text x="68" y="181" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Host serial bridge</text>
-  <text x="68" y="199" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">1.4.0</text>
-  <text x="116.015625" y="199" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
-  <rect x="0" y="216" width="640" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
-  <rect x="0" y="217" width="2" height="56" rx="0" fill="#F29A2E" stroke="none" stroke-width="1" />
-  <rect x="24" y="229" width="32" height="32" rx="2" fill="#100F0D" stroke="#4A453C" stroke-width="1" />
-  <circle cx="40" cy="245" r="6" fill="none" stroke="#9C958A" stroke-width="1.25"/>
-  <circle cx="40" cy="245" r="2" fill="#9C958A"/>
-  <text x="68" y="237" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="start" dominant-baseline="central">SmartPort device</text>
-  <text x="68" y="255" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">0.9.1</text>
-  <text x="116.015625" y="255" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
-  <rect x="0" y="272" width="640" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
-  <rect x="24" y="285" width="32" height="32" rx="2" fill="#100F0D" stroke="#4A453C" stroke-width="1" />
-  <rect x="33" y="295" width="14" height="12" rx="1" fill="none" stroke="#9C958A" stroke-width="1" />
-  <rect x="35" y="299" width="10" height="1" rx="0" fill="#9C958A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
-  <text x="68" y="293" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Clean-room firmware</text>
-  <text x="68" y="311" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">1.0.3</text>
-  <text x="116.015625" y="311" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
-  <rect x="0" y="328" width="640" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
-  <rect x="24" y="341" width="32" height="32" rx="2" fill="#100F0D" stroke="#4A453C" stroke-width="1" />
-  <rect x="32" y="349" width="7" height="7" rx="0" fill="none" stroke="#9C958A" stroke-width="1" />
-  <rect x="41" y="358" width="7" height="7" rx="0" fill="none" stroke="#9C958A" stroke-width="1" />
-  <text x="68" y="349" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Host folder volume</text>
-  <text x="68" y="367" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">2.1.0</text>
-  <text x="116.015625" y="367" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
-  <rect x="0" y="384" width="640" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
-  <rect x="24" y="397" width="32" height="32" rx="2" fill="#100F0D" stroke="#4A453C" stroke-width="1" />
-  <rect x="32" y="405" width="7" height="7" rx="0" fill="none" stroke="#9C958A" stroke-width="1" />
-  <rect x="41" y="414" width="7" height="7" rx="0" fill="none" stroke="#9C958A" stroke-width="1" />
-  <text x="68" y="405" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Gameport bridge</text>
-  <text x="68" y="423" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">0.3.0</text>
-  <text x="116.015625" y="423" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
-  <rect x="0" y="440" width="640" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
-  <text x="672" y="200" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">SmartPort device</text>
-  <text x="672" y="228" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
-  <text x="753.90625" y="228" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">0.9.1</text>
-  <text x="672" y="268" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">A clean-room SmartPort device. It enumerates the</text>
-  <text x="672" y="288" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">drives the host reports.</text>
-  <text x="672" y="328" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Versions</text>
-  <text x="672" y="350" fill="#F29A2E" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">0.9.1</text>
-  <text x="672" y="372" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">0.9.0</text>
-  <text x="672" y="408" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Dependencies</text>
-  <text x="672" y="430" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Clean-room firmware  1.0.0</text>
-  <rect x="672" y="468" width="60.796875" height="28" rx="2" fill="#F29A2E" stroke="#F29A2E" stroke-width="1" />
-  <text x="702.3984375" y="482.0" fill="#1A1208" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle" dominant-baseline="central">Install</text>
+  <rect x="200" y="161" width="1" height="739" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <rect x="680" y="161" width="1" height="739" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="16" y="184" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Modules</text>
+  <text x="16" y="216" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Machine templates</text>
+  <rect x="0" y="234" width="2" height="28" rx="0" fill="#F29A2E" stroke="none" stroke-width="1" />
+  <text x="16" y="248" fill="#F29A2E" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="start" dominant-baseline="central">Devices</text>
+  <text x="16" y="280" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Firmware</text>
+  <text x="16" y="312" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Disk images</text>
+  <rect x="216" y="173" width="32" height="32" rx="2" fill="#100F0D" stroke="#4A453C" stroke-width="1" />
+  <circle cx="232" cy="189" r="6" fill="none" stroke="#9C958A" stroke-width="1.25"/>
+  <circle cx="232" cy="189" r="2" fill="#9C958A"/>
+  <text x="260" y="181" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Host serial bridge</text>
+  <text x="260" y="199" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">1.4.0</text>
+  <text x="308.015625" y="199" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
+  <rect x="200" y="216" width="480" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <rect x="200" y="217" width="2" height="56" rx="0" fill="#F29A2E" stroke="none" stroke-width="1" />
+  <rect x="216" y="229" width="32" height="32" rx="2" fill="#100F0D" stroke="#4A453C" stroke-width="1" />
+  <circle cx="232" cy="245" r="6" fill="none" stroke="#9C958A" stroke-width="1.25"/>
+  <circle cx="232" cy="245" r="2" fill="#9C958A"/>
+  <text x="260" y="237" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="start" dominant-baseline="central">SmartPort device</text>
+  <text x="260" y="255" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">0.9.1</text>
+  <text x="308.015625" y="255" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
+  <rect x="200" y="272" width="480" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <rect x="216" y="285" width="32" height="32" rx="2" fill="#100F0D" stroke="#4A453C" stroke-width="1" />
+  <circle cx="232" cy="301" r="6" fill="none" stroke="#9C958A" stroke-width="1.25"/>
+  <circle cx="232" cy="301" r="2" fill="#9C958A"/>
+  <text x="260" y="293" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Gameport bridge</text>
+  <text x="260" y="311" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">0.3.0</text>
+  <text x="308.015625" y="311" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
+  <rect x="200" y="328" width="480" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="712" y="200" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">SmartPort device</text>
+  <text x="712" y="228" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Bad Mango</text>
+  <text x="793.90625" y="228" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">0.9.1</text>
+  <text x="712" y="268" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">A clean-room SmartPort device. It enumerates the</text>
+  <text x="712" y="288" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">drives the host reports.</text>
+  <text x="712" y="328" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Versions</text>
+  <text x="712" y="350" fill="#F29A2E" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">0.9.1</text>
+  <text x="712" y="372" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">0.9.0</text>
+  <text x="712" y="408" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Dependencies</text>
+  <text x="712" y="430" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Clean-room firmware  1.0.0</text>
+  <rect x="712" y="468" width="60.796875" height="28" rx="2" fill="#F29A2E" stroke="#F29A2E" stroke-width="1" />
+  <text x="742.3984375" y="482.0" fill="#1A1208" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle" dominant-baseline="central">Install</text>
 </svg>

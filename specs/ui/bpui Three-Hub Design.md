@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Version | 1.1 |
+| Version | 1.2 |
 | Date | 2026-11-26 |
 | Status | Revised after review of [#797](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/pull/797). Docs only |
 | Epic | [#742](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/742) |
@@ -16,6 +16,8 @@
 This document is the source of truth for the `bpui` redesign. Implementation issues [#744](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/744) through [#754](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/754) build against it. It supersedes the Styling and Theming section of the [Emulator UI Specification](../Emulator%20UI%20Specification.md). The older modules in that specification describe the pre-redesign shell and remain until [#747](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/747)–[#752](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/752) replace them.
 
 Version 1.1 replaces the single-window hub bar from 1.0. Each running machine has its own window. The Instance manager, Platform settings, and the package manager are separate windows, opened from a menu.
+
+Version 1.2 separates running from having a window. The instance details page and the machine window bind to one session. It also specifies the profile editor, per-instance overrides, and package-or-file sources. The editor maps onto [`schemas/machine-profile.schema.json`](../../schemas/machine-profile.schema.json) and the [Machine Profile Configuration Guide](../reference/Machine%20Profile%20Configuration%20Guide.md).
 
 No code and no XAML ship with this document. Mockups are static SVG under [`specs/ui/mockups/`](mockups/).
 
@@ -132,7 +134,13 @@ Machine window          one per running instance
 
 Instance manager        launcher window
 ├── Instance list
-└── Detail              name, profile, launch, connectivity, open, remove
+└── Detail              the same session controls as the machine chrome,
+                        plus Open window / Show window, profile, connectivity
+
+Profile editor          template, or an instance's copy of one
+├── Overview, CPU, memory, ROMs, motherboard, slots
+├── Drives, video default, input, boot, guest OS
+└── Validation          missing ROM, incompatible card, bad memory size
 
 Platform settings
 ├── App                 theme, paths, startup, logging
@@ -142,6 +150,7 @@ Platform settings
 
 Package manager         its own window
 ├── Browse / Installed / Updates
+├── Categories          modules, machine templates, devices, firmware, disk images
 ├── Search and the package list
 └── Details             description, versions, dependencies, actions
 
@@ -150,7 +159,7 @@ Slots, Input, Status    their own windows, opened from the machine's View menu
 
 The six-item sidebar (Machine Manager, Storage, Display, Debug, Editor, Settings) goes away with [#751](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/751). Debug windows stay in Debug.UI. The editor stays the TextEditor control, opened from Tools, themed through the keys in section 12.
 
-Launching the app with no machine running opens the instance manager. Opening an instance opens its machine window, or focuses that window if it is already open. Closing a machine window leaves the instance running until the power menu powers it off. Closing the instance manager does not close machine windows.
+Launching the app with no machine running opens the instance manager. Running does not require a window. An instance can be headless, or running with its window closed, and the details page still powers it, resets it, sets its speed, and changes its disks. Opening an instance does not open a window by itself. Open window creates the machine window. Show window focuses one that already exists. Closing a machine window leaves the instance running until the power menu powers it off. Closing the instance manager does not close machine windows and does not stop machines.
 
 ## 4. Navigation
 
@@ -320,21 +329,110 @@ Each row shows:
 - The instance name, Inter 15px.
 - The model, the connectivity kind, and the run state. "Running" uses `ThemeAccentText` and the 6px dot. "Paused", "Off", and a remote "Reconnecting" use muted type.
 
-The detail pane is the selected instance, or a create form after "Add instance".
+The detail pane is the selected instance, or a create form after "Add instance". Its session controls are the machine chrome, without a monitor. They are not a second implementation. `MachineSessionViewModel` owns the commands, and both the machine window and this pane bind to that one object for the instance.
 
-- Name.
-- Profile, chosen from the profiles the control plane lists.
-- Launch options. "Start paused" is the one option this spec requires. Further options wait until the control plane exposes them.
+On the detail pane, from top to bottom:
+
+- Name, then the run state and the window state on one line. "Running" uses the mango dot. The window state is "Window open" or "Window closed". A machine that was started with no window is "Window closed". Headless is that state, not a third run state.
+- Power. The power menu from section 5.3. The same `PowerMenuViewModel` and the same `PowerCapabilities` record.
+- Reset. The same quick button as section 5.2, disabled while the machine is off.
+- Speed. The same throttle segmented control (`½×`, `1×`, `2×`, `Max`). The measured speed is a mono reading beside it. The machine window's chrome and this pane move the same throttle.
+- Drives. One row per drive the host reports: LED, slot label, image name or "Empty", and the actions Insert, Eject, Library, and New image. Insert and Library open the source picker in section 6.4. The row is `DriveBayViewModel`. The machine window's drive button and this row are two views of it.
+- Open window, when no window exists. Show window, when one exists. Show window focuses it. Neither command changes run state.
+- Profile. The template name, or "Local overrides", and Edit profile. Section 6.2 and section 6.3.
+- Launch options. "Start paused" is the one option this spec requires.
 - Connectivity, a segmented control: In-process ([#735](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/735)), Local host ([#736](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/736)), Remote ([#737](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/737)). Under it, a mono health line: "Loopback · healthy", "Local host · disconnected", "remote.example · reconnecting", and the same shape for a refusal. The remote path does not assume a trusted localhost; auth and the firmware rule are [#737](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/737).
-- Open. A ghost button that opens or focuses the machine window.
-- Power. The same power menu as section 5.3, for this instance.
-- Remove. A danger-text button "Remove instance". Activating it replaces the button with the line "Remove Workshop? Disk images stay in the library." and two actions, danger "Remove" and ghost "Cancel".
-
-Hardware detail stays on the machine window and its View-menu windows. Packages stay in the package manager.
+- Remove. A danger-text button "Remove instance". Activating it replaces the button with the line "Remove Workshop? Disk images stay in the library." and two actions, danger "Remove" and ghost "Cancel". Removing a running instance asks the power menu to power it off first.
 
 Every action goes through the host API. The list is the host's instance list. The Phase 1 sample profiles in `MachineManagerViewModel` are deleted with that view model.
 
-A surface shows at most one filled primary. "Add instance" is that button. While a create form is open, "Create" is the filled button and "Add instance" becomes a ghost.
+A surface shows at most one filled primary. "Add instance" is that button. While a create form is open, "Create" is the filled button and "Add instance" becomes a ghost. Open window and Show window are ghost buttons.
+
+### 6.1 What the two surfaces share
+
+| Control | Machine window | Instance details |
+| --- | --- | --- |
+| Run state and the power menu | Top chrome | Detail header |
+| Reset | Top chrome | Beside Power |
+| Speed throttle and measured speed | Top chrome, and the reading on the bottom strip | Beside Reset |
+| Drives | Bottom-chrome buttons and the slide-up panel | Rows on the detail page. A row opens the same panel |
+| Window | The window itself | Open window or Show window |
+| Display mode, capture, keycaps | This window only | Not repeated. They belong to a window that is showing the monitor |
+
+Closing the window unbinds the window view. It does not dispose the session. Opening the window binds a new `MachineWindowViewModel` to the same session.
+
+### 6.2 Profile editor
+
+Edit profile opens the profile editor. From the instance manager it edits that instance's profile. A Templates category in the package manager, and a ghost "Edit template" on a template row, open the same editor on the template itself.
+
+The editor is a section list and a detail column. Sections follow [`schemas/machine-profile.schema.json`](../../schemas/machine-profile.schema.json). The [Machine Profile Configuration Guide](../reference/Machine%20Profile%20Configuration%20Guide.md) is the field reference. The editor does not invent fields the schema does not have.
+
+| Section | Schema fields |
+| --- | --- |
+| Overview | `name`, `displayName`, `description`, `addressSpace` |
+| CPU | `cpu.type` (`6502`, `65C02`, `65816`, `65832`), `cpu.clockSpeed` in Hz |
+| Memory | `memory.physical` (name, size, fill), `memory.regions` (name, type, start, size, permissions, source), `memory.swapGroups`, `memory.controllers`. Main RAM, auxiliary RAM, and expansion are the physical blocks and the aux controller, not a separate schema |
+| ROMs | `memory.rom-images[]`: `name`, `source`, `size`, `required`, `hash`, `on_verification_fail`. Character ROM is the image the `character` motherboard device names in `config.character-rom`. Other firmware slots are the other `rom-images` entries |
+| Motherboard | `devices.motherboard[]`: `type`, `name`, `enabled`, `config` |
+| Slots | `devices.slots`: `enabled`, `internalC3Rom`, `internalCxRom`, `cards[]` (`slot`, `type`, `preset`, `config`), `defaultSet`, `sets`. Each card row includes the ROM its `config` references |
+| Drives | The slot cards whose type is a disk controller, and that card's `config` (for a Disk II compatible card, `drive1` and `drive2`). The running drive buttons in section 5.7 mount images. This section chooses the controller |
+| Video | The `video` motherboard device's `config` (`preset`, `colorMode`). That `colorMode` is the default monitor type for a new machine window. View → Display on an open window overrides it for that window only |
+| Input | The `keyboard` device (`preset`, and the rest of its `config`) and the `gameio` device (`joystickDeadzone` and the rest of its `config`) |
+| Boot | `boot.autoStart`, `boot.powerOnMemory.pattern`, `boot.powerOnMemory.seed`. `boot.startupSlot` is shown and labeled as not applied: guest ROM autostart owns the boot slot |
+| Guest OS | `guestOs.detect`, `guestOs.bootLog`, `guestOs.callLog` |
+
+`name` matches `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`. `addressSpace` is an integer from 12 to 32. Region `start` and `size` are `0x` hex and 4KB page-aligned. A ROM `source` uses the picker in section 6.4.
+
+The editor validates on each edit and again before save. Errors sit on the field and in a list at the top of the column. Save stays disabled while any error is present.
+
+| Condition | Error |
+| --- | --- |
+| A `rom-images` entry with `required: true` has an empty source, or the host cannot resolve it | Missing ROM, naming the image |
+| `on_verification_fail` is `stop` and the hash does not match | ROM hash mismatch, naming the image |
+| `cpu.type` is outside the enum, or `clockSpeed` is missing or not a positive integer | CPU |
+| A memory `size` or region `size` is not page-aligned, or the regions do not fit `addressSpace` | Unsupported memory size, with the value and the limit |
+| Two `cards` use the same `slot`, a `slot` is outside 1–7, or `type` is not a device the installed packages provide | Incompatible card, naming the slot |
+| `sets` contains two names that differ only by case | Slot set name |
+| `defaultSet` names no set | Unknown slot set |
+
+A clean document shows no error list. The mockup of a broken document shows the missing-ROM and incompatible-card cases together so both treatments are visible.
+
+### 6.3 An instance's own profile
+
+An instance points at a template (`name` of a profile) and may carry a local overlay. The detail page says "Follows Pocket2e" when the overlay is empty, and "Local overrides" when it is not.
+
+Edit profile on an instance edits the overlay. The editor offers two extra actions:
+
+- Save as new template. Writes the current document as a new profile. `name` must be unique and must match the schema pattern. The instance then follows that template and the overlay is cleared.
+- Revert to template. Drops the overlay. The instance follows the template again.
+
+Editing a template does not change an instance that has an overlay, and it does not change a running instance that still follows the template until that instance is powered off and on again. The editor says so in a faint line when the template has running followers.
+
+Profile edits apply only while the machine is Off. This is the same rule as Off-only card removal ([#598](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/598)): the slot map, the cards in it, memory, ROMs, CPU, motherboard devices, and drive controllers are part of the powered-off configuration. While the machine is running, paused, or shutting down, those fields are disabled. A note at the top of the editor reads "Power the machine off to change the profile." Save as new template stays enabled, because it writes a new template and does not change the running machine. Revert to template is disabled while the machine is not Off, because it would change the running configuration. The session controls in section 6.1 stay enabled. They are not profile fields.
+
+### 6.4 Sources
+
+Devices, disks, ROMs, and whole machine templates come from a downloaded package or from a file the user supplies. The project never ships a third-party ROM. User-supplied firmware is stored under the library root and resolved as `library://roms/...`. The library root is `~/.backpocket/` unless Platform settings points somewhere else.
+
+Every ROM row, disk row, device row, and template picker is a source control. It shows the provenance on the row, and it opens one picker with two modes:
+
+| Mode | What the user picks | Provenance the row shows |
+| --- | --- | --- |
+| From package | An installed package in the category for that content | Package name and version, for example "Clean-room firmware 1.0.3" |
+| From file | A file through `StorageProvider` | The path under the library root, for example `~/.backpocket/roms/pocket2e-system.rom`, and the URI `library://roms/pocket2e-system.rom` |
+
+Choosing a file copies it into the matching library directory (`roms`, `disks`, or `profiles`) when it is not already there. The profile stores the `library://` URI, not a path outside the library. A package choice stores a package reference the host can resolve after an update. The row shows the resolved URI in IBM Plex Mono either way.
+
+The package categories in section 8 are the ones this picker filters:
+
+| Picker | Category |
+| --- | --- |
+| Whole machine template | Machine templates |
+| Slot card or motherboard device | Devices |
+| `rom-images` source | Firmware |
+| Drive image | Disk images |
+
+A category with no installed package shows the empty line "No package is installed for this." and leaves From file available. From package never lists a ROM the registry marks as third-party.
 
 ## 7. Platform settings
 
@@ -383,9 +481,11 @@ The layout follows the shape of the Visual Studio NuGet package manager and the 
 
 ### 8.1 Chrome
 
-The menu bar is the App menu. The header is "Packages" in Inter 20px, with a search field trailing. Under the header, three text tabs: Browse, Installed, Updates. The active tab uses `ThemeAccentText` and a 2px underline. Updates shows a muted count when the registry reports updates. The search filters the active tab. A faint line under the tabs reads "Clean-room modules, firmware, and device packages."
+The menu bar is the App menu. The header is "Packages" in Inter 20px, with a search field trailing. Under the header, three text tabs: Browse, Installed, Updates. The active tab uses `ThemeAccentText` and a 2px underline. Updates shows a muted count when the registry reports updates. The search filters the active tab. A faint line under the tabs reads "Clean-room modules, templates, devices, firmware, and disk images."
 
-The window never offers Apple or third-party ROMs. A package the registry would identify as one of those is not listed.
+A category list sits at the leading edge, one row per category. The selected category uses `ThemeAccentText` and a 2px leading bar. The categories are Modules, Machine templates, Devices, Firmware, and Disk images. Browse, Installed, and Updates each respect the selected category. The source picker in section 6.4 opens the same categories.
+
+The window never offers Apple or third-party ROMs. A package the registry would identify as one of those is not listed. User-supplied firmware is not a package. It resolves through `library://roms/...`, as section 6.4 describes.
 
 ### 8.2 List
 
@@ -393,7 +493,7 @@ The list fills the leading half of the window. Rows are 56px, separated by hairl
 
 Each row shows:
 
-- A 32px geometric icon, drawn by the UI from the package kind (module, firmware, device). The icon is a hairline mark on `ThemeBackgroundSunken`. It is not a bitmap from the package and not a third-party image.
+- A 32px geometric icon, drawn by the UI from the package category (module, template, device, firmware, disk image). The icon is a hairline mark on `ThemeBackgroundSunken`. It is not a bitmap from the package and not a third-party image.
 - The package name, Inter 13px.
 - The version and the author, IBM Plex Mono 12px for the version and Inter 12px muted for the author.
 - A faint word when it helps the tab: "Installed", or "Update" on the Updates tab.
@@ -563,24 +663,27 @@ The debugger extension of the control plane (breakpoints, watches, memory, disas
 | View model | Window | Contract |
 | --- | --- | --- |
 | `AppMenuViewModel` | Every window | None of the three planes. Opens the instance manager, Platform settings, the package manager, and About |
-| `MachineWindowViewModel` | Machine | Control: state, clock, throttle, dirty-drive flag, attach and detach debugger, `PowerCapabilities` for the menu. Addresses one machine id. Display choice is delegated to `MonitorViewViewModel` |
-| `PowerMenuViewModel` | Machine, and the Power button on the instance manager | Control: the actions in section 5.3, filtered by `PowerCapabilities` and run state. One instance per machine, shared by both windows |
+| `MachineSessionViewModel` | Machine window and instance details | The shared command set for one machine id: run state, `PowerMenuViewModel`, Reset, throttle, `DriveStripViewModel`, and whether a window is open. Both surfaces bind to this object. Closing the window does not dispose it |
+| `MachineWindowViewModel` | Machine | Binds to `MachineSessionViewModel`. Adds the monitor, capture, keycaps, and debugger attach. Display choice is delegated to `MonitorViewViewModel` |
+| `PowerMenuViewModel` | Owned by the session | Control: the actions in section 5.3, filtered by `PowerCapabilities` and run state |
 | `MonitorViewViewModel` | Machine | Presentation: frames or raw composite signal, the display choice from the View menu, frame timing. Input: keys, mouse, joystick and paddles while captured, capture and release. One window |
-| `DriveStripViewModel` | Machine | Control: `ListDisks` topology, activity, boot-drive id |
-| `DriveBayViewModel` | Machine | Control: `MountDisk`, `EjectDisk`, write-protect, create-blank capability, busy and error, for one drive. Library reads `MediaLibraryViewModel`, then mounts |
+| `DriveStripViewModel` | Owned by the session | Control: `ListDisks` topology, activity, boot-drive id |
+| `DriveBayViewModel` | Owned by the session | Control: `MountDisk`, `EjectDisk`, write-protect, create-blank capability, busy and error, for one drive. Insert and Library use `ContentSourceViewModel` |
 | `SlotsWindowViewModel` | Slots | Control: slot map, memory, CPU, firmware source. Writes only while the machine is off |
 | `InputWindowViewModel` | Input | Input: active map (read), pocket-key state, clipboard paste as key injection, gamepad and paddle calibration, mouse capture mode, release key |
 | `MachineStatusViewModel` | Status | Control, read-only: CPU, clock, scheduler summary from machine info |
 | `InstanceManagerViewModel` | Instance manager | Control: list, add from profile, remove, open the machine window |
 | `InstanceRowViewModel` | Instance manager | Control: state, model, connectivity, health. Presentation: a still of the latest frame, about once a second |
-| `InstanceConfigViewModel` | Instance manager | Control: name, profile, launch options, connectivity kind |
+| `InstanceConfigViewModel` | Instance manager | Control: name, template id, launch options, connectivity kind. Session commands are not duplicated here |
+| `ProfileEditorViewModel` | Profile editor | Control: read and write the profile document for a template, or an instance overlay while the machine is Off. Validation in section 6.2. No second copy of the session commands |
+| `ContentSourceViewModel` | Source picker | None of the three planes for the catalog. A chosen disk becomes `MountDisk` on the drive. A chosen ROM or device is a profile field. Provenance is package name and version, or a `library://` URI under the library root |
 | `ConnectivityViewModel` | Instance manager | Control: transport kind and health for in-process, local host, and remote. The remote transport is [#737](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/737); the view model still calls the [#734](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/734) control contracts |
 | `PlatformSettingsViewModel` | Platform settings | None of the three planes. Which section is in view is window state |
 | `AppConfigViewModel` | Platform settings | None of the three planes. Theme, library path, startup, and logging are app-local settings |
 | `HostServicesViewModel` | Platform settings | Input for clipboard paste and host gamepads. Presentation for the audio-out sink. Printer, serial, network, and the host folder are the service-connection surface beside the three planes |
 | `MediaLibraryViewModel` | Platform settings | None of the three planes. Catalog only. A drive panel turns an entry into a control-plane `MountDisk` |
 | `AboutViewModel` | Platform settings | None. Brand mark, version, build |
-| `PackageManagerViewModel` | Package manager | None of the three planes. Module permission model ([#473](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/473)). Browse, Installed, and Updates are views over that registry |
+| `PackageManagerViewModel` | Package manager | None of the three planes. Module permission model ([#473](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/473)). Browse, Installed, and Updates are views over that registry. Categories are modules, machine templates, devices, firmware, and disk images |
 
 ### 13.2 Current view models
 
@@ -593,7 +696,7 @@ These are the view models in `src/BadMango.Emulator.UI/ViewModels` today, and wh
 | `PlaceholderViewModel` | Deleted | The machine window, the instance manager, and Platform settings |
 | `MachineManagerViewModel` | Deleted ([#751](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/751)) | `InstanceManagerViewModel` |
 | `MachineInstanceViewModel` | Replaced | `InstanceRowViewModel` |
-| `MachineProfileViewModel` | Replaced | Profile data on `InstanceConfigViewModel`, from the control plane |
+| `MachineProfileViewModel` | Replaced | `ProfileEditorViewModel` |
 | `PopOutWindowViewModel` | Replaced | The Slots, Input, and Status windows, and View → New window |
 | `SettingsWindowViewModel` | Deleted | `PlatformSettingsViewModel` |
 | `SettingsPageViewModelBase` | Deleted | The section view models below |
@@ -613,7 +716,8 @@ Reused as `UserControl`s, with the view models in section 13.1:
 
 - The machine window, including `MonitorSurface`, the bottom strip, the drive buttons, and the drive panel.
 - The power menu.
-- The instance manager, including the connectivity segment. Remote is the browser's ordinary case; in-process remains available when the page hosts a loopback.
+- The instance manager, including the shared session controls and the connectivity segment. Remote is the browser's ordinary case; in-process remains available when the page hosts a loopback.
+- The profile editor and the source picker.
 - Platform settings, including App, Host services, Media library, and About.
 - The package manager.
 - TextEditor, when Tools opens it, themed through section 12.
@@ -639,9 +743,12 @@ Static SVG, drawn for this spec. They reference `back-pocket-logo.png` by relati
 | [`mockups/machine-window-light.svg`](mockups/machine-window-light.svg) | The same window in the light theme. The monitor field stays `#0C0B09` |
 | [`mockups/power-menu.svg`](mockups/power-menu.svg) | The power menu open for a machine that reports soft power, sleep, and hard reset |
 | [`mockups/drive-panel.svg`](mockups/drive-panel.svg) | One drive's panel slid up from its bottom-chrome button |
-| [`mockups/instance-manager.svg`](mockups/instance-manager.svg) | The instance manager window |
+| [`mockups/instance-manager.svg`](mockups/instance-manager.svg) | Instance details for a machine that is running with its window closed. Power, Reset, speed, and drives match the machine chrome |
+| [`mockups/profile-editor.svg`](mockups/profile-editor.svg) | Profile editor: overview, memory and ROMs, and slots |
+| [`mockups/instance-profile-locked.svg`](mockups/instance-profile-locked.svg) | The same editor on a running instance. Profile fields are disabled |
+| [`mockups/source-picker.svg`](mockups/source-picker.svg) | A ROM source picker: From package and From file, with provenance |
 | [`mockups/platform-settings.svg`](mockups/platform-settings.svg) | Platform settings: app, host services, media library, About |
-| [`mockups/package-manager.svg`](mockups/package-manager.svg) | The package manager: Browse, search, list, details |
+| [`mockups/package-manager.svg`](mockups/package-manager.svg) | The package manager: categories, Browse, search, list, details |
 
 ## 16. Out of scope
 
@@ -663,7 +770,7 @@ Static SVG, drawn for this spec. They reference `back-pocket-logo.png` by relati
 | [#748](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/748) | Drive buttons and the drive panel, section 5.6 and section 5.7 |
 | [#749](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/749) | Slots window |
 | [#750](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/750) | Input window and `KeyCap` |
-| [#751](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/751) | Instance manager, deletion of the Machine Manager stub and placeholders |
-| [#752](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/752) | Platform settings and the package manager window |
+| [#751](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/751) | Instance manager, the shared session on the details page, the profile editor, deletion of the Machine Manager stub and placeholders |
+| [#752](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/752) | Platform settings, the package manager, and the source picker |
 | [#753](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/753) | Debug.UI adopts the theme and maps section 12 |
 | [#754](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/754) | TextEditor keys in section 12, with neutral defaults |

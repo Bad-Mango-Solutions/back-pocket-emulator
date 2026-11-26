@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="860" viewBox="0 0 1440 860" role="img">
+  <title>Instance profile, locked while running</title>
+  <!-- Geometric pocket marks are stand-ins for the Open Pocket and Closed Pocket glyphs. They are not traced from the character ROM. -->
+  <rect x="0" y="0" width="1440" height="860" rx="0" fill="#141311" stroke="none" stroke-width="1" />
+  <rect x="0" y="0" width="1440" height="32" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <rect x="0" y="31" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="16" y="16.0" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">App</text>
+  <rect x="0" y="32" width="1440" height="48" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <rect x="0" y="79" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="56" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">Workshop</text>
+  <text x="145.609375" y="56" fill="#F29A2E" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Local overrides</text>
+  <text x="1356.921875" y="56" fill="#F29A2E" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="start" dominant-baseline="central">Running</text>
+  <rect x="200" y="80" width="1" height="780" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <rect x="0" y="96" width="2" height="24" rx="0" fill="#F29A2E" stroke="none" stroke-width="1" />
+  <text x="16" y="108" fill="#F29A2E" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="start" dominant-baseline="central">Overview</text>
+  <text x="16" y="136" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">CPU</text>
+  <text x="16" y="164" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Memory</text>
+  <text x="16" y="192" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">ROMs</text>
+  <text x="16" y="220" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Motherboard</text>
+  <text x="16" y="248" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Slots</text>
+  <text x="16" y="276" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Drives</text>
+  <text x="16" y="304" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Video</text>
+  <text x="16" y="332" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Input</text>
+  <text x="16" y="360" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Boot</text>
+  <text x="16" y="388" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Guest OS</text>
+  <text x="232" y="108" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Power the machine off to change the profile.</text>
+  <rect x="232" y="136" width="1176" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="232" y="160" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Overview</text>
+  <text x="232" y="188" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">name</text>
+  <text x="392" y="188" fill="#8E8278" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">pocket2e</text>
+  <text x="232" y="216" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">displayName</text>
+  <text x="392" y="216" fill="#8E8278" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Workshop</text>
+  <text x="232" y="244" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">addressSpace</text>
+  <text x="392" y="244" fill="#8E8278" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">16</text>
+  <rect x="232" y="280" width="1176" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="232" y="308" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Memory and ROMs</text>
+  <text x="232" y="336" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">main RAM</text>
+  <text x="392" y="336" fill="#8E8278" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">0xC000</text>
+  <text x="232" y="364" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">aux RAM</text>
+  <text x="392" y="364" fill="#8E8278" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">0x10000</text>
+  <text x="232" y="392" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">system-rom</text>
+  <text x="392" y="392" fill="#8E8278" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">library://roms/pocket2e-system.rom</text>
+  <text x="232" y="420" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">expansion</text>
+  <text x="392" y="420" fill="#8E8278" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">library://roms/80col-expansion.rom</text>
+  <rect x="232" y="456" width="1176" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="232" y="484" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Slots</text>
+  <text x="232" y="512" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">slot 4</text>
+  <text x="392" y="512" fill="#8E8278" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">pocketwatch</text>
+  <text x="232" y="540" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">slot 6</text>
+  <text x="392" y="540" fill="#8E8278" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">disk-ii-compatible</text>
+  <text x="232" y="568" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">slot 3</text>
+  <text x="392" y="568" fill="#8E8278" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Empty</text>
+  <rect x="232" y="612" width="158.09375" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="244" y="626" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Save as new template</text>
+  <text x="512" y="626" fill="#8E8278" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Revert to template</text>
+</svg>
