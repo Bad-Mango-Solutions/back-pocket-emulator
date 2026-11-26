@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="300" viewBox="0 0 1440 300" role="img">
+  <title>Drive bay states</title>
+  <!-- Geometric pocket marks are stand-ins for the Open Pocket and Closed Pocket glyphs. They are not traced from the character ROM. -->
+  <rect x="0" y="0" width="1440" height="300" rx="0" fill="#141311" stroke="none" stroke-width="1" />
+  <rect x="24" y="48" width="1392" height="228" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <text x="40.0" y="28" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Empty</text>
+  <circle cx="43.0" cy="70" r="3" fill="#4A453C"/>
+  <text x="56.0" y="70" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">S6 D1</text>
+  <text x="40.0" y="96" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Empty</text>
+  <rect x="40.0" y="118" width="59.6875" height="28" rx="2" fill="#F29A2E" stroke="#F29A2E" stroke-width="1" />
+  <text x="69.84375" y="132.0" fill="#1A1208" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle" dominant-baseline="central">Insert</text>
+  <rect x="107.6875" y="118" width="51.78125" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="133.578125" y="132.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">New</text>
+  <text x="318.4" y="28" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Inserted</text>
+  <rect x="302.4" y="48" width="1" height="228" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <circle cx="321.4" cy="70" r="3" fill="#4A453C"/>
+  <text x="334.4" y="70" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">S6 D2</text>
+  <text x="318.4" y="96" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">tools.po</text>
+  <text x="318.4" y="118" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">T $12</text>
+  <rect x="318.4" y="146" width="54.21875" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="345.509375" y="160.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Eject</text>
+  <rect x="380.61875" y="146" width="106.03125" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="433.634375" y="160.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Write-protect</text>
+  <text x="596.8" y="28" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Write-protected</text>
+  <rect x="580.8" y="48" width="1" height="228" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <circle cx="599.8" cy="70" r="3" fill="#4A453C"/>
+  <text x="612.8" y="70" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">S5 D1</text>
+  <text x="596.8" y="96" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">notes.dsk</text>
+  <text x="596.8" y="118" fill="#9C958A" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">T $08</text>
+  <text x="647.221875" y="118" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">WP</text>
+  <rect x="596.8" y="146" width="54.21875" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="623.909375" y="160.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Eject</text>
+  <rect x="659.01875" y="146" width="84.390625" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="701.2140625" y="160.0" fill="#F29A2E" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="middle" dominant-baseline="central">Protected</text>
+  <text x="875.1999999999999" y="28" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Busy</text>
+  <rect x="859.1999999999999" y="48" width="1" height="228" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <circle cx="878.1999999999999" cy="70" r="3" fill="#F29A2E"/>
+  <text x="891.1999999999999" y="70" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">S5 D2</text>
+  <text x="875.1999999999999" y="96" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">work.po</text>
+  <text x="875.1999999999999" y="118" fill="#9C958A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">In use</text>
+  <rect x="875.1999999999999" y="146" width="54.21875" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" opacity="0.4"/>
+  <text x="902.3093749999999" y="160.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central" opacity="0.4">Eject</text>
+  <rect x="937.4187499999999" y="146" width="106.03125" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" opacity="0.4"/>
+  <text x="990.4343749999999" y="160.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central" opacity="0.4">Write-protect</text>
+  <text x="1153.6" y="28" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">Error</text>
+  <rect x="1137.6" y="48" width="1" height="228" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <circle cx="1156.6" cy="70" r="3" fill="#4A453C"/>
+  <text x="1169.6" y="70" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">S2 D1</text>
+  <text x="1153.6" y="96" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">bad.dsk</text>
+  <text x="1153.6" y="118" fill="#E15A4A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Image header is not a disk</text>
+  <text x="1153.6" y="134" fill="#E15A4A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">this drive can read.</text>
+  <rect x="1153.6" y="158" width="54.21875" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="1180.709375" y="172.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Eject</text>
+  <rect x="1215.81875" y="158" width="56.40625" height="28" rx="2" fill="none" stroke="#4A453C" stroke-width="1" />
+  <text x="1244.021875" y="172.0" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="middle" dominant-baseline="central">Retry</text>
+</svg>
