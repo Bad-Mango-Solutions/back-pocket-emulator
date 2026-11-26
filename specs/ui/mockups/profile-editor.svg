@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="820" viewBox="0 0 1440 820" role="img">
+  <title>Profile editor</title>
+  <!-- Geometric pocket marks are stand-ins for the Open Pocket and Closed Pocket glyphs. They are not traced from the character ROM. -->
+  <rect x="0" y="0" width="1440" height="820" rx="0" fill="#141311" stroke="none" stroke-width="1" />
+  <rect x="0" y="0" width="1440" height="32" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <rect x="0" y="31" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="16" y="16.0" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">App</text>
+  <rect x="0" y="32" width="1440" height="48" rx="0" fill="#1B1A17" stroke="none" stroke-width="1" />
+  <rect x="0" y="79" width="1440" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="32" y="56" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="20" font-weight="500" text-anchor="start" dominant-baseline="central">pocket2e</text>
+  <text x="137.359375" y="56" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Template</text>
+  <rect x="200" y="80" width="1" height="740" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <rect x="0" y="96" width="2" height="24" rx="0" fill="#F29A2E" stroke="none" stroke-width="1" />
+  <text x="16" y="108" fill="#F29A2E" font-family="Inter, sans-serif" font-size="13" font-weight="500" text-anchor="start" dominant-baseline="central">Overview</text>
+  <text x="16" y="136" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">CPU</text>
+  <text x="16" y="164" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Memory</text>
+  <text x="16" y="192" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">ROMs</text>
+  <text x="16" y="220" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Motherboard</text>
+  <text x="16" y="248" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Slots</text>
+  <text x="16" y="276" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Drives</text>
+  <text x="16" y="304" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Video</text>
+  <text x="16" y="332" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Input</text>
+  <text x="16" y="360" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Boot</text>
+  <text x="16" y="388" fill="#9C958A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Guest OS</text>
+  <text x="232" y="108" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Overview</text>
+  <text x="232" y="136" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">name</text>
+  <text x="392" y="136" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">pocket2e</text>
+  <text x="232" y="164" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">displayName</text>
+  <text x="392" y="164" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">Pocket2e</text>
+  <text x="232" y="192" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">addressSpace</text>
+  <text x="392" y="192" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">16</text>
+  <rect x="232" y="228" width="1176" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="232" y="256" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Memory and ROMs</text>
+  <text x="232" y="284" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">main RAM</text>
+  <text x="392" y="284" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">0xC000</text>
+  <text x="232" y="312" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">aux RAM</text>
+  <text x="392" y="312" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">0x10000</text>
+  <text x="232" y="340" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">system-rom</text>
+  <text x="392" y="340" fill="#E8E2D6" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">library://roms/pocket2e-system.rom</text>
+  <text x="232" y="368" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">expansion</text>
+  <text x="392" y="368" fill="#E15A4A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">No source</text>
+  <text x="392" y="386" fill="#E15A4A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Missing ROM</text>
+  <rect x="232" y="416" width="1176" height="1" rx="0" fill="#34302A" stroke="none" stroke-width="1" shape-rendering="crispEdges"/>
+  <text x="232" y="444" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="15" font-weight="500" text-anchor="start" dominant-baseline="central">Slots</text>
+  <text x="232" y="472" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">slot 4</text>
+  <text x="392" y="472" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">pocketwatch</text>
+  <text x="232" y="500" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">slot 6</text>
+  <text x="392" y="500" fill="#E8E2D6" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">disk-ii-compatible</text>
+  <text x="232" y="528" fill="#8E8278" font-family="Inter, sans-serif" font-size="11" font-weight="400" text-anchor="start" dominant-baseline="central">slot 3</text>
+  <text x="392" y="528" fill="#E15A4A" font-family="Inter, sans-serif" font-size="13" font-weight="400" text-anchor="start" dominant-baseline="central">unknown-card</text>
+  <text x="392" y="546" fill="#E15A4A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Incompatible card</text>
+  <text x="232" y="584" fill="#E15A4A" font-family="Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central">Save is disabled until the ROM and the card are resolved.</text>
+</svg>

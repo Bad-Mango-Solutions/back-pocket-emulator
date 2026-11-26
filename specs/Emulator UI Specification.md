@@ -754,35 +754,9 @@ public interface IHypervisorService
 
 ## Styling and Theming
 
-### Design Principles
+Visual language, tokens, controls, hub layout, and the host API mapping for `bpui` are specified in [bpui Three-Hub Design](ui/bpui%20Three-Hub%20Design.md). That document replaces this section.
 
-1. **Retro-Modern** - Clean modern UI with retro accent colors
-2. **Dark Theme Default** - Easier on eyes for long sessions
-3. **Customizable** - User-selectable themes
-4. **Accessible** - High contrast options
-
-### Color Palette
-
-| Element | Light Theme | Dark Theme |
-|---------|-------------|------------|
-| Background | #FAFAFA | #1E1E1E |
-| Surface | #F0F0F0 | #252526 |
-| Primary | #007ACC | #0E639C |
-| Secondary | #6B9F00 | #4EC9B0 |
-| Error | #D32F2F | #F44747 |
-| Text | #212121 | #D4D4D4 |
-| Border | #D8D8D8 | #3C3C3C |
-| Hover | #D0D0D0 | #2A2D2E |
-| Selected | #CCE4F7 | #094771 |
-| Accent | #007ACC | #0E639C |
-
-### Fonts
-
-| Usage | Font | Fallback |
-|-------|------|----------|
-| UI Text | Segoe UI / SF Pro | System default |
-| Code/Terminal | Cascadia Mono | Consolas, monospace |
-| Apple II Display | Custom (ROM-based) | N/A |
+Color, type, spacing, and radius live there and ship from the shared `BadMango.Emulator.Theme` assembly ([#744](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/744)). The palette and font tables that used to live here, and the later mentions of Segoe UI, Cascadia Mono, and the VS Code blues in this document, describe the pre-redesign shell. New views follow the three-hub spec. Guest video still uses the character ROM on the monitor; chrome type is Inter and IBM Plex Mono.
 
 ---
 
