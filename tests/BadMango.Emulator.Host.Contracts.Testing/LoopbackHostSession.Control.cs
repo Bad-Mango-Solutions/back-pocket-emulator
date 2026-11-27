@@ -5,6 +5,8 @@
 namespace BadMango.Emulator.Host.Contracts.Testing;
 
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 using BadMango.Emulator.Host.Contracts;
 
@@ -151,7 +153,7 @@ public sealed partial class LoopbackHostSession
     /// <inheritdoc />
     public void SetInstanceOverlay(MachineId machineId, string? overlayJson)
     {
-        string? stored = string.IsNullOrWhiteSpace(overlayJson) ? null : overlayJson;
+        string? stored = NormalizeOverlay(overlayJson);
         Update(machineId, machine =>
         {
             if (machine.State != HostRunState.Off)
@@ -557,6 +559,31 @@ public sealed partial class LoopbackHostSession
             HostThrottle.Max => 0,
             _ => throw new ArgumentOutOfRangeException(nameof(throttle), throttle, "The throttle is not defined."),
         };
+    }
+
+    private string? NormalizeOverlay(string? overlayJson)
+    {
+        if (string.IsNullOrWhiteSpace(overlayJson))
+        {
+            return null;
+        }
+
+        JsonNode? node;
+        try
+        {
+            node = JsonNode.Parse(overlayJson);
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException("The profile overlay must be a JSON object.", nameof(overlayJson), ex);
+        }
+
+        if (node is not JsonObject)
+        {
+            throw new ArgumentException("The profile overlay must be a JSON object.", nameof(overlayJson));
+        }
+
+        return overlayJson;
     }
 
     private void Reset(MachineId machineId, bool hard)

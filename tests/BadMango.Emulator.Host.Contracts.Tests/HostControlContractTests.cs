@@ -123,6 +123,31 @@ public abstract class HostControlContractTests
     }
 
     /// <summary>
+    /// An overlay must be a JSON object. Nested values are stored. A non-object does not replace the profile.
+    /// </summary>
+    [Test]
+    public void SetInstanceOverlay_RejectsANonObject()
+    {
+        using IHostSession session = Open();
+        MachineId id = Add(session, "Workshop");
+
+        Assert.Multiple(() =>
+        {
+            Assert.Throws<ArgumentException>(() => session.Control.SetInstanceOverlay(id, "[]"));
+            Assert.Throws<ArgumentException>(() => session.Control.SetInstanceOverlay(id, "\"text\""));
+            Assert.Throws<ArgumentException>(() => session.Control.SetInstanceOverlay(id, "12"));
+            Assert.Throws<ArgumentException>(() => session.Control.SetInstanceOverlay(id, "{"));
+            Assert.That(session.Control.GetMachineInfo(id).ProfileOverlayJson, Is.Null);
+        });
+
+        const string Overlay = """{"cpu":{"clockSpeed":42}}""";
+        session.Control.SetInstanceOverlay(id, Overlay);
+        Assert.That(session.Control.GetMachineInfo(id).ProfileOverlayJson, Is.EqualTo(Overlay));
+        session.Control.SetInstanceOverlay(id, null);
+        Assert.That(session.Control.GetMachineInfo(id).ProfileOverlayJson, Is.Null);
+    }
+
+    /// <summary>
     /// The overlay can change only while the machine is off. Removing a running machine is refused.
     /// </summary>
     /// <returns>The test task.</returns>

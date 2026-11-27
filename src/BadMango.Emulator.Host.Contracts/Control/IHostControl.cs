@@ -97,7 +97,11 @@ public interface IHostControl
     /// Sets or clears an instance's profile overlay. Legal only while the machine is off.
     /// </summary>
     /// <param name="machineId">The machine.</param>
-    /// <param name="overlayJson">The overlay document, or <see langword="null"/> to follow the template.</param>
+    /// <param name="overlayJson">
+    /// A JSON object merged onto the profile, or <see langword="null"/> or whitespace to follow the template.
+    /// Nested objects merge field by field. Any other nested value replaces that field.
+    /// </param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="overlayJson"/> is not a JSON object.</exception>
     /// <exception cref="InvalidOperationException">Thrown when the machine is unknown or is not off.</exception>
     void SetInstanceOverlay(MachineId machineId, string? overlayJson);
 

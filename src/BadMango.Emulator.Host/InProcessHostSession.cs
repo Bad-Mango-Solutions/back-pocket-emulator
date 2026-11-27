@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Host;
 
 using System.Collections.Concurrent;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
@@ -59,6 +60,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
     private int liveRunLoops;
     private int operationsInProgress;
     private TaskCompletionSource operationsIdle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Exception? noticeFailure;
     private bool disposed;
 
     /// <summary>
@@ -280,6 +282,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
     /// <inheritdoc />
     public void SetInstanceOverlay(MachineId machineId, string? overlayJson)
     {
+        string? stored = NormalizeOverlay(overlayJson);
         MachineHandle machine = Find(machineId);
         lock (machine.Sync)
         {
@@ -288,7 +291,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
                 throw new InvalidOperationException("Power the machine off to change the profile.");
             }
 
-            machine.OverlayJson = string.IsNullOrWhiteSpace(overlayJson) ? null : overlayJson;
+            machine.OverlayJson = stored;
         }
     }
 
@@ -495,6 +498,40 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
     internal Exception? ReadRunFault(MachineId machineId)
     {
         return Find(machineId).RunFault;
+    }
+
+    /// <summary>
+    /// Reads the latest exception thrown by a notification sink.
+    /// </summary>
+    /// <returns>The exception, or <see langword="null"/> when every sink has returned.</returns>
+    internal Exception? ReadNoticeFailure()
+    {
+        return Volatile.Read(ref noticeFailure);
+    }
+
+    private string? NormalizeOverlay(string? overlayJson)
+    {
+        if (string.IsNullOrWhiteSpace(overlayJson))
+        {
+            return null;
+        }
+
+        JsonNode? node;
+        try
+        {
+            node = JsonNode.Parse(overlayJson);
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException("The profile overlay must be a JSON object.", nameof(overlayJson), ex);
+        }
+
+        if (node is not JsonObject)
+        {
+            throw new ArgumentException("The profile overlay must be a JSON object.", nameof(overlayJson));
+        }
+
+        return overlayJson;
     }
 
     private async Task PowerOnCoreAsync(MachineId machineId, CancellationToken cancellationToken)
@@ -980,9 +1017,9 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
 
         JsonNode? profileNode = JsonNode.Parse(profileJson);
         JsonNode? overlayNode = JsonNode.Parse(overlayJson);
-        if (profileNode is null || overlayNode is null)
+        if (profileNode is not JsonObject || overlayNode is not JsonObject)
         {
-            throw new InvalidOperationException("The profile overlay is not valid JSON.");
+            throw new InvalidOperationException("The profile overlay must be a JSON object.");
         }
 
         return MergeJson(profileNode, overlayNode).ToJsonString();
@@ -992,7 +1029,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
     {
         if (template is not JsonObject templateObject || overlay is not JsonObject overlayObject)
         {
-            return overlay.DeepClone();
+            throw new InvalidOperationException("The profile overlay must be a JSON object.");
         }
 
         JsonObject merged = [];
@@ -1082,13 +1119,28 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
             return;
         }
 
-        notices.Writer.TryWrite(() =>
+        notices.Writer.TryWrite(() => DeliverToSinks(snapshot, notify));
+    }
+
+    private void DeliverToSinks(IHostNotificationSink[] snapshot, Action<IHostNotificationSink> notify)
+    {
+        foreach (IHostNotificationSink sink in snapshot)
         {
-            foreach (IHostNotificationSink sink in snapshot)
+            try
             {
                 notify(sink);
             }
-        });
+            catch (Exception ex) when (ex is not (
+                OutOfMemoryException
+                or AccessViolationException
+                or InvalidProgramException
+                or BadImageFormatException))
+            {
+                // One sink cannot stop the pump or skip the other sinks. Cancellation of the
+                // pump itself is outside this call, in DeliverNoticesAsync.
+                Volatile.Write(ref noticeFailure, ex);
+            }
+        }
     }
 
     private async Task DeliverNoticesAsync()

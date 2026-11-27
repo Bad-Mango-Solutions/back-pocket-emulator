@@ -306,6 +306,34 @@ public class InProcessHostMachineTests
     }
 
     /// <summary>
+    /// One throwing sink is recorded and does not stop later notices from reaching another sink.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task NoticePump_IsolatesAThrowingSink()
+    {
+        using InProcessHostSession session = Open();
+        ThrowingSink failing = new();
+        StateSink healthy = new();
+        using IDisposable failingSubscription = session.Control.Subscribe(failing);
+        using IDisposable healthySubscription = session.Control.Subscribe(healthy);
+        MachineId id = Add(session, "Notices", startPaused: true);
+
+        await session.Control.PowerOnAsync(id);
+        await WaitForSinkAsync(healthy, HostRunState.Paused);
+        await session.Control.PowerOffAsync(id);
+        await WaitForSinkAsync(healthy, HostRunState.Off);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(healthy.States(), Does.Contain(HostRunState.Paused));
+            Assert.That(healthy.States(), Does.Contain(HostRunState.Off));
+            Assert.That(session.ReadNoticeFailure(), Is.InstanceOf<InvalidOperationException>());
+            Assert.That(failing.Calls, Is.GreaterThanOrEqualTo(2));
+        });
+    }
+
+    /// <summary>
     /// A posted failure faults the run task, the host reports Stopped, and the client gets that notice.
     /// </summary>
     /// <returns>The test task.</returns>
@@ -445,6 +473,21 @@ public class InProcessHostMachineTests
         }
     }
 
+    private static async Task WaitForSinkAsync(StateSink sink, HostRunState state)
+    {
+        for (int attempt = 0; attempt < 50; attempt++)
+        {
+            if (sink.States().Contains(state))
+            {
+                return;
+            }
+
+            await Task.Delay(20);
+        }
+
+        Assert.Fail($"Sink did not receive {state}. Saw [{string.Join(", ", sink.States())}].");
+    }
+
     private static async Task WaitForStateAsync(InProcessHostSession session, MachineId id, HostRunState state)
     {
         for (int attempt = 0; attempt < 50; attempt++)
@@ -523,6 +566,23 @@ public class InProcessHostMachineTests
     {
         BootProfile.Ensure(session.Control);
         return session.Control.CreateInstance(new HostInstanceSpec(name, BootProfile.Id, startPaused, power));
+    }
+
+    private sealed class ThrowingSink : IHostNotificationSink
+    {
+        private int calls;
+
+        /// <summary>
+        /// Gets how many notices this sink received before throwing.
+        /// </summary>
+        public int Calls => Volatile.Read(ref calls);
+
+        /// <inheritdoc />
+        public void OnStateChanged(HostStateNotice notice)
+        {
+            Interlocked.Increment(ref calls);
+            throw new InvalidOperationException("sink failed");
+        }
     }
 
     private sealed class StateSink : IHostNotificationSink
