@@ -30,7 +30,7 @@ The target layout is defined by [#478](https://github.com/Bad-Mango-Solutions/ba
 | Debugger UI | [`BadMango.Emulator.Debug.UI`](../../src/BadMango.Emulator.Debug.UI/) | Debugger windows and the text editor. It absorbs TextEditor; the existing `BadMango.Emulator.TextEditor` namespace remains unchanged. |
 | Debug console | [`BadMango.Emulator.Debug`](../../src/BadMango.Emulator.Debug/) (`emudbg`) | Separate executable host for the shared debugger surface. |
 | Debug MCP host | [`BadMango.Emulator.Debug.Mcp`](../../src/BadMango.Emulator.Debug.Mcp/) (`emudbg-mcp`) | Separate stdio MCP executable. Its only direct project reference remains `BadMango.Emulator.Debug.Infrastructure`. |
-| Debugger infrastructure | [`BadMango.Emulator.Debug.Infrastructure`](../../src/BadMango.Emulator.Debug.Infrastructure/) | Shared debugger contracts and command/session infrastructure. It absorbs Debug.Abstractions; the existing `BadMango.Emulator.Debug.Abstractions` namespace remains unchanged. |
+| Debugger infrastructure | [`BadMango.Emulator.Debug.Infrastructure`](../../src/BadMango.Emulator.Debug.Infrastructure/) | Shared debugger contracts and command/session infrastructure. Debug.Abstractions lives in this project. The existing `BadMango.Emulator.Debug.Abstractions` namespace remains unchanged. |
 | Host API | [`BadMango.Emulator.Host.Contracts`](../../src/BadMango.Emulator.Host.Contracts/) | Versioned control, presentation, and input contracts. No project references. The stub loopback is `tests/BadMango.Emulator.Host.Contracts.Testing`. See [`host-api.md`](host-api.md). |
 
 `emudbg` and `emudbg-mcp` stay separate processes. `emudbg-mcp` does not directly reference `BadMango.Emulator.Debug.UI`.
@@ -38,10 +38,6 @@ The target layout is defined by [#478](https://github.com/Bad-Mango-Solutions/ba
 The host API is a leaf added by [#734](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/734). It is not one of the [#478](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/478) fold targets. Clients talk to a machine only through that assembly. `bpui` and `emudbg` are not rewired onto it in this change.
 
 ## Pending source moves
-
-> **Current location (until #560):** `src/BadMango.Emulator.Debug.Abstractions`; target: `src/BadMango.Emulator.Debug.Infrastructure` (namespace `BadMango.Emulator.Debug.Abstractions` unchanged).
-
-> **Current location (until #560):** `tests/BadMango.Emulator.Debug.Abstractions.Tests`; target: `tests/BadMango.Emulator.Debug.Infrastructure.Tests` (namespace unchanged).
 
 > **Current location (until #561):** `src/BadMango.Emulator.TextEditor`; target: `src/BadMango.Emulator.Debug.UI` (namespace `BadMango.Emulator.TextEditor` unchanged).
 

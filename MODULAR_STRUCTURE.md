@@ -14,7 +14,7 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 | `BadMango.Emulator.Rendering` | Pixel buffers and character rendering |
 | `BadMango.Emulator.Systems` | Pocket2e machine composition |
 | `BadMango.Emulator.TextEditor` | Avalonia text editor |
-| `BadMango.Emulator.Debug.Infrastructure` | REPL, commands, breakpoints, trace |
+| `BadMango.Emulator.Debug.Infrastructure` | REPL, commands, breakpoints, trace, and debug session contracts. Namespace `BadMango.Emulator.Debug.Abstractions` stays |
 | `BadMango.Emulator.Debug.UI` | Avalonia windows hosted by the console debugger |
 
 ## Hosts
@@ -26,7 +26,7 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 
 ## Tests
 
-`tests/BadMango.Unit.Components` is the shared test library. Every `tests/BadMango.Emulator.*.Tests` project references it and the library it covers. `BadMango.Emulator.Core.Tests` covers the bus, memory map, and device registry. `BadMango.Emulator.Tests` is the cross-project suite for the CPU, machine builder, Systems, and Core.
+`tests/BadMango.Unit.Components` is the shared test library. Every `tests/BadMango.Emulator.*.Tests` project references it and the library it covers. `BadMango.Emulator.Core.Tests` covers the bus, memory map, and device registry. `BadMango.Emulator.Debug.Infrastructure.Tests` covers the REPL and the debug session contracts (namespace `BadMango.Emulator.Debug.Abstractions.Tests` stays). `BadMango.Emulator.Tests` is the cross-project suite for the CPU, machine builder, Systems, and Core.
 
 ## Naming
 

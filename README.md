@@ -60,7 +60,7 @@ back-pocket-emulator/
 │   ├── BadMango.Emulator.Systems/              # Pocket2e machine composition
 │   ├── BadMango.Emulator.UI/                   # Avalonia host (bpui); event aggregator, settings, UI contracts
 │   ├── BadMango.Emulator.TextEditor/           # Avalonia editor
-│   ├── BadMango.Emulator.Debug.Infrastructure/ # REPL, commands, breakpoints, trace
+│   ├── BadMango.Emulator.Debug.Infrastructure/ # REPL, commands, breakpoints, trace; Debug.Abstractions namespace stays
 │   ├── BadMango.Emulator.Debug.UI/             # Avalonia windows for the console debugger
 │   └── BadMango.Emulator.Debug/                # Console host (emudbg)
 │
