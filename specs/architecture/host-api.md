@@ -2,7 +2,7 @@
 
 **Summary:** Version 1 of the emulator host API. Clients power, see, hear, and drive a machine only through `BadMango.Emulator.Host.Contracts`. The stub loopback used by tests is not that assembly. The real in-process loopback is the #735 binding onto a real machine. IPC and the network come later, on the same contracts.
 
-**Covers:** Where the contracts live, machine addressing, threading, versioning, the control, presentation, and input planes, the debugger extension, and which parts of `IDebugSession` and `IMachineIoSession` stay behind for #560.
+**Covers:** Where the contracts live, machine addressing, threading, versioning, the control, presentation, and input planes, the debugger extension, and which parts of `IDebugSession` and `IMachineIoSession` stay on the debug session.
 
 **Does not cover:** Rewiring `emudbg` or `bpui`, an out-of-process transport, the AppleMouse card, the #738 wire encoding, or deleting anything on the #566 list.
 
@@ -18,7 +18,7 @@ The stub loopback is test support: `tests/BadMango.Emulator.Host.Contracts.Testi
 
 - Core now holds `IMachine` and `IMachineDispatcher`. A reference to Core is a reference to the machine.
 - Devices holds the video device, `IAudioOutput`, `IHostKeyboardSink`, and `IGamePortDevice`.
-- Debug.Abstractions references Core. #560 folds it into Debug.Infrastructure, which references the machine.
+- Debug session contracts live in Debug.Infrastructure (namespace `BadMango.Emulator.Debug.Abstractions`, under `src/BadMango.Emulator.Debug.Infrastructure`). That project references the machine.
 - UI is the `bpui` shell. If the contracts lived there, `emudbg` and a later browser client would reference that executable.
 - Rendering holds `IVideoSession` and Avalonia.
 
@@ -108,7 +108,7 @@ Mouse motion is `Relative` (a delta) or `Absolute` (a position clamped to 0–1)
 
 ## What stays on the debug session
 
-#560 folds Debug.Abstractions into Debug.Infrastructure. It folds what this API did not take.
+#560 folded Debug.Abstractions into Debug.Infrastructure. The members this API did not take moved with that project and stay on `IDebugSession` and `IMachineIoSession` (namespace `BadMango.Emulator.Debug.Abstractions`, under `src/BadMango.Emulator.Debug.Infrastructure`).
 
 | Today | Where it goes |
 | --- | --- |

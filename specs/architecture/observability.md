@@ -52,7 +52,7 @@ device I/O behavior, machine profiles, and the `bpui` shell are other pages.
   and [`BreakpointManager`](../../src/BadMango.Emulator.Debug.Infrastructure/BreakpointManager.cs)
   are debugger services and do not move.
   [`MachineDebugSession`](../../src/BadMango.Emulator.Debug.Infrastructure/MachineDebugSession.cs)
-  implements [`IDebugSession`](../../src/BadMango.Emulator.Debug.Abstractions/IDebugSession.cs).
+  implements [`IDebugSession`](../../src/BadMango.Emulator.Debug.Infrastructure/IDebugSession.cs).
 - [`DebugWindowManager`](../../src/BadMango.Emulator.Debug.UI/Services/DebugWindowManager.cs)
   opens debugger windows. The text editor window is
   [`TextEditorWindow`](../../src/BadMango.Emulator.TextEditor/TextEditorWindow.axaml.cs).
@@ -74,19 +74,15 @@ namespace. `InstructionTrace` already lives in `BadMango.Emulator.Core` under
 `BadMango.Emulator.Core.Cpu`. The 65C02 that writes the trace still lives in
 the Emulation project under `BadMango.Emulator.Emulation.Cpu`.
 
-Debugger services, including the contracts, land in
-`BadMango.Emulator.Debug.Infrastructure`. `WatchpointManager`,
-`BreakpointManager`, `TracingDebugListener`, `MachineDebugSession`, and the
-debug commands already live there and do not move. `IDebugSession` and the
-session DTOs stay in the `BadMango.Emulator.Debug.Abstractions` namespace.
-
-> **Current location (until #560):** `src/BadMango.Emulator.Debug.Abstractions`;
-> target: `src/BadMango.Emulator.Debug.Infrastructure` (namespace
-> `BadMango.Emulator.Debug.Abstractions` unchanged).
->
-> **Current location (until #560):** `tests/BadMango.Emulator.Debug.Abstractions.Tests`;
-> target: `tests/BadMango.Emulator.Debug.Infrastructure.Tests` (namespace
-> unchanged).
+Debugger services, including the contracts, live in
+`BadMango.Emulator.Debug.Infrastructure`
+(`src/BadMango.Emulator.Debug.Infrastructure`). `WatchpointManager`,
+`BreakpointManager`, `TracingDebugListener`, `MachineDebugSession`, the
+debug commands, `IDebugSession`, and the session DTOs live there.
+`IDebugSession` and the session DTOs keep the
+`BadMango.Emulator.Debug.Abstractions` namespace. The session DTO tests live
+in `tests/BadMango.Emulator.Debug.Infrastructure.Tests` (namespace
+`BadMango.Emulator.Debug.Abstractions.Tests` unchanged).
 
 Debugger windows land in `BadMango.Emulator.Debug.UI`. The video, status, trap,
 schedule, log, about, and glyph-editor windows already live there. The text
@@ -143,8 +139,8 @@ adds, removes, enables, and saves those entries.
 The step listener's `WatchAccess` is a flags enum in
 `BadMango.Emulator.Debug.Infrastructure`, declared in `WatchpointManager.cs`
 (`None`, `Read`, `Write`, `ReadWrite`). The session DTO is a different type:
-[`Watchpoint`](../../src/BadMango.Emulator.Debug.Abstractions/Watchpoint.cs)
-and [`WatchAccess`](../../src/BadMango.Emulator.Debug.Abstractions/WatchAccess.cs)
+[`Watchpoint`](../../src/BadMango.Emulator.Debug.Infrastructure/Watchpoint.cs)
+and [`WatchAccess`](../../src/BadMango.Emulator.Debug.Infrastructure/WatchAccess.cs)
 in `BadMango.Emulator.Debug.Abstractions` (`Read`, `Write`, `ReadWrite`).
 `WatchCommand` maps between them.
 
@@ -344,17 +340,16 @@ cross-suite project.
 - [`CpuDebugSupportTests`](../../tests/BadMango.Emulator.Tests/CpuDebugSupportTests.cs)
 - [`MappingTraceTests`](../../tests/BadMango.Emulator.Tests/MappingTraceTests.cs)
 
-Session DTO tests and the text-editor tests are still beside the projects
-that fold later:
+Session DTO tests live in `tests/BadMango.Emulator.Debug.Infrastructure.Tests`
+(namespace `BadMango.Emulator.Debug.Abstractions.Tests` unchanged).
 
-> **Current location (until #560):** `tests/BadMango.Emulator.Debug.Abstractions.Tests`;
-> target: `tests/BadMango.Emulator.Debug.Infrastructure.Tests` (namespace
-> unchanged).
->
+- [`DebugAbstractionsJsonGoldenTests`](../../tests/BadMango.Emulator.Debug.Infrastructure.Tests/DebugAbstractionsJsonGoldenTests.cs)
+
+The text-editor tests still fold later:
+
 > **Current location (until #561):** `tests/BadMango.Emulator.TextEditor.Tests`;
 > target: `tests/BadMango.Emulator.Debug.UI.Tests` (namespace unchanged).
 
-- [`DebugAbstractionsJsonGoldenTests`](../../tests/BadMango.Emulator.Debug.Abstractions.Tests/DebugAbstractionsJsonGoldenTests.cs)
 - [`TextEditorWindowTests`](../../tests/BadMango.Emulator.TextEditor.Tests/TextEditorWindowTests.cs)
 
 ## Source of truth

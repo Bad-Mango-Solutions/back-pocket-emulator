@@ -103,7 +103,7 @@ back-pocket-emulator/
 │   ├── BadMango.Emulator.Systems/              # Pocket2e machine composition
 │   ├── BadMango.Emulator.UI/                   # Avalonia host (bpui); event aggregator, settings, UI contracts
 │   ├── BadMango.Emulator.TextEditor/           # Avalonia editor with syntax highlighting
-│   ├── BadMango.Emulator.Debug.Infrastructure/ # REPL, commands, breakpoints, trace
+│   ├── BadMango.Emulator.Debug.Infrastructure/ # REPL, commands, breakpoints, trace; Debug.Abstractions namespace stays
 │   ├── BadMango.Emulator.Debug.UI/             # Avalonia windows for the console debugger
 │   └── BadMango.Emulator.Debug/                # Console host, assembly name emudbg
 ├── tests/
@@ -145,7 +145,7 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | `BadMango.Emulator.Devices` | Keyboard, video, speaker, language card, 80-column card, game I/O, Disk II, Thunderclock, and PocketWatch | Core, Storage |
 | `BadMango.Emulator.Rendering` | Pixel buffers, character renderer, and Pocket2e video renderer | Devices |
 | `BadMango.Emulator.Systems` | Pocket2e (Apple IIe-class 65C02) machine builder extensions | Core, Devices |
-| `BadMango.Emulator.Debug.Infrastructure` | Debug REPL, command modules, breakpoints, watchpoints, and tracing | Core, Devices, Rendering, Storage, Systems |
+| `BadMango.Emulator.Debug.Infrastructure` | Debug REPL, command modules, breakpoints, watchpoints, tracing, and debug session contracts (`IDebugSession`, `IMachineIoSession`). Namespace `BadMango.Emulator.Debug.Abstractions` stays | Core, Devices, Rendering, Storage, Systems |
 | `BadMango.Emulator.Debug.UI` | Avalonia popup windows (video, glyph editor, status monitors) used by the console debugger. Library, not an executable | Core, Debug.Infrastructure, Devices, Rendering, TextEditor |
 | `BadMango.Emulator.Debug` | `emudbg` console host. Configures Serilog and starts the REPL | Core, Debug.Infrastructure, Debug.UI |
 | `BadMango.Emulator.UI` | `bpui` Avalonia application (MVVM, Autofac, generic host). Configures Serilog at startup. Holds the event aggregator, application settings and path validation, and the theme, settings, and pop-out contracts (namespaces `BadMango.Emulator.Infrastructure`, `BadMango.Emulator.Configuration`, and `BadMango.Emulator.UI.Abstractions`) | Core |
@@ -154,7 +154,7 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | `BadMango.Emulator.Core.Tests` | Bus, memory map, and device-registry tests (namespace `BadMango.Emulator.Bus.Tests`) | Unit.Components, Core |
 | `BadMango.Emulator.Host.Contracts.Testing` | Stub loopback for tests. Not a test suite and not packable. The real in-process binding is #735 | Host.Contracts |
 | `BadMango.Emulator.Host.Contracts.Tests` | Loopback tests for lifecycle, disks, input, presentation, and two machines on one host | Unit.Components, Host.Contracts, Host.Contracts.Testing |
-| `BadMango.Emulator.Debug.Infrastructure.Tests` | REPL command tests | Unit.Components, Core, Debug.Infrastructure, Storage |
+| `BadMango.Emulator.Debug.Infrastructure.Tests` | REPL command tests and debug-contract JSON golden tests. Namespace `BadMango.Emulator.Debug.Abstractions.Tests` stays | Unit.Components, Core, Debug.Infrastructure, Storage |
 | `BadMango.Emulator.Debug.Tests` | Console host module tests | Unit.Components, Debug |
 | `BadMango.Emulator.Debug.UI.Tests` | Debug window and video-window tests | Unit.Components, Debug.Infrastructure, Debug.UI |
 | `BadMango.Emulator.Devices.Tests` | Peripheral tests | Unit.Components, Core, Devices, Storage |
@@ -172,7 +172,7 @@ Machine construction runs from the contracts outward:
 1. `Core` defines CPU state, signaling, and machine profiles, implements the memory map and `Machine`, and executes instructions. Those types keep the `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation` namespaces.
 2. `Devices` plugs peripherals into the bus and reads media through `Storage`. `Rendering` turns device video state into pixels.
 3. `Systems` is the Pocket2e recipe: it wires `Cpu65C02`, the bus, and the devices into one machine. It references Core and Devices.
-4. `Debug.Infrastructure` drives that machine from a REPL. `Debug.UI` and `TextEditor` add Avalonia windows. `Debug` is the executable that hosts both (`dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj`).
+4. `Debug.Infrastructure` drives that machine from a REPL and holds the debug session contracts (namespace `BadMango.Emulator.Debug.Abstractions`). `Debug.UI` and `TextEditor` add Avalonia windows. `Debug` is the executable that hosts both (`dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj`).
 5. `UI` is the graphical host (`dotnet run --project src/BadMango.Emulator.UI/BadMango.Emulator.UI.csproj`). It references `Core` and contains the event aggregator, application settings, and UI contracts (`BadMango.Emulator.Infrastructure`, `BadMango.Emulator.Configuration`, and `BadMango.Emulator.UI.Abstractions`).
 6. Those host-shell types sit beside the machine. The machine projects do not reference them.
 7. `Host.Contracts` is the client-facing host API. It references none of the projects above. The stub loopback is `tests/BadMango.Emulator.Host.Contracts.Testing`. `bpui` and `emudbg` are not wired to the API yet.
