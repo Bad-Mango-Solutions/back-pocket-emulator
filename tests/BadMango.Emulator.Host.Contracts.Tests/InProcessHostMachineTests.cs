@@ -483,6 +483,28 @@ public class InProcessHostMachineTests
     }
 
     /// <summary>
+    /// An overlay that makes the merged profile fail the schema is refused at power-on, and the machine stays off.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task PowerOn_RejectsAnOverlayThatBreaksTheSchema()
+    {
+        using InProcessHostSession session = Open();
+        MachineId id = Add(session, "Broken overlay");
+        session.Control.SetInstanceOverlay(id, """{"cpu":{"type":"z80"}}""");
+
+        InvalidOperationException? error = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await session.Control.PowerOnAsync(id));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(error!.Message, Does.Contain("schemas/machine-profile.schema.json"));
+            Assert.That(error.Message, Does.Contain("$.cpu.type"));
+            Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Off));
+        });
+    }
+
+    /// <summary>
     /// Remove drops an off machine, and Dispose joins every run loop.
     /// </summary>
     /// <returns>The test task.</returns>

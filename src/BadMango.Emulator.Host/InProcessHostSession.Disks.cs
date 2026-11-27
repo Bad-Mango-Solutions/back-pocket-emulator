@@ -4,8 +4,6 @@
 
 namespace BadMango.Emulator.Host;
 
-using System.Runtime.ExceptionServices;
-
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Configuration;
 using BadMango.Emulator.Debug.Abstractions;
@@ -87,21 +85,27 @@ public sealed partial class InProcessHostSession
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<HostDiskController> ListDisks(MachineId machineId)
+    public Task<IReadOnlyList<HostDiskController>> ListDisksAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<IReadOnlyList<HostDiskController>>(cancellationToken);
+        }
+
         MachineHandle handle = Find(machineId);
-        IReadOnlyList<HostDiskController>[] listed = new IReadOnlyList<HostDiskController>[1];
-        RunAtInstructionBoundary(handle, () => listed[0] = ReadTopology(handle));
-        return listed[0];
+        return ReadOnMachineAsync(handle, cancellationToken, () => ReadTopology(handle));
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<HostSlotInfo> ListSlots(MachineId machineId)
+    public Task<IReadOnlyList<HostSlotInfo>> ListSlotsAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<IReadOnlyList<HostSlotInfo>>(cancellationToken);
+        }
+
         MachineHandle handle = Find(machineId);
-        IReadOnlyList<HostSlotInfo>[] listed = new IReadOnlyList<HostSlotInfo>[1];
-        RunAtInstructionBoundary(handle, () => listed[0] = ReadSlots(handle.Machine));
-        return listed[0];
+        return ReadOnMachineAsync(handle, cancellationToken, () => ReadSlots(handle.Machine));
     }
 
     private async Task RunDiskAsync(MachineHandle handle, CancellationToken cancellationToken, Action action)
@@ -111,7 +115,7 @@ public sealed partial class InProcessHostSession
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            RunAtInstructionBoundary(handle, action);
+            await RunAtInstructionBoundaryAsync(handle, action, cancellationToken).ConfigureAwait(false);
             Notify(sink => sink.OnDisksChanged(handle.Id));
         }
         finally
@@ -121,14 +125,24 @@ public sealed partial class InProcessHostSession
         }
     }
 
+    private async Task<T> ReadOnMachineAsync<T>(MachineHandle handle, CancellationToken cancellationToken, Func<T> read)
+    {
+        T result = default!;
+        await RunAtInstructionBoundaryAsync(handle, () => result = read(), cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
     /// <summary>
     /// Runs <paramref name="action"/> at an instruction boundary while a loop is running.
     /// A stopped, paused, or off machine has no loop to drain a queued post, so the post runs
     /// inline when the machine is quiescent and this wait ends when that inline call returns.
     /// </summary>
     /// <param name="handle">The machine.</param>
-    /// <param name="action">The disk or slot read.</param>
-    private void RunAtInstructionBoundary(MachineHandle handle, Action action)
+    /// <param name="action">The disk or slot work.</param>
+    /// <param name="cancellationToken">Cancels the wait. A post that already started still finishes.</param>
+    /// <returns>A task that completes when <paramref name="action"/> has run on the machine thread.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the post does not run before the timeout.</exception>
+    private async Task RunAtInstructionBoundaryAsync(MachineHandle handle, Action action, CancellationToken cancellationToken)
     {
         TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         handle.Machine.Post(() =>
@@ -150,16 +164,11 @@ public sealed partial class InProcessHostSession
 
         try
         {
-            if (!done.Task.Wait(RunStartTimeout))
-            {
-                throw new InvalidOperationException("The disk command did not land on the machine thread.");
-            }
+            await done.Task.WaitAsync(RunStartTimeout, cancellationToken).ConfigureAwait(false);
         }
-        catch (AggregateException ex)
+        catch (TimeoutException)
         {
-            // Task.Wait wraps the failure posted onto the machine thread. The client sees that failure.
-            Exception inner = ex.InnerExceptions.Count == 1 ? ex.InnerExceptions[0] : ex;
-            ExceptionDispatchInfo.Capture(inner).Throw();
+            throw new InvalidOperationException("The disk command did not land on the machine thread.");
         }
     }
 
@@ -260,11 +269,14 @@ public sealed partial class InProcessHostSession
             if (existing is null)
             {
                 handle.FixedVolumes.Add(new FixedVolume(drive, path, writeProtect));
-                return;
+            }
+            else
+            {
+                existing.ImagePath = path;
+                existing.WriteProtected = writeProtect;
             }
 
-            existing.ImagePath = path;
-            existing.WriteProtected = writeProtect;
+            handle.RefreshBootDrive();
         }
     }
 
@@ -284,6 +296,7 @@ public sealed partial class InProcessHostSession
             }
 
             handle.FixedVolumes.Remove(existing);
+            handle.RefreshBootDrive();
         }
     }
 
@@ -546,22 +559,6 @@ public sealed partial class InProcessHostSession
     private DiskDriveSnapshot EmptySnapshot(int drive)
     {
         return new DiskDriveSnapshot(drive, false, false, 0, 0, false, false, null, null);
-    }
-
-    private string? FindBootDrive(IReadOnlyList<HostDiskController> controllers)
-    {
-        foreach (HostDiskController controller in controllers)
-        {
-            foreach (HostDrive drive in controller.Drives)
-            {
-                if (drive.IsBootDrive)
-                {
-                    return drive.Id.Label;
-                }
-            }
-        }
-
-        return null;
     }
 
     private bool ResolveFixedLibrary(string path, out string? resolved)

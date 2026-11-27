@@ -265,17 +265,21 @@ public interface IHostControl
     /// Lists controllers and drives. Removable media and fixed storage are separate controllers.
     /// </summary>
     /// <param name="machineId">The machine.</param>
+    /// <param name="cancellationToken">Cancels the wait for the snapshot. The in-process host takes the snapshot at an instruction boundary.</param>
     /// <returns>The topology the host reports. The client does not assume a Disk II count.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the machine is unknown.</exception>
-    IReadOnlyList<HostDiskController> ListDisks(MachineId machineId);
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
+    Task<IReadOnlyList<HostDiskController>> ListDisksAsync(MachineId machineId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lists the slot strip. Slot changes are profile edits and are not a method on this plane.
     /// </summary>
     /// <param name="machineId">The machine.</param>
+    /// <param name="cancellationToken">Cancels the wait for the snapshot. The in-process host takes the snapshot at an instruction boundary.</param>
     /// <returns>Aux and slots 1–7.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the machine is unknown.</exception>
-    IReadOnlyList<HostSlotInfo> ListSlots(MachineId machineId);
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
+    Task<IReadOnlyList<HostSlotInfo>> ListSlotsAsync(MachineId machineId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Attaches the debugger extension. Idempotent when it is already attached.

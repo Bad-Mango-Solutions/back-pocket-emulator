@@ -186,7 +186,7 @@ public abstract class HostControlContractTests
         InvalidOperationException? wrongDrive = await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await session.Control.AttachFixedStorageAsync(id, unit, "library://disks/game.dsk", false));
         await session.Control.AttachFixedStorageAsync(id, unit, "volume.hdv", writeProtect: true);
-        HostDrive attached = FindDrive(session.Control.ListDisks(id), unit);
+        HostDrive attached = FindDrive(await session.Control.ListDisksAsync(id), unit);
 
         Assert.Multiple(() =>
         {
@@ -198,7 +198,7 @@ public abstract class HostControlContractTests
             Assert.That(attached.WriteProtected, Is.True);
         });
 
-        foreach (HostDiskController controller in session.Control.ListDisks(id))
+        foreach (HostDiskController controller in await session.Control.ListDisksAsync(id))
         {
             Assert.That(controller.Drives, Is.Not.Empty);
             foreach (HostDrive drive in controller.Drives)
@@ -208,20 +208,20 @@ public abstract class HostControlContractTests
         }
 
         Assert.That(
-            session.Control.ListSlots(id).Select(slot => slot.Id),
+            (await session.Control.ListSlotsAsync(id)).Select(slot => slot.Id),
             Is.EqualTo(new[] { "aux", "1", "2", "3", "4", "5", "6", "7" }));
 
         await session.Control.PowerOnAsync(id);
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await session.Control.DetachFixedStorageAsync(id, unit));
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await session.Control.AttachFixedStorageAsync(id, new DriveId(5, 2), "other.hdv", false));
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await session.Control.SetWriteProtectAsync(id, unit, false));
-        Assert.That(FindDrive(session.Control.ListDisks(id), unit).ImagePath, Is.EqualTo("volume.hdv"));
+        Assert.That(FindDrive(await session.Control.ListDisksAsync(id), unit).ImagePath, Is.EqualTo("volume.hdv"));
 
         await session.Control.PowerOffAsync(id);
         await session.Control.SetWriteProtectAsync(id, unit, false);
-        Assert.That(FindDrive(session.Control.ListDisks(id), unit).WriteProtected, Is.False);
+        Assert.That(FindDrive(await session.Control.ListDisksAsync(id), unit).WriteProtected, Is.False);
         await session.Control.DetachFixedStorageAsync(id, unit);
-        Assert.That(TryFindDrive(session.Control.ListDisks(id), unit), Is.Null);
+        Assert.That(TryFindDrive(await session.Control.ListDisksAsync(id), unit), Is.Null);
     }
 
     /// <summary>

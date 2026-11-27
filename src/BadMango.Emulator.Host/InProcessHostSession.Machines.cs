@@ -11,6 +11,7 @@ using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Configuration;
 using BadMango.Emulator.Host.Contracts;
+using BadMango.Emulator.Storage.Media;
 
 /// <content>
 /// Per-machine run loop and the planes this slice does not bind yet.
@@ -58,6 +59,7 @@ public sealed partial class InProcessHostSession
             StartupSlot = startupSlot;
             Io = new HostDiskBinding(machine, libraryRoot);
             NoteBuilt(null, profileJson);
+            RefreshBootDrive();
             stateChanged = session.OnMachineStateChanged;
             machine.StateChanged += OnMachineStateChanged;
         }
@@ -120,7 +122,9 @@ public sealed partial class InProcessHostSession
 
         internal Task CurrentRun => Volatile.Read(ref runTask) ?? Task.CompletedTask;
 
-        internal HostMachineInfo ReadInfo(string? bootDriveId)
+        internal string? BootDriveId { get; private set; }
+
+        internal HostMachineInfo ReadInfo()
         {
             lock (Sync)
             {
@@ -138,10 +142,33 @@ public sealed partial class InProcessHostSession
                     DebuggerAttached: false,
                     CpuSummary,
                     SchedulerSummary,
-                    bootDriveId,
+                    BootDriveId,
                     OutputKind,
                     StartPaused);
             }
+        }
+
+        /// <summary>
+        /// Records the boot drive from the slot map and fixed-storage table.
+        /// Both change only while the machine is off, or on the machine thread during a posted attach.
+        /// </summary>
+        internal void RefreshBootDrive()
+        {
+            if (StartupSlot is not int slot)
+            {
+                BootDriveId = null;
+                return;
+            }
+
+            if (Machine.GetComponent<ISlotManager>()?.GetCard(slot) is IDiskController)
+            {
+                BootDriveId = new DriveId(slot, 1).Label;
+                return;
+            }
+
+            BootDriveId = FindFixed(new DriveId(slot, 1)) is null
+                ? null
+                : new DriveId(slot, 1).Label;
         }
 
         internal FixedVolume? FindFixed(DriveId drive)
@@ -242,6 +269,7 @@ public sealed partial class InProcessHostSession
             Io.Retarget(replacement);
             replacement.ClockSpeedHz = clockHz;
             replacement.StateChanged += OnMachineStateChanged;
+            RefreshBootDrive();
             if (!cpuSummaryFromSpec)
             {
                 CpuSummary = info.CpuType;

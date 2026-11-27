@@ -512,16 +512,26 @@ public sealed partial class LoopbackHostSession
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<HostDiskController> ListDisks(MachineId machineId)
+    public Task<IReadOnlyList<HostDiskController>> ListDisksAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<IReadOnlyList<HostDiskController>>(cancellationToken);
+        }
+
         HostDiskController[] controllers = [];
         Update(machineId, machine => controllers = ToControllers(machine));
-        return controllers;
+        return Task.FromResult<IReadOnlyList<HostDiskController>>(controllers);
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<HostSlotInfo> ListSlots(MachineId machineId)
+    public Task<IReadOnlyList<HostSlotInfo>> ListSlotsAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<IReadOnlyList<HostSlotInfo>>(cancellationToken);
+        }
+
         Find(machineId);
         HostSlotInfo[] slots = new HostSlotInfo[8];
         slots[0] = new HostSlotInfo("aux", "Aux", null, true);
@@ -531,7 +541,7 @@ public sealed partial class LoopbackHostSession
             slots[slot] = new HostSlotInfo(slot.ToString(CultureInfo.InvariantCulture), $"S{slot}", card, true);
         }
 
-        return slots;
+        return Task.FromResult<IReadOnlyList<HostSlotInfo>>(slots);
     }
 
     /// <inheritdoc />

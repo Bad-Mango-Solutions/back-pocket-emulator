@@ -34,13 +34,13 @@ public class InProcessHostDiskTests
             using InProcessHostSession session = Open(root);
             MachineId id = Add(session, "Disks", startPaused: true);
 
-            IReadOnlyList<HostSlotInfo> slots = session.Control.ListSlots(id);
-            IReadOnlyList<HostDiskController> empty = session.Control.ListDisks(id);
+            IReadOnlyList<HostSlotInfo> slots = await session.Control.ListSlotsAsync(id);
+            IReadOnlyList<HostDiskController> empty = await session.Control.ListDisksAsync(id);
             await session.Control.AttachFixedStorageAsync(id, new DriveId(7, 1), "library://drives/volume.hdv", writeProtect: true);
             await session.Control.MountDiskAsync(id, new DriveId(6, 1), "library://disks/blank.dsk", writeProtect: false);
 
-            HostDrive mounted = Find(session.Control.ListDisks(id), new DriveId(6, 1));
-            HostDrive volume = Find(session.Control.ListDisks(id), new DriveId(7, 1));
+            HostDrive mounted = Find(await session.Control.ListDisksAsync(id), new DriveId(6, 1));
+            HostDrive volume = Find(await session.Control.ListDisksAsync(id), new DriveId(7, 1));
             Assert.Multiple(() =>
             {
                 Assert.That(slots[6].CardName, Is.EqualTo("Disk II Controller"));
@@ -60,7 +60,7 @@ public class InProcessHostDiskTests
 
             await session.Control.SetWriteProtectAsync(id, new DriveId(6, 1), true);
             await session.Control.EjectDiskAsync(id, new DriveId(6, 1));
-            HostDrive ejected = Find(session.Control.ListDisks(id), new DriveId(6, 1));
+            HostDrive ejected = Find(await session.Control.ListDisksAsync(id), new DriveId(6, 1));
             Assert.Multiple(() =>
             {
                 Assert.That(ejected.ImagePath, Is.Null);
@@ -93,10 +93,10 @@ public class InProcessHostDiskTests
             await session.Control.PowerOnAsync(id);
 
             await session.Control.MountDiskAsync(id, new DriveId(6, 2), image, writeProtect: true);
-            Assert.That(Find(session.Control.ListDisks(id), new DriveId(6, 2)).ImageName, Is.EqualTo("blank.dsk"));
+            Assert.That(Find(await session.Control.ListDisksAsync(id), new DriveId(6, 2)).ImageName, Is.EqualTo("blank.dsk"));
 
             WriteSoftSwitch(session, id, 0xC0E9);
-            HostDrive busy = Find(session.Control.ListDisks(id), new DriveId(6, 1));
+            HostDrive busy = Find(await session.Control.ListDisksAsync(id), new DriveId(6, 1));
             Assert.That(busy.Busy, Is.True);
             await Assert.ThrowsAsync<InvalidOperationException>(
                 async () => await session.Control.MountDiskAsync(id, new DriveId(6, 1), image, false));
@@ -109,7 +109,7 @@ public class InProcessHostDiskTests
             await session.Control.ResumeAsync(id);
             await session.Control.MountDiskAsync(id, new DriveId(6, 1), image, writeProtect: true);
             Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Running));
-            Assert.That(Find(session.Control.ListDisks(id), new DriveId(6, 1)).WriteProtected, Is.True);
+            Assert.That(Find(await session.Control.ListDisksAsync(id), new DriveId(6, 1)).WriteProtected, Is.True);
 
             await session.Control.PauseAsync(id);
             ReleaseIrq(session, id);
@@ -118,7 +118,7 @@ public class InProcessHostDiskTests
             await session.Control.ResumeAsync(id);
             await WaitForStateAsync(session, id, HostRunState.Stopped);
             await session.Control.EjectDiskAsync(id, new DriveId(6, 1));
-            Assert.That(Find(session.Control.ListDisks(id), new DriveId(6, 1)).ImagePath, Is.Null);
+            Assert.That(Find(await session.Control.ListDisksAsync(id), new DriveId(6, 1)).ImagePath, Is.Null);
             Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Stopped));
         }
         finally

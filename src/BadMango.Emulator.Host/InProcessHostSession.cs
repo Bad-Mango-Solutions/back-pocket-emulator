@@ -212,7 +212,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
         HostMachineInfo[] infos = new HostMachineInfo[snapshot.Length];
         for (int i = 0; i < snapshot.Length; i++)
         {
-            infos[i] = snapshot[i].ReadInfo(FindBootDrive(ListDisks(snapshot[i].Id)));
+            infos[i] = snapshot[i].ReadInfo();
         }
 
         return infos;
@@ -221,8 +221,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
     /// <inheritdoc />
     public HostMachineInfo GetMachineInfo(MachineId machineId)
     {
-        MachineHandle handle = Find(machineId);
-        return handle.ReadInfo(FindBootDrive(ListDisks(machineId)));
+        return Find(machineId).ReadInfo();
     }
 
     /// <inheritdoc />

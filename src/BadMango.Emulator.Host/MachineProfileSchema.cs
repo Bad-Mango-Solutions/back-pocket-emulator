@@ -4,6 +4,7 @@
 
 namespace BadMango.Emulator.Host;
 
+using System.Collections.Frozen;
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
@@ -18,7 +19,56 @@ internal static class MachineProfileSchema
     private const string ResourceName = "BadMango.Emulator.Host.Schemas.machine-profile.schema.json";
     private const int MaxErrors = 8;
 
+    private static readonly FrozenSet<string> Annotations = new string[]
+    {
+        "$schema",
+        "$id",
+        "title",
+        "description",
+        "$comment",
+        "default",
+        "examples",
+        "$defs",
+    }.ToFrozenSet(StringComparer.Ordinal);
+
+    private static readonly FrozenSet<string> ImplementedKeywords = new string[]
+    {
+        "$ref",
+        "type",
+        "enum",
+        "pattern",
+        "minLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "items",
+        "properties",
+        "required",
+        "propertyNames",
+        "additionalProperties",
+    }.ToFrozenSet(StringComparer.Ordinal);
+
     private static readonly Lazy<JsonObject> Schema = new(Load);
+
+    /// <summary>
+    /// Loads the embedded schema and rejects it when a keyword is not implemented.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when the embedded schema uses an unsupported keyword.</exception>
+    internal static void EnsureEmbeddedSchema()
+    {
+        _ = Schema.Value;
+    }
+
+    /// <summary>
+    /// Rejects <paramref name="schema"/> when it uses a keyword this checker does not implement.
+    /// </summary>
+    /// <param name="schema">A JSON Schema object.</param>
+    /// <exception cref="InvalidOperationException">Thrown when <paramref name="schema"/> uses an unsupported keyword.</exception>
+    internal static void EnsureSupported(JsonObject schema)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+        CheckSchema(schema, "$");
+    }
 
     /// <summary>
     /// Throws when <paramref name="json"/> does not match the machine profile schema.
@@ -67,7 +117,59 @@ internal static class MachineProfileSchema
                 "schemas/machine-profile.schema.json is not a JSON object.");
         }
 
+        CheckSchema(schema, "$");
         return schema;
+    }
+
+    private static void CheckSchema(JsonObject schema, string path)
+    {
+        foreach (KeyValuePair<string, JsonNode?> property in schema)
+        {
+            if (Annotations.Contains(property.Key))
+            {
+                if (property.Key == "$defs" && property.Value is JsonObject definitions)
+                {
+                    foreach (KeyValuePair<string, JsonNode?> definition in definitions)
+                    {
+                        if (definition.Value is JsonObject definitionSchema)
+                        {
+                            CheckSchema(definitionSchema, path + ".$defs." + definition.Key);
+                        }
+                    }
+                }
+
+                continue;
+            }
+
+            if (!ImplementedKeywords.Contains(property.Key))
+            {
+                throw new InvalidOperationException(
+                    $"schemas/machine-profile.schema.json uses unsupported keyword '{property.Key}' at {path}.{property.Key}.");
+            }
+
+            switch (property.Key)
+            {
+                case "properties" when property.Value is JsonObject properties:
+                    foreach (KeyValuePair<string, JsonNode?> child in properties)
+                    {
+                        if (child.Value is JsonObject childSchema)
+                        {
+                            CheckSchema(childSchema, path + ".properties." + child.Key);
+                        }
+                    }
+
+                    break;
+                case "items" when property.Value is JsonObject itemSchema:
+                    CheckSchema(itemSchema, path + ".items");
+                    break;
+                case "additionalProperties" when property.Value is JsonObject additionalSchema:
+                    CheckSchema(additionalSchema, path + ".additionalProperties");
+                    break;
+                case "propertyNames" when property.Value is JsonObject nameSchema:
+                    CheckSchema(nameSchema, path + ".propertyNames");
+                    break;
+            }
+        }
     }
 
     private static void Evaluate(JsonObject root, JsonObject schema, JsonNode? instance, string path, List<string> errors)

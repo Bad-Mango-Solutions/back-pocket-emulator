@@ -65,6 +65,11 @@ internal static class BootProfile
         """;
 
     /// <summary>
+    /// Gets the profile document stored by <see cref="Ensure"/>.
+    /// </summary>
+    internal static string Document => Json;
+
+    /// <summary>
     /// Stores the profile if this host does not already have it.
     /// </summary>
     /// <param name="control">The control plane.</param>
