@@ -28,9 +28,9 @@ public class InProcessHostDiskTests
         string root = NewLibrary();
         try
         {
-            string image = Path.Combine(root, "disks", "blank.dsk");
+            string image = Path.Join(root, "disks", "blank.dsk");
             File.WriteAllBytes(image, new byte[SectorImageBytes]);
-            File.WriteAllBytes(Path.Combine(root, "drives", "volume.hdv"), new byte[512]);
+            File.WriteAllBytes(Path.Join(root, "drives", "volume.hdv"), new byte[512]);
             using InProcessHostSession session = Open(root);
             MachineId id = Add(session, "Disks", startPaused: true);
 
@@ -51,7 +51,7 @@ public class InProcessHostDiskTests
                 Assert.That(empty[0].Drives[0].IsBootDrive, Is.True);
                 Assert.That(session.Control.GetMachineInfo(id).BootDriveId, Is.EqualTo("S6 D1"));
                 Assert.That(mounted.ImageName, Is.EqualTo("blank.dsk"));
-                Assert.That(mounted.ImagePath, Does.Contain(Path.Combine("disks", "blank.dsk")));
+                Assert.That(mounted.ImagePath, Does.Contain(Path.Join("disks", "blank.dsk")));
                 Assert.That(mounted.WriteProtected, Is.False);
                 Assert.That(mounted.Category, Is.EqualTo(HostStorageCategory.RemovableMedia));
                 Assert.That(volume.Category, Is.EqualTo(HostStorageCategory.FixedStorage));
@@ -86,7 +86,7 @@ public class InProcessHostDiskTests
         string root = NewLibrary();
         try
         {
-            string image = Path.Combine(root, "blank.dsk");
+            string image = Path.Join(root, "blank.dsk");
             File.WriteAllBytes(image, new byte[SectorImageBytes]);
             using InProcessHostSession session = Open(root);
             MachineId id = Add(session, "States", startPaused: true);
@@ -129,9 +129,9 @@ public class InProcessHostDiskTests
 
     private static string NewLibrary()
     {
-        string root = Path.Combine(Path.GetTempPath(), "bpe-host-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(root, "disks"));
-        Directory.CreateDirectory(Path.Combine(root, "drives"));
+        string root = Path.Join(Path.GetTempPath(), "bpe-host-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Join(root, "disks"));
+        Directory.CreateDirectory(Path.Join(root, "drives"));
         return root;
     }
 

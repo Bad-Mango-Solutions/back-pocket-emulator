@@ -2,6 +2,8 @@
 
 Guidance for coding agents working in this repository. Start architecture navigation at [`ARCHITECTURE.md`](ARCHITECTURE.md). Coding standards, Serilog, and the Release warn-as-error bar live in `.github/copilot-instructions.md`. This file is how to drive `emudbg`.
 
+Prefer `Path.Join` over `Path.Combine` when building a path. `Path.Combine` drops every earlier segment when a later segment is rooted. Use `Path.Combine` only when a rooted later segment is meant to reset the path, and add a comment that says so.
+
 ## Build
 
 ```bash

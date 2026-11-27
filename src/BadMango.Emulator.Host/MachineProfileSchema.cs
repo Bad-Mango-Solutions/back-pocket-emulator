@@ -277,12 +277,13 @@ internal static class MachineProfileSchema
             : null;
         if (schema.TryGetPropertyValue("required", out JsonNode? requiredNode) && requiredNode is JsonArray required)
         {
-            foreach (JsonNode? nameNode in required)
+            foreach (string name in required
+                .OfType<JsonValue>()
+                .Select(value => value.TryGetValue<string>(out string? parsed) ? parsed : null)
+                .Where(name => name is not null)
+                .Select(name => name!))
             {
-                if (nameNode is JsonValue nameValue
-                    && nameValue.TryGetValue<string>(out string? name)
-                    && name is not null
-                    && !document.ContainsKey(name))
+                if (!document.ContainsKey(name))
                 {
                     errors.Add($"{Extend(path, name)} is required");
                 }
@@ -376,6 +377,7 @@ internal static class MachineProfileSchema
             return exact == decimal.Truncate(exact);
         }
 
+        // Exact equality is the JSON Schema integer test. A tolerance would accept non-integers.
         return number.TryGetValue<double>(out double real) && double.IsFinite(real) && real == Math.Truncate(real);
     }
 
