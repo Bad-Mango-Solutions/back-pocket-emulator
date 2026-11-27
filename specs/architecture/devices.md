@@ -63,10 +63,9 @@ I/O-page bus plumbing targets `BadMango.Emulator.Core`, retaining the existing
 `BadMango.Emulator.Bus` namespace. This includes `IOPageDispatcher`,
 `CompositeIOTarget`, `SlotManager`, and the slot/peripheral interfaces.
 Machine/profile composition remains in `BadMango.Emulator.Systems`.
-
-> **Current location (until #565):**
-> `tests/BadMango.Emulator.Tests`; target: subject-specific test projects
-> (namespace unchanged).
+Machine-level tests that exercise devices on a built machine live in
+`tests/BadMango.Emulator.Core.Tests` (namespace `BadMango.Emulator.Tests`
+unchanged). Device unit tests stay in `tests/BadMango.Emulator.Devices.Tests`.
 
 The storage assembly remains separate for disk and media implementations.
 The Rendering assembly remains separate for display-pipeline output. Speaker
@@ -365,13 +364,12 @@ Target homes are listed above.
   and keeps the existing namespaces.
 - Bus tests live in `tests/BadMango.Emulator.Core.Tests` (namespace
   `BadMango.Emulator.Bus.Tests`).
-- Cross-suite device/machine tests remain under
-  `tests/BadMango.Emulator.Tests`; use the #565 blockquote for their target
-  split.
+- Machine-level device tests live in `tests/BadMango.Emulator.Core.Tests`
+  (namespace `BadMango.Emulator.Tests` unchanged).
 
 Current test areas include `IOPageDispatcherTests`,
 `CompositeIOTargetTests`, `SlotManagerTests`, `LanguageCardDeviceTests`,
 `Extended80ColumnDeviceTests`, `SpeakerControllerTests`, and
-`GameIOControllerTests`. The bus tests are in `BadMango.Emulator.Core.Tests`.
-Device tests stay in `BadMango.Emulator.Devices.Tests`. Cross-suite tests
-remain subject to #565.
+`GameIOControllerTests`. The bus tests and the machine-level device tests are
+in `BadMango.Emulator.Core.Tests`. Device unit tests stay in
+`BadMango.Emulator.Devices.Tests`.

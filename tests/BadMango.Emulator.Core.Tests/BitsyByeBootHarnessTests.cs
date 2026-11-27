@@ -35,7 +35,7 @@ using BadMango.Emulator.Storage.Media;
 /// filter as an explicit selection), so invoke it with:
 /// </para>
 /// <code>
-/// dotnet test tests/BadMango.Emulator.Tests \
+/// dotnet test tests/BadMango.Emulator.Core.Tests \
 ///   --filter "FullyQualifiedName~BitsyByeBootHarnessTests"
 /// </code>
 /// <para><b>Agent-tunable knobs (environment variables):</b></para>

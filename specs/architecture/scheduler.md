@@ -108,9 +108,8 @@ in scheduler advancement yet. A future CPU must use the same explicit
 cycle-commit model rather than claim cycle accuracy before an implementation
 exists.
 
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests/Cpu65C02Tests.cs`
-> and related CPU integration tests; target: the subject-specific CPU test
-> project (namespace unchanged).
+`Cpu65C02Tests` and the related CPU integration tests live in
+`tests/BadMango.Emulator.Core.Tests` (namespace `BadMango.Emulator.Tests` unchanged).
 
 ### Device client: VideoDevice VBlank
 
@@ -146,12 +145,8 @@ Relevant reset coverage includes:
 
 - [`SchedulerTests`](../../tests/BadMango.Emulator.Core.Tests/SchedulerTests.cs)
 - [`MachineTests.Reset_HardReset_DeviceEventsArePresentAfterReset`](../../tests/BadMango.Emulator.Core.Tests/MachineTests.cs)
-- [`Pocket2eIntegrationTests`](../../tests/BadMango.Emulator.Tests/Pocket2eIntegrationTests.cs)
-- [`ResetSignalMachineTests`](../../tests/BadMango.Emulator.Tests/ResetSignalMachineTests.cs)
-
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests/ResetSignalMachineTests.cs`
-> and `Pocket2eIntegrationTests.cs`; target: subject-specific machine test
-> projects (namespace unchanged).
+- [`Pocket2eIntegrationTests`](../../tests/BadMango.Emulator.Core.Tests/Pocket2eIntegrationTests.cs)
+- [`ResetSignalMachineTests`](../../tests/BadMango.Emulator.Core.Tests/ResetSignalMachineTests.cs)
 
 ## Source references
 

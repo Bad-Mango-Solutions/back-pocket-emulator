@@ -17,9 +17,7 @@ The built emulator routes 65C02 memory operations through a host page table of 4
 - [RamTarget](../../src/BadMango.Emulator.Core/RamTarget.cs), [RomTarget](../../src/BadMango.Emulator.Core/RomTarget.cs), and [CompositeIOTarget](../../src/BadMango.Emulator.Core/CompositeIOTarget.cs) are the principal target implementations.
 - [BusAccess](../../src/BadMango.Emulator.Core/BusAccess.cs), [BusResult](../../src/BadMango.Emulator.Core/BusResult.cs), [BusResult\<T\>](../../src/BadMango.Emulator.Core/BusResult%7BT%7D.cs), [PagePerms](../../src/BadMango.Emulator.Core/PagePerms.cs), and [TargetCaps](../../src/BadMango.Emulator.Core/TargetCaps.cs) describe access context, results, permissions, and capabilities.
 
-The target assembly for this layer is `BadMango.Emulator.Core`, retaining the existing `BadMango.Emulator.Bus` and Core namespaces. `Devices` remains separate and references Core and Storage.
-
-> **Current location (until #565):** relevant cross-suite coverage in `tests/BadMango.Emulator.Tests`; target: subject-specific test projects (namespace unchanged).
+The target assembly for this layer is `BadMango.Emulator.Core`, retaining the existing `BadMango.Emulator.Bus` and Core namespaces. `Devices` remains separate and references Core and Storage. Bus tests live in `tests/BadMango.Emulator.Core.Tests` (namespaces `BadMango.Emulator.Bus.Tests` and `BadMango.Emulator.Tests` unchanged).
 
 ## Addressing and address spaces
 

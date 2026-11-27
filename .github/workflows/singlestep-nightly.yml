@@ -32,7 +32,7 @@ jobs:
     - name: Read pinned vector commit
       id: vectors
       run: |
-        commit=$(sed -n 's/.*UpstreamCommit = "\([0-9a-f]\{40\}\)".*/\1/p' tests/BadMango.Emulator.Tests/SingleStep/Wdc65C02VectorSet.cs)
+        commit=$(sed -n 's/.*UpstreamCommit = "\([0-9a-f]\{40\}\)".*/\1/p' tests/BadMango.Emulator.Core.Tests/SingleStep/Wdc65C02VectorSet.cs)
         if [ -z "$commit" ]; then
           echo "::error::Could not read UpstreamCommit from Wdc65C02VectorSet.cs"
           exit 1
@@ -46,7 +46,7 @@ jobs:
         key: singlestep-wdc65c02-v1-${{ steps.vectors.outputs.commit }}
 
     - name: Run full SingleStepTests 65C02 vectors
-      run: dotnet test tests/BadMango.Emulator.Tests/BadMango.Emulator.Tests.csproj --configuration Release --no-restore --verbosity minimal --logger trx --results-directory ./test-results/singlestep-full --settings tests/BadMango.Emulator.Tests/singlestep-full.runsettings --blame-hang --blame-hang-timeout 10m --blame-hang-dump-type mini
+      run: dotnet test tests/BadMango.Emulator.Core.Tests/BadMango.Emulator.Core.Tests.csproj --configuration Release --no-restore --verbosity minimal --logger trx --results-directory ./test-results/singlestep-full --settings tests/BadMango.Emulator.Core.Tests/singlestep-full.runsettings --blame-hang --blame-hang-timeout 10m --blame-hang-dump-type mini
 
     - name: Upload test results
       if: always()

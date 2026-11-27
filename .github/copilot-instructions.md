@@ -9,7 +9,7 @@ dotnet build BackPocketEmulator.slnx -c Release -warnaserror
 dotnet test BackPocketEmulator.slnx -c Release
 ```
 
-The 65C02 SingleStepTests full category is not part of that test command. CI runs it after the suite, with `tests/BadMango.Emulator.Tests/singlestep-full.runsettings` (`Category` `SingleStepFull`). Set `WDC65C02_VECTOR_DIR` to a local `wdc65c02/v1` checkout to skip the download.
+The 65C02 SingleStepTests full category is not part of that test command. CI runs it after the suite, with `tests/BadMango.Emulator.Core.Tests/singlestep-full.runsettings` (`Category` `SingleStepFull`). Set `WDC65C02_VECTOR_DIR` to a local `wdc65c02/v1` checkout to skip the download.
 
 - The build must finish with **0 warnings and 0 errors** across all projects, including tests. Do not stop at "build succeeded" from a normal build.
 - Fix warnings in code instead of silencing them. Do not add `severity = none` (or lower severities) in `.editorconfig`, and do not add `<NoWarn>` or blanket `#pragma` suppressions. A narrowly scoped, justified `#pragma` is acceptable only when the PR description explains why fixing source is not appropriate.

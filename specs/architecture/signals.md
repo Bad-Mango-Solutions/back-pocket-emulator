@@ -37,9 +37,7 @@ The existing Core signal files already occupy the target assembly:
 The 65C02 implementation lives in Core (`src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs`, namespace `BadMango.Emulator.Emulation.Cpu`).
 
 Bus fault code that drives `ABORT` lives in Core (`MainBus` and `MainBus.FaultRegisters`).
-
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests` cross-suite CPU
-> tests; target: subject-specific test projects (namespace unchanged).
+CPU signal tests live in `tests/BadMango.Emulator.Core.Tests` (namespace `BadMango.Emulator.Tests` unchanged).
 
 ## 5.1 Signal Model
 
@@ -89,7 +87,7 @@ No card in `src/` currently publishes the proposed `$C0n0-$C0nF` status-bit conv
 itself. Thus the generic wired-OR behavior and device-ID observability are implemented, while
 a completed Apple II card-identification and dispatch model is not.
 
-Relevant tests include [`InterruptAndHaltTests`](../../tests/BadMango.Emulator.Tests/InterruptAndHaltTests.cs)
+Relevant tests include [`InterruptAndHaltTests`](../../tests/BadMango.Emulator.Core.Tests/InterruptAndHaltTests.cs)
 and [`SignalBusTests`](../../tests/BadMango.Emulator.Core.Tests/SignalBusTests.cs).
 
 ### 5.1.2 Interrupt Service Conventions
@@ -135,9 +133,9 @@ Relevant implementation and tests:
 
 - [`AbortReaction`](../../src/BadMango.Emulator.Core/Cpu/AbortReaction.cs)
 - [`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs)
-- [`Cpu65C02AbortReactionTests`](../../tests/BadMango.Emulator.Tests/Cpu65C02AbortReactionTests.cs)
-- [`InterruptAndHaltTests`](../../tests/BadMango.Emulator.Tests/InterruptAndHaltTests.cs)
-- [`Cpu65C02Tests`](../../tests/BadMango.Emulator.Tests/Cpu65C02Tests.cs)
+- [`Cpu65C02AbortReactionTests`](../../tests/BadMango.Emulator.Core.Tests/Cpu65C02AbortReactionTests.cs)
+- [`InterruptAndHaltTests`](../../tests/BadMango.Emulator.Core.Tests/InterruptAndHaltTests.cs)
+- [`Cpu65C02Tests`](../../tests/BadMango.Emulator.Core.Tests/Cpu65C02Tests.cs)
 
 The 65816/65832 abort-vector behavior described by reference specifications is not claimed
 as implemented here. No 65816 or 65832 CPU implementation is implied by the target module
