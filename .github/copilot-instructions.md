@@ -86,6 +86,7 @@ This repository is a .NET emulator for the WDC 65C02 (an Apple IIe-class Pocket2
 - **Important:** Just because the above warnings must not be suppressed does not mean that *any* warning can be suppressed. Use judgment and strive to write clean, warning-free code.
 
 ### Coding Best Practices
+- **Paths.** Prefer `Path.Join` over `Path.Combine` when building a path. `Path.Combine` drops every earlier segment when a later segment is rooted. Use `Path.Combine` only when a rooted later segment is meant to reset the path, and add a comment that says so.
 - **Consistent naming conventions.** Use clear and consistent naming for variables, methods, classes, and other identifiers to enhance code readability.
 - **Modular design.** Structure code into small, reusable modules or functions to promote maintainability and ease of testing.
 - **Error handling.** Implement robust error handling to manage exceptions and edge cases gracefully.

@@ -18,6 +18,10 @@ This project follows Microsoft's C# coding conventions with some additional proj
 
 ## General C# Style
 
+### Paths
+
+Prefer `Path.Join` over `Path.Combine` when building a path. `Path.Combine` drops every earlier segment when a later segment is rooted. Use `Path.Combine` only when a rooted later segment is meant to reset the path, and add a comment that says so.
+
 ### Naming Conventions
 
 #### Classes and Interfaces

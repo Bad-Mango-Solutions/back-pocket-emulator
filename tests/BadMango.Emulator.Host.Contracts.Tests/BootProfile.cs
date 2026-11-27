@@ -65,11 +65,27 @@ internal static class BootProfile
         """;
 
     /// <summary>
+    /// Gets the profile document stored by <see cref="Ensure"/>.
+    /// </summary>
+    internal static string Document => Json;
+
+    /// <summary>
     /// Stores the profile if this host does not already have it.
     /// </summary>
     /// <param name="control">The control plane.</param>
     internal static void Ensure(IHostControl control)
     {
         control.UpsertProfile(new HostProfileDocument(Id, "Boot ROM Test", Json));
+    }
+
+    /// <summary>
+    /// Returns the boot document with one extra root property inserted before the closing brace.
+    /// </summary>
+    /// <param name="property">A JSON property, including its name, such as <c>"guestOs": { "callLog": "nope" }</c>.</param>
+    /// <returns>The profile JSON.</returns>
+    internal static string WithExtra(string property)
+    {
+        int end = Json.LastIndexOf('}');
+        return Json[..end] + ", " + property + "}";
     }
 }

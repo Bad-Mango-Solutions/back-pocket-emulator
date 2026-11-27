@@ -16,10 +16,12 @@ internal sealed class LoopbackDrive
     /// </summary>
     /// <param name="id">The drive id.</param>
     /// <param name="boot">Whether this is the boot drive.</param>
-    internal LoopbackDrive(DriveId id, bool boot)
+    /// <param name="category">Whether the drive is removable media or fixed storage.</param>
+    internal LoopbackDrive(DriveId id, bool boot, HostStorageCategory category = HostStorageCategory.RemovableMedia)
     {
         Id = id;
         IsBootDrive = boot;
+        Category = category;
     }
 
     /// <summary>
@@ -31,6 +33,11 @@ internal sealed class LoopbackDrive
     /// Gets a value indicating whether a drop on the monitor inserts here.
     /// </summary>
     internal bool IsBootDrive { get; }
+
+    /// <summary>
+    /// Gets whether this drive is removable media or fixed storage.
+    /// </summary>
+    internal HostStorageCategory Category { get; }
 
     /// <summary>
     /// Gets or sets the mounted image path.
@@ -95,6 +102,7 @@ internal sealed class LoopbackDrive
             IsBootDrive,
             Error,
             Track,
-            Block);
+            Block,
+            Category);
     }
 }

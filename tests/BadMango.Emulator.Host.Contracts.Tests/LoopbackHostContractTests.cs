@@ -28,14 +28,17 @@ public class LoopbackHostContractTests
         ((ILoopbackMachineEdge)session).PublishFrame(first, new HostPresentationSample(HostVideoKind.Composite, 3, 10, frame, new HostCompositeSignal(3, 10, 1, 1, new byte[] { 1 }, new byte[] { 0 })));
         using IPresentationSubscription other = session.Presentation.Subscribe(second, "window");
 
+        HostDrive secondDrive = (await session.Control.ListDisksAsync(second))[0].Drives[0];
+        HostDrive firstDrive = (await session.Control.ListDisksAsync(first))[0].Drives[0];
+
         Assert.Multiple(() =>
         {
             Assert.That(session.Control.ListInstances(), Has.Count.EqualTo(2));
             Assert.That(first, Is.Not.EqualTo(second));
             Assert.That(session.Control.GetMachineInfo(first).State, Is.EqualTo(HostRunState.Running));
             Assert.That(session.Control.GetMachineInfo(second).State, Is.EqualTo(HostRunState.Off));
-            Assert.That(session.Control.ListDisks(second)[0].Drives[0].ImagePath, Is.Null);
-            Assert.That(session.Control.ListDisks(first)[0].Drives[0].ImageName, Is.EqualTo("one.dsk"));
+            Assert.That(secondDrive.ImagePath, Is.Null);
+            Assert.That(firstDrive.ImageName, Is.EqualTo("one.dsk"));
             Assert.That(session.Input.GetInputState(first).KeysDown, Is.Empty);
             Assert.That(session.Input.GetInputState(second).KeysDown, Is.EqualTo(new[] { HostKey.Escape }));
             Assert.That(other.TryReadLatest(out _), Is.False);

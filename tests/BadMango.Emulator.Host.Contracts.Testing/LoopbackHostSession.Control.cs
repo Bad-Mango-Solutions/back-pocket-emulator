@@ -342,10 +342,11 @@ public sealed partial class LoopbackHostSession
         return Run(cancellationToken, () =>
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            HostLibraryPaths.RequireRemovableMedia(path);
             bool changed = false;
             Update(machineId, machine =>
             {
-                LoopbackDrive target = RequireDrive(machine, drive);
+                LoopbackDrive target = RequireRemovable(machine, drive);
                 if (target.Busy)
                 {
                     throw new InvalidOperationException($"Drive {drive.Label} is busy.");
@@ -377,7 +378,7 @@ public sealed partial class LoopbackHostSession
             bool changed = false;
             Update(machineId, machine =>
             {
-                LoopbackDrive target = RequireDrive(machine, drive);
+                LoopbackDrive target = RequireRemovable(machine, drive);
                 if (target.Busy)
                 {
                     throw new InvalidOperationException($"Drive {drive.Label} is busy.");
@@ -414,7 +415,16 @@ public sealed partial class LoopbackHostSession
             bool changed = false;
             Update(machineId, machine =>
             {
-                LoopbackDrive target = RequireDrive(machine, drive);
+                LoopbackDrive? fixedUnit = machine.FindFixed(drive);
+                if (fixedUnit is not null)
+                {
+                    RequireOffForFixed(machine);
+                    fixedUnit.WriteProtected = writeProtect;
+                    changed = true;
+                    return;
+                }
+
+                LoopbackDrive target = RequireRemovable(machine, drive);
                 if (target.Busy)
                 {
                     throw new InvalidOperationException($"Drive {drive.Label} is busy.");
@@ -437,16 +447,91 @@ public sealed partial class LoopbackHostSession
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<HostDiskController> ListDisks(MachineId machineId)
+    public Task AttachFixedStorageAsync(MachineId machineId, DriveId drive, string path, bool writeProtect, CancellationToken cancellationToken = default)
     {
-        HostDiskController[] controllers = [];
-        Update(machineId, machine => controllers = [ToController(machine)]);
-        return controllers;
+        return Run(cancellationToken, () =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            HostLibraryPaths.RequireFixedStorage(path);
+            RequireFixedAddress(drive);
+            bool changed = false;
+            Update(machineId, machine =>
+            {
+                RequireOffForFixed(machine);
+                if (machine.FindRemovable(drive) is not null)
+                {
+                    throw new InvalidOperationException($"Slot {drive.Slot} is removable media. Fixed storage attaches to its own slot.");
+                }
+
+                LoopbackDrive? existing = machine.FindFixed(drive);
+                if (existing is null)
+                {
+                    existing = new LoopbackDrive(drive, boot: false, HostStorageCategory.FixedStorage);
+                    machine.FixedDrives.Add(existing);
+                }
+
+                existing.ImagePath = path;
+                existing.ImageName = Path.GetFileName(path);
+                existing.WriteProtected = writeProtect;
+                existing.Dirty = false;
+                existing.Error = null;
+                changed = true;
+            });
+
+            if (changed)
+            {
+                Notify(sink => sink.OnDisksChanged(machineId));
+            }
+        });
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<HostSlotInfo> ListSlots(MachineId machineId)
+    public Task DetachFixedStorageAsync(MachineId machineId, DriveId drive, CancellationToken cancellationToken = default)
     {
+        return Run(cancellationToken, () =>
+        {
+            bool changed = false;
+            Update(machineId, machine =>
+            {
+                RequireOffForFixed(machine);
+                LoopbackDrive? existing = machine.FindFixed(drive);
+                if (existing is null)
+                {
+                    throw new InvalidOperationException($"Drive {drive.Label} is not fixed storage.");
+                }
+
+                machine.FixedDrives.Remove(existing);
+                changed = true;
+            });
+
+            if (changed)
+            {
+                Notify(sink => sink.OnDisksChanged(machineId));
+            }
+        });
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<HostDiskController>> ListDisksAsync(MachineId machineId, CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<IReadOnlyList<HostDiskController>>(cancellationToken);
+        }
+
+        HostDiskController[] controllers = [];
+        Update(machineId, machine => controllers = ToControllers(machine));
+        return Task.FromResult<IReadOnlyList<HostDiskController>>(controllers);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<HostSlotInfo>> ListSlotsAsync(MachineId machineId, CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<IReadOnlyList<HostSlotInfo>>(cancellationToken);
+        }
+
         Find(machineId);
         HostSlotInfo[] slots = new HostSlotInfo[8];
         slots[0] = new HostSlotInfo("aux", "Aux", null, true);
@@ -456,7 +541,7 @@ public sealed partial class LoopbackHostSession
             slots[slot] = new HostSlotInfo(slot.ToString(CultureInfo.InvariantCulture), $"S{slot}", card, true);
         }
 
-        return slots;
+        return Task.FromResult<IReadOnlyList<HostSlotInfo>>(slots);
     }
 
     /// <inheritdoc />
@@ -501,7 +586,7 @@ public sealed partial class LoopbackHostSession
         bool changed = false;
         Update(machineId, machine =>
         {
-            LoopbackDrive target = RequireDrive(machine, drive);
+            LoopbackDrive target = machine.FindDrive(drive) ?? throw new InvalidOperationException($"No drive {drive.Label} is installed.");
             target.Active = status.Active;
             target.Dirty = status.Dirty;
             target.Busy = status.Busy;
@@ -525,9 +610,35 @@ public sealed partial class LoopbackHostSession
         }
     }
 
-    private static LoopbackDrive RequireDrive(LoopbackMachine machine, DriveId drive)
+    private static void RequireOffForFixed(LoopbackMachine machine)
     {
-        LoopbackDrive? target = machine.FindDrive(drive);
+        if (machine.State != HostRunState.Off)
+        {
+            throw new InvalidOperationException("Power the machine off to change fixed storage.");
+        }
+    }
+
+    private static void RequireFixedAddress(DriveId drive)
+    {
+        if (drive.Slot is < 1 or > 7)
+        {
+            throw new ArgumentOutOfRangeException(nameof(drive), drive.Slot, "Fixed storage uses slot 1 through 7.");
+        }
+
+        if (drive.Drive is < 1 or > 8)
+        {
+            throw new ArgumentOutOfRangeException(nameof(drive), drive.Drive, "Fixed storage uses unit 1 through 8.");
+        }
+    }
+
+    private static LoopbackDrive RequireRemovable(LoopbackMachine machine, DriveId drive)
+    {
+        if (machine.FindFixed(drive) is not null)
+        {
+            throw new InvalidOperationException($"Drive {drive.Label} is fixed storage. Attach and detach it while the machine is off.");
+        }
+
+        LoopbackDrive? target = machine.FindRemovable(drive);
         if (target is null)
         {
             throw new InvalidOperationException($"No drive {drive.Label} is installed.");
@@ -536,15 +647,26 @@ public sealed partial class LoopbackHostSession
         return target;
     }
 
-    private static HostDiskController ToController(LoopbackMachine machine)
+    private static HostDiskController[] ToControllers(LoopbackMachine machine)
     {
-        HostDrive[] drives = new HostDrive[machine.Drives.Count];
-        for (int i = 0; i < drives.Length; i++)
+        HostDrive[] floppy = new HostDrive[machine.Drives.Count];
+        for (int i = 0; i < floppy.Length; i++)
         {
-            drives[i] = machine.Drives[i].ToDrive();
+            floppy[i] = machine.Drives[i].ToDrive();
         }
 
-        return new HostDiskController(6, "Disk II", drives);
+        var controllers = new List<HostDiskController>
+        {
+            new(6, "Disk II", floppy, HostStorageCategory.RemovableMedia),
+        };
+
+        foreach (IGrouping<int, LoopbackDrive> slot in machine.FixedDrives.GroupBy(drive => drive.Id.Slot).OrderBy(group => group.Key))
+        {
+            HostDrive[] units = slot.OrderBy(drive => drive.Id.Drive).Select(drive => drive.ToDrive()).ToArray();
+            controllers.Add(new HostDiskController(slot.Key, "Hard Disk", units, HostStorageCategory.FixedStorage));
+        }
+
+        return controllers.ToArray();
     }
 
     private static long EffectiveClock(long nominal, HostThrottle throttle)

@@ -142,13 +142,18 @@ internal sealed class LoopbackMachine
     internal List<HostWatch> Watches { get; } = [];
 
     /// <summary>
-    /// Gets the drives.
+    /// Gets the removable Disk II drives. This stub topology does not come from a machine.
     /// </summary>
     internal List<LoopbackDrive> Drives { get; } =
     [
         new(new DriveId(6, 1), boot: true),
         new(new DriveId(6, 2), boot: false),
     ];
+
+    /// <summary>
+    /// Gets fixed-storage units attached while the machine was off.
+    /// </summary>
+    internal List<LoopbackDrive> FixedDrives { get; } = [];
 
     /// <summary>
     /// Gets the keys that are down.
@@ -282,6 +287,26 @@ internal sealed class LoopbackMachine
     /// <returns>The drive, or <see langword="null"/>.</returns>
     internal LoopbackDrive? FindDrive(DriveId drive)
     {
+        return FindRemovable(drive) ?? FindFixed(drive);
+    }
+
+    /// <summary>
+    /// Finds a Disk II drive.
+    /// </summary>
+    /// <param name="drive">The drive id.</param>
+    /// <returns>The drive, or <see langword="null"/>.</returns>
+    internal LoopbackDrive? FindRemovable(DriveId drive)
+    {
         return Drives.FirstOrDefault(candidate => candidate.Id == drive);
+    }
+
+    /// <summary>
+    /// Finds an attached fixed-storage unit.
+    /// </summary>
+    /// <param name="drive">The drive id.</param>
+    /// <returns>The unit, or <see langword="null"/>.</returns>
+    internal LoopbackDrive? FindFixed(DriveId drive)
+    {
+        return FixedDrives.FirstOrDefault(candidate => candidate.Id == drive);
     }
 }

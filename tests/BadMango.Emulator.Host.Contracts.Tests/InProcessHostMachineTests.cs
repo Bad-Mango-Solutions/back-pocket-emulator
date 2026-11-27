@@ -435,6 +435,76 @@ public class InProcessHostMachineTests
     }
 
     /// <summary>
+    /// A replaced template is built on the next power-on and leaves the machine that is already off unchanged until then.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task ReplacedTemplate_IsAppliedOnTheNextPowerOn()
+    {
+        using InProcessHostSession session = Open();
+        MachineId id = Add(session, "Template", startPaused: true);
+        await session.Control.PowerOnAsync(id);
+        Assert.That(ReadByte(session, id, 0x2000), Is.EqualTo(0xFF));
+
+        await session.Control.PowerOffAsync(id);
+        session.Control.UpsertProfile(new HostProfileDocument(
+            BootProfile.Id,
+            "Boot ROM Test",
+            BootProfile.WithExtra("\"boot\": { \"powerOnMemory\": { \"pattern\": \"zero\", \"seed\": 1 } }")));
+        Assert.That(ReadByte(session, id, 0x2000), Is.EqualTo(0xFF));
+
+        await session.Control.PowerOnAsync(id);
+        Assert.That(ReadByte(session, id, 0x2000), Is.EqualTo(0));
+    }
+
+    /// <summary>
+    /// Power-on refuses a profile that does not match the machine profile schema, and leaves the machine off.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task PowerOn_RejectsAProfileThatFailsTheSchema()
+    {
+        using InProcessHostSession session = Open();
+        const string BadId = "bad-call-log";
+        session.Control.UpsertProfile(new HostProfileDocument(
+            BadId,
+            "Bad call log",
+            BootProfile.WithExtra("\"guestOs\": { \"callLog\": \"nope\" }")));
+        MachineId id = session.Control.CreateInstance(new HostInstanceSpec(Name: "Bad", ProfileId: BadId, CpuSummary: "65C02"));
+
+        InvalidOperationException? error = await Assert.ThrowsAsync<InvalidOperationException>(async () => await session.Control.PowerOnAsync(id));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(error!.Message, Does.Contain("schemas/machine-profile.schema.json"));
+            Assert.That(error.Message, Does.Contain("callLog"));
+            Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Off));
+        });
+    }
+
+    /// <summary>
+    /// An overlay that makes the merged profile fail the schema is refused at power-on, and the machine stays off.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task PowerOn_RejectsAnOverlayThatBreaksTheSchema()
+    {
+        using InProcessHostSession session = Open();
+        MachineId id = Add(session, "Broken overlay");
+        session.Control.SetInstanceOverlay(id, """{"cpu":{"type":"z80"}}""");
+
+        InvalidOperationException? error = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await session.Control.PowerOnAsync(id));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(error!.Message, Does.Contain("schemas/machine-profile.schema.json"));
+            Assert.That(error.Message, Does.Contain("$.cpu.type"));
+            Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Off));
+        });
+    }
+
+    /// <summary>
     /// Remove drops an off machine, and Dispose joins every run loop.
     /// </summary>
     /// <returns>The test task.</returns>

@@ -259,6 +259,10 @@ git push origin feature/your-feature-name
 
 ## Coding Guidelines
 
+### Paths
+
+Prefer `Path.Join` over `Path.Combine` when building a path. `Path.Combine` drops every earlier segment when a later segment is rooted. Use `Path.Combine` only when a rooted later segment is meant to reset the path, and add a comment that says so.
+
 ### C# Style
 
 - Follow [Microsoft C# Coding Conventions](https://docs.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)

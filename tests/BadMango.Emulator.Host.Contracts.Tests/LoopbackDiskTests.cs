@@ -21,11 +21,11 @@ public class LoopbackDiskTests
         MachineId id = HostSessions.Add(session, "Workshop");
         const string Path = "missing/no-such-image.dsk";
 
-        IReadOnlyList<HostDiskController> before = session.Control.ListDisks(id);
+        IReadOnlyList<HostDiskController> before = await session.Control.ListDisksAsync(id);
         await session.Control.MountDiskAsync(id, new DriveId(6, 1), Path, writeProtect: true);
-        IReadOnlyList<HostDiskController> mounted = session.Control.ListDisks(id);
+        IReadOnlyList<HostDiskController> mounted = await session.Control.ListDisksAsync(id);
         await session.Control.EjectDiskAsync(id, new DriveId(6, 1));
-        HostDrive ejected = session.Control.ListDisks(id)[0].Drives[0];
+        HostDrive ejected = (await session.Control.ListDisksAsync(id))[0].Drives[0];
 
         Assert.Multiple(() =>
         {
@@ -60,7 +60,7 @@ public class LoopbackDiskTests
         await session.Control.SetWriteProtectAsync(id, drive, true);
         ((ILoopbackMachineEdge)session).SetDriveStatus(id, drive, new HostDriveStatus(Active: true, Dirty: true, Busy: true, Track: 0x12, Block: null, Error: null));
 
-        HostDrive busy = session.Control.ListDisks(id)[0].Drives[1];
+        HostDrive busy = (await session.Control.ListDisksAsync(id))[0].Drives[1];
         Assert.Multiple(() =>
         {
             Assert.That(busy.WriteProtected, Is.True);
@@ -76,12 +76,13 @@ public class LoopbackDiskTests
     /// <summary>
     /// The slot strip names the Disk II in slot 6 and leaves the other slots empty.
     /// </summary>
+    /// <returns>The test task.</returns>
     [Test]
-    public void ListSlots_ReportsDiskIIInSlot6()
+    public async Task ListSlots_ReportsDiskIIInSlot6()
     {
         using LoopbackHostSession session = HostSessions.Open();
         MachineId id = HostSessions.Add(session, "Workshop");
-        IReadOnlyList<HostSlotInfo> slots = session.Control.ListSlots(id);
+        IReadOnlyList<HostSlotInfo> slots = await session.Control.ListSlotsAsync(id);
 
         Assert.Multiple(() =>
         {
