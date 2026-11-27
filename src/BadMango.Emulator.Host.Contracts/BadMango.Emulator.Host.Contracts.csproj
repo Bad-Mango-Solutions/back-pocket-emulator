@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>BadMango.Emulator.Host.Contracts</RootNamespace>
+    <Product>BackPocket Emulator - Host Contracts</Product>
+    <Description>Versioned, transport-agnostic emulator host API (control, presentation, and input) and the in-process loopback transport. No reference to the machine, video device, or audio output.</Description>
+    <PackageTags>emulator;host;contracts;loopback;presentation;input</PackageTags>
+  </PropertyGroup>
+
+</Project>

@@ -32,6 +32,7 @@ graph TD
   DbgUI[BadMango.Emulator.Debug.UI]
   Debug[BadMango.Emulator.Debug (emudbg)]
   Mcp[BadMango.Emulator.Debug.Mcp (emudbg-mcp)]
+  HostApi[BadMango.Emulator.Host.Contracts]
 
   Devices --> Core
   Devices --> Storage
@@ -56,6 +57,7 @@ graph TD
 | `BadMango.Emulator.Debug.UI` | debugger windows/editor surface (absorbs TextEditor) | debugger UI surface |
 | `BadMango.Emulator.Debug` (`emudbg`) | debug console executable host | `Debug.Infrastructure`, `Debug.UI` |
 | `BadMango.Emulator.Debug.Mcp` (`emudbg-mcp`) | MCP stdio host | `Debug.Infrastructure` only |
+| `BadMango.Emulator.Host.Contracts` | Host API leaf (control, presentation, input). Added by #734. Not a #478 fold target. The stub loopback is test support. | none |
 
 > **Current location (until #560):** `src/BadMango.Emulator.Debug.Abstractions`; target: `src/BadMango.Emulator.Debug.Infrastructure` (namespace `BadMango.Emulator.Debug.Abstractions` unchanged).
 >
@@ -79,6 +81,7 @@ Versioned module host support is **not** claimed as implemented yet.
 | Add a new device | `src/BadMango.Emulator.Devices/` | `src/BadMango.Emulator.Devices/` |
 | Bus faults (`FaultKind`, fault registers, `ABORT`) | `src/BadMango.Emulator.Core/` + `specs/Bus Fast Path and Fault Registers Specification.md` | `src/BadMango.Emulator.Core/` + `specs/Bus Fast Path and Fault Registers Specification.md` |
 | Soft switches / I/O page behavior | `src/BadMango.Emulator.Devices/` with machine wiring in `src/BadMango.Emulator.Systems/` | `src/BadMango.Emulator.Devices/` with machine wiring in `src/BadMango.Emulator.Systems/` |
+| Host API (control, presentation, input) | `src/BadMango.Emulator.Host.Contracts/` and [`specs/architecture/host-api.md`](specs/architecture/host-api.md) | `src/BadMango.Emulator.Host.Contracts/` and [`specs/architecture/host-api.md`](specs/architecture/host-api.md) |
 
 > **Current location (until #565):** `tests/BadMango.Emulator.Tests` cross-suite tests cover CPU/machine paths; target: subject-specific test projects (namespace unchanged).
 
