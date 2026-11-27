@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Tests;
 
 using System.Text;
+using System.Text.Json;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
@@ -51,6 +52,16 @@ public sealed class KeyboardMachineTests
     private const ulong GapCycles = 10 * CyclesPerMillisecond;
 
     /// <summary>
+    /// Vertical blanks before the first auto-repeat. Midpoint of the 32–48 scan range.
+    /// </summary>
+    private const int AutoRepeatDelayVBlanks = 40;
+
+    /// <summary>
+    /// Vertical blanks between auto-repeat strobes.
+    /// </summary>
+    private const int AutoRepeatIntervalVBlanks = 4;
+
+    /// <summary>
     /// The Apple ROM images the <c>pocket2e-a2-enh</c> profile loads. They are not
     /// redistributable, so they are not in the repository; supply them under <c>roms/</c>.
     /// </summary>
@@ -91,9 +102,9 @@ public sealed class KeyboardMachineTests
         Assert.Multiple(() =>
         {
             Assert.That(keyData, Is.EqualTo((byte)('A' | 0x80)));
-            Assert.That(keyDownBeforeRelease, Is.EqualTo(0x80));
+            Assert.That(keyDownBeforeRelease, Is.EqualTo((byte)('A' | 0x80)), "$C010 is AKD plus the latched ASCII");
             Assert.That(keyDataAfterReadClear, Is.EqualTo((byte)'A'));
-            Assert.That(keyDownAfterRelease, Is.EqualTo(0x00));
+            Assert.That(keyDownAfterRelease, Is.EqualTo((byte)'A'), "Releasing the key clears AKD and leaves the ASCII");
             Assert.That(keyDataAfterWriteClear, Is.EqualTo((byte)'B'));
         });
     }
@@ -118,9 +129,9 @@ public sealed class KeyboardMachineTests
         Assert.Multiple(() =>
         {
             Assert.That(keyDataBeforeDebugRead, Is.EqualTo((byte)('A' | 0x80)));
-            Assert.That(keyDownDebugRead, Is.EqualTo(0x80));
+            Assert.That(keyDownDebugRead, Is.EqualTo((byte)('A' | 0x80)));
             Assert.That(keyDataAfterDebugRead, Is.EqualTo((byte)('A' | 0x80)));
-            Assert.That(keyDownNormalRead, Is.EqualTo(0x80));
+            Assert.That(keyDownNormalRead, Is.EqualTo((byte)('A' | 0x80)));
             Assert.That(keyDataAfterNormalRead, Is.EqualTo((byte)'A'));
         });
     }
@@ -514,6 +525,175 @@ public sealed class KeyboardMachineTests
         });
     }
 
+    /// <summary>
+    /// Verifies that holding A for one second of emulated time yields the initial A plus the
+    /// repeats predicted from the profile VBlank rate: a 40-blank delay, then one every 4 blanks.
+    /// </summary>
+    [Test]
+    public void AutoRepeat_HoldAForOneSecond_MatchesProfileVBlankRate()
+    {
+        (IMachine machine, IVideoDevice video) = CreateAutoRepeatMachine(autoRepeat: true);
+        InstallPollingLoop(machine);
+        ulong clockHz = ReadProfileClockHz();
+        int vblanks = 0;
+        Action count = () => vblanks++;
+
+        video.VBlankOccurred += count;
+        RequireInput(machine).KeyDown(KeyboardKey.A, KeyboardModifiers.Shift);
+        machine.Scheduler.DispatchDue();
+        ulong start = machine.Now.Value;
+        StepFor(machine, clockHz);
+        video.VBlankOccurred -= count;
+
+        int nominal = (int)(clockHz / VideoDevice.CyclesPerFrame);
+        Assert.Multiple(() =>
+        {
+            Assert.That(machine.Now.Value - start, Is.GreaterThanOrEqualTo(clockHz));
+            Assert.That(vblanks, Is.InRange(nominal - 1, nominal + 1), "The hold must cover about one second of vertical blanks");
+            Assert.That(ReadBuffer(machine), Is.EqualTo(new string('A', ExpectedHeldKeyCount(vblanks))));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that <c>autoRepeat: false</c> latches a held A once across one second of vertical blanks.
+    /// </summary>
+    [Test]
+    public void AutoRepeat_Disabled_HoldAForOneSecond_LatchesOnce()
+    {
+        (IMachine machine, IVideoDevice video) = CreateAutoRepeatMachine(autoRepeat: false);
+        InstallPollingLoop(machine);
+        ulong clockHz = ReadProfileClockHz();
+        int vblanks = 0;
+        Action count = () => vblanks++;
+
+        video.VBlankOccurred += count;
+        RequireInput(machine).KeyDown(KeyboardKey.A, KeyboardModifiers.Shift);
+        machine.Scheduler.DispatchDue();
+        StepFor(machine, clockHz);
+        video.VBlankOccurred -= count;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(vblanks, Is.GreaterThan(AutoRepeatDelayVBlanks), "The hold must run past the repeat delay");
+            Assert.That(ReadBuffer(machine), Is.EqualTo("A"));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that pressing B while A is held restarts the auto-repeat delay. The B count over
+    /// the following hold is the fresh 40-blank delay, not a continuation of A's timer.
+    /// </summary>
+    [Test]
+    public void AutoRepeat_PressBWhileAHeld_RestartsDelay()
+    {
+        (IMachine machine, IVideoDevice video) = CreateAutoRepeatMachine(autoRepeat: true);
+        InstallPollingLoop(machine);
+        IKeyboardInput input = RequireInput(machine);
+        ulong holdCycles = 50 * VideoDevice.CyclesPerFrame;
+
+        int aVblanks = 0;
+        Action countA = () => aVblanks++;
+        video.VBlankOccurred += countA;
+        input.KeyDown(KeyboardKey.A, KeyboardModifiers.Shift);
+        machine.Scheduler.DispatchDue();
+        StepFor(machine, holdCycles);
+        video.VBlankOccurred -= countA;
+        int aCount = BufferCount(machine);
+
+        int bVblanks = 0;
+        Action countB = () => bVblanks++;
+        video.VBlankOccurred += countB;
+        input.KeyDown(KeyboardKey.B, KeyboardModifiers.Shift);
+        machine.Scheduler.DispatchDue();
+        StepFor(machine, holdCycles);
+        video.VBlankOccurred -= countB;
+
+        string received = ReadBuffer(machine);
+        string bText = received[aCount..];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(aVblanks, Is.GreaterThan(AutoRepeatDelayVBlanks));
+            Assert.That(received[..aCount], Is.EqualTo(new string('A', ExpectedHeldKeyCount(aVblanks))));
+            Assert.That(bText, Is.EqualTo(new string('B', ExpectedHeldKeyCount(bVblanks))));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a $C010 read returns AKD in bit 7 and the latched ASCII in bits 0–6,
+    /// both while the key is held and after it is released.
+    /// </summary>
+    [Test]
+    public void C010Read_ReturnsAkdAndAscii_WhileHeldAndAfterRelease()
+    {
+        (IMachine machine, _) = CreateAutoRepeatMachine(autoRepeat: true);
+        IKeyboardInput input = RequireInput(machine);
+
+        input.KeyDown(KeyboardKey.A, KeyboardModifiers.Shift);
+        machine.Scheduler.DispatchDue();
+        byte held = machine.Cpu.Read8(KeyboardStrobeAddress);
+
+        input.KeyUp(KeyboardKey.A, KeyboardModifiers.None);
+        machine.Scheduler.DispatchDue();
+        byte released = machine.Cpu.Read8(KeyboardStrobeAddress);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(held, Is.EqualTo((byte)('A' | 0x80)));
+            Assert.That(released, Is.EqualTo((byte)'A'));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a write to $C010–$C01F clears the strobe, and that the $C01A read
+    /// (video text status) is unchanged.
+    /// </summary>
+    [Test]
+    public void C010ThroughC01FWrite_ClearsStrobe_LeavesStatusReads()
+    {
+        (IMachine machine, _) = CreateAutoRepeatMachine(autoRepeat: true);
+        IKeyboardInput input = RequireInput(machine);
+        byte textStatus = machine.Cpu.Read8(0xC01A);
+
+        for (ushort address = KeyboardStrobeAddress; address <= 0xC01F; address++)
+        {
+            input.KeyUp(KeyboardKey.A, KeyboardModifiers.None);
+            machine.Scheduler.DispatchDue();
+            input.KeyDown(KeyboardKey.A, KeyboardModifiers.Shift);
+            machine.Scheduler.DispatchDue();
+            Assert.That(machine.Cpu.Read8(KeyboardDataAddress) & 0x80, Is.Not.Zero, $"${address:X4} needs a strobe to clear");
+
+            machine.Cpu.Write8(address, 0x00);
+            Assert.That(machine.Cpu.Read8(KeyboardDataAddress) & 0x80, Is.Zero, $"Write to ${address:X4} should clear the strobe");
+        }
+
+        Assert.That(machine.Cpu.Read8(0xC01A), Is.EqualTo(textStatus), "$C01A stays the video text-status read");
+    }
+
+    /// <summary>
+    /// Verifies that the pocket2e enhanced profile's keyboard <c>autoRepeat</c> value parses as true.
+    /// </summary>
+    [Test]
+    public void ProfileKeyboardConfig_AutoRepeat_ParsesTrue()
+    {
+        string profilePath = Path.Join(RepositoryRoot, "profiles", ProfileName + ".json");
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(profilePath));
+        JsonElement config = default;
+        foreach (JsonElement device in document.RootElement.GetProperty("devices").GetProperty("motherboard").EnumerateArray())
+        {
+            if (device.GetProperty("type").GetString() == "keyboard")
+            {
+                config = device.GetProperty("config");
+                break;
+            }
+        }
+
+        var keyboard = new AppleIIeKeyboard { AutoRepeat = false };
+        keyboard.ApplyProfileConfig(config);
+
+        Assert.That(keyboard.AutoRepeat, Is.True);
+    }
+
     private static void PressKeyboardKey(IMachine machine, KeyboardKey key, KeyboardModifiers modifiers)
     {
         IKeyboardInput input = RequireInput(machine);
@@ -582,6 +762,55 @@ public sealed class KeyboardMachineTests
     }
 
     private static string ReadBuffer(IMachine machine) => Encoding.ASCII.GetString(ReadBufferBytes(machine));
+
+    /// <summary>
+    /// One initial latch, plus a repeat on blank 40 and then every 4 blanks.
+    /// </summary>
+    /// <param name="vblanksWhileHeld">Vertical blanks observed while the key was down.</param>
+    /// <returns>The number of times the polling loop should have stored the key.</returns>
+    private static int ExpectedHeldKeyCount(int vblanksWhileHeld)
+    {
+        if (vblanksWhileHeld < AutoRepeatDelayVBlanks)
+        {
+            return 1;
+        }
+
+        int repeats = 1 + ((vblanksWhileHeld - AutoRepeatDelayVBlanks) / AutoRepeatIntervalVBlanks);
+        return 1 + repeats;
+    }
+
+    private static ulong ReadProfileClockHz()
+    {
+        string profilePath = Path.Join(RepositoryRoot, "profiles", ProfileName + ".json");
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(profilePath));
+        return document.RootElement.GetProperty("cpu").GetProperty("clockSpeed").GetUInt64();
+    }
+
+    private static (IMachine Machine, IVideoDevice Video) CreateAutoRepeatMachine(bool autoRepeat)
+    {
+        var keyboard = new AppleIIeKeyboard();
+        if (!autoRepeat)
+        {
+            using JsonDocument config = JsonDocument.Parse("{\"autoRepeat\":false}");
+            keyboard.ApplyProfileConfig(config.RootElement);
+        }
+
+        var video = new VideoDevice();
+        IMachine machine = new MachineBuilder()
+            .AsPocket2e()
+            .WithStubRom()
+            .AddMotherboardDevice(keyboard)
+            .AddMotherboardDevice(video)
+            .RegisterKeyboardInputFactory()
+            .Build();
+
+        if (machine.State == MachineState.Off)
+        {
+            machine.PowerOnAsync().GetAwaiter().GetResult();
+        }
+
+        return (machine, video);
+    }
 
     private static IMachine CreateMachine()
     {
