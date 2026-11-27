@@ -15,9 +15,6 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 | `BadMango.Emulator.Storage` | Disk-image formats, storage backends, GCR nibblizing |
 | `BadMango.Emulator.Rendering` | Pixel buffers and character rendering |
 | `BadMango.Emulator.Systems` | Pocket2e machine composition |
-| `BadMango.Emulator.Infrastructure` | Event aggregator, with no emulator project references |
-| `BadMango.Emulator.Configuration` | Application settings and path validation |
-| `BadMango.Emulator.UI.Abstractions` | UI contracts used without referencing the GUI executable |
 | `BadMango.Emulator.TextEditor` | Avalonia text editor |
 | `BadMango.Emulator.Debug.Infrastructure` | REPL, commands, breakpoints, trace |
 | `BadMango.Emulator.Debug.UI` | Avalonia windows hosted by the console debugger |
@@ -27,7 +24,7 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 | Project | Assembly | Responsibility |
 | --- | --- | --- |
 | `BadMango.Emulator.Debug` | `emudbg` | Console debugger. References Core, Bus, Emulation, Debug.Infrastructure, and Debug.UI |
-| `BadMango.Emulator.UI` | `bpui` | Avalonia GUI. References Core, Infrastructure, and UI.Abstractions |
+| `BadMango.Emulator.UI` | `bpui` | Avalonia GUI. References Core. Holds the event aggregator, application settings, and UI contracts |
 
 ## Tests
 

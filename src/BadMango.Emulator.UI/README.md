@@ -4,7 +4,7 @@ Avalonia-based cross-platform user interface for the BackPocket emulator.
 
 ## Overview
 
-This project provides a graphical frontend for the BackPocket emulator family, built with Avalonia UI 12 on .NET 11.0. The UI follows the MVVM pattern using CommunityToolkit.Mvvm and uses Autofac for dependency injection with Microsoft.Extensions.Hosting patterns. The assembly name is `bpui`. It references `BadMango.Emulator.Core`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions`.
+This project provides a graphical frontend for the BackPocket emulator family, built with Avalonia UI 12 on .NET 11.0. The UI follows the MVVM pattern using CommunityToolkit.Mvvm and uses Autofac for dependency injection with Microsoft.Extensions.Hosting patterns. The assembly name is `bpui`. It references `BadMango.Emulator.Core`. The event aggregator, application settings, and UI contracts live in this project under the namespaces `BadMango.Emulator.Infrastructure`, `BadMango.Emulator.Configuration`, and `BadMango.Emulator.UI.Abstractions`.
 
 ## Features
 
@@ -34,8 +34,12 @@ BadMango.Emulator.UI/
 ├── App.axaml.cs                  # Application code-behind
 ├── Program.cs                    # Entry point with hosting setup
 ├── appsettings.json              # Application configuration
-├── Models/                       # Window layout and pop-out models
-├── Services/                     # Navigation, theme, window manager, shutdown
+├── Events/                       # Infrastructure and UI abstraction events
+├── IO/                           # Path validation
+├── Models/                       # Window layout, pop-out, and application settings
+├── Registration/                 # Autofac modules for the host shell
+├── Services/                     # Navigation, theme, settings, window manager, shutdown
+├── Settings/                     # Settings page contracts
 ├── ViewModels/                   # Main window, machine manager, pop-out
 │   └── Settings/                 # Settings page view models
 ├── Views/                        # Main window, machine manager, pop-out, placeholder
@@ -44,7 +48,7 @@ BadMango.Emulator.UI/
     └── Styles/                   # ColorPalette.axaml, AppStyles.axaml
 ```
 
-`IThemeService` lives in `BadMango.Emulator.UI.Abstractions`. `ThemeService` is implemented in `Services/`.
+`IThemeService` lives in the `BadMango.Emulator.UI.Abstractions` namespace. `ThemeService` is implemented in `Services/`.
 
 ## Running the Application
 

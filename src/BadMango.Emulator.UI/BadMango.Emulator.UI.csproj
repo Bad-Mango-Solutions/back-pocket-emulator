@@ -14,8 +14,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
-    <ProjectReference Include="..\BadMango.Emulator.Infrastructure\BadMango.Emulator.Infrastructure.csproj" />
-    <ProjectReference Include="..\BadMango.Emulator.UI.Abstractions\BadMango.Emulator.UI.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,7 +40,13 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
     <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" />
 
-    <!-- Logging with Serilog -->
+    <!-- Logging with Serilog.
+         Microsoft.Extensions.Logging.Abstractions is inbox on net11.0, so a direct PackageReference raises NU1510.
+         The reference stays because the folded host-shell code uses ILogger and the consolidation move requires that dependency on this csproj.
+         NoWarn keeps the explicit reference under warnaserror. The version is pinned in Directory.Packages.props. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions">
+      <NoWarn>NU1510</NoWarn>
+    </PackageReference>
     <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
     <PackageReference Include="Serilog.Settings.Configuration" />

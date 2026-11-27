@@ -60,10 +60,7 @@ back-pocket-emulator/
 │   ├── BadMango.Emulator.Storage/              # Disk images, block media, GCR nibblizing
 │   ├── BadMango.Emulator.Rendering/            # Pixel buffers and character rendering
 │   ├── BadMango.Emulator.Systems/              # Pocket2e machine composition
-│   ├── BadMango.Emulator.Infrastructure/       # Event aggregator
-│   ├── BadMango.Emulator.Configuration/        # App settings and path validation
-│   ├── BadMango.Emulator.UI.Abstractions/      # UI contracts
-│   ├── BadMango.Emulator.UI/                   # Avalonia host (bpui)
+│   ├── BadMango.Emulator.UI/                   # Avalonia host (bpui); event aggregator, settings, UI contracts
 │   ├── BadMango.Emulator.TextEditor/           # Avalonia editor
 │   ├── BadMango.Emulator.Debug.Infrastructure/ # REPL, commands, breakpoints, trace
 │   ├── BadMango.Emulator.Debug.UI/             # Avalonia windows for the console debugger
@@ -73,12 +70,10 @@ back-pocket-emulator/
 │   ├── BadMango.Unit.Components/               # Shared test helpers
 │   ├── BadMango.Emulator.Tests/                # CPU, machine, and cross-project tests
 │   ├── BadMango.Emulator.Bus.Tests/
-│   ├── BadMango.Emulator.Configuration.Tests/
 │   ├── BadMango.Emulator.Debug.Infrastructure.Tests/
 │   ├── BadMango.Emulator.Debug.Tests/
 │   ├── BadMango.Emulator.Debug.UI.Tests/
 │   ├── BadMango.Emulator.Devices.Tests/
-│   ├── BadMango.Emulator.Infrastructure.Tests/
 │   ├── BadMango.Emulator.Rendering.Tests/
 │   ├── BadMango.Emulator.Storage.Tests/
 │   ├── BadMango.Emulator.TextEditor.Tests/

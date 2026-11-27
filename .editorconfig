@@ -426,3 +426,8 @@ end_of_line = crlf
 dotnet_style_namespace_match_folder = true:suggestion
 dotnet_style_prefer_collection_expression = when_types_loosely_match:suggestion
 
+# Configuration tests moved into UI.Tests keep their original file headers.
+# SA1638 compares the copyright file attribute to the file name, and the move leaves file contents unchanged.
+[tests/BadMango.Emulator.UI.Tests/*.Configuration.cs]
+dotnet_diagnostic.SA1638.severity = none
+
