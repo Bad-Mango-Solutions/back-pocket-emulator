@@ -60,8 +60,6 @@ graph TD
 > **Current location (until #560):** `src/BadMango.Emulator.Debug.Abstractions`; target: `src/BadMango.Emulator.Debug.Infrastructure` (namespace `BadMango.Emulator.Debug.Abstractions` unchanged).
 >
 > **Current location (until #561):** `src/BadMango.Emulator.TextEditor`; target: `src/BadMango.Emulator.Debug.UI` (namespace `BadMango.Emulator.TextEditor` unchanged).
->
-> **Current location (until #562):** `src/BadMango.Emulator.Bus` and `src/BadMango.Emulator.Emulation`; target: `src/BadMango.Emulator.Core` (namespaces such as `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation.Cpu` unchanged).
 
 ### Extension seams (#473)
 
@@ -77,13 +75,11 @@ Versioned module host support is **not** claimed as implemented yet.
 
 | Task | Target location | Current location |
 | --- | --- | --- |
-| Add a new opcode | `src/BadMango.Emulator.Core/Cpu/` (target after Bus+Emulation fold) | `src/BadMango.Emulator.Emulation/Cpu/` and `src/BadMango.Emulator.Core/Cpu/` |
+| Add a new opcode | `src/BadMango.Emulator.Core/Cpu/` | `src/BadMango.Emulator.Core/Cpu/` |
 | Add a new device | `src/BadMango.Emulator.Devices/` | `src/BadMango.Emulator.Devices/` |
-| Bus faults (`FaultKind`, fault registers, `ABORT`) | `src/BadMango.Emulator.Core/` (target after Bus fold) + `specs/Bus Fast Path and Fault Registers Specification.md` | `src/BadMango.Emulator.Bus/` + `specs/Bus Fast Path and Fault Registers Specification.md` |
+| Bus faults (`FaultKind`, fault registers, `ABORT`) | `src/BadMango.Emulator.Core/` + `specs/Bus Fast Path and Fault Registers Specification.md` | `src/BadMango.Emulator.Core/` + `specs/Bus Fast Path and Fault Registers Specification.md` |
 | Soft switches / I/O page behavior | `src/BadMango.Emulator.Devices/` with machine wiring in `src/BadMango.Emulator.Systems/` | `src/BadMango.Emulator.Devices/` with machine wiring in `src/BadMango.Emulator.Systems/` |
 
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`; target: `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
->
 > **Current location (until #565):** `tests/BadMango.Emulator.Tests` cross-suite tests cover CPU/machine paths; target: subject-specific test projects (namespace unchanged).
 
 ## Architecture pages and issue tracking

@@ -14,26 +14,26 @@ Disk acceleration, when enabled, selects unthrottled pacing on a motor-on reques
 
 ### Throttle loop
 
-[`IMachine.ClockSpeedHz`](../../src/BadMango.Emulator.Bus/Interfaces/IMachine.cs) is the throttle target in hertz. Zero means unthrottled. [`Machine.RunAsync`](../../src/BadMango.Emulator.Bus/Machine.cs) and `ResumeAsync` both enter `ExecuteLoopAsync`. That loop calls `RunSlice`, then, when `ClockSpeedHz > 0`, compares a `Stopwatch` with the cycles accumulated since the window opened:
+[`IMachine.ClockSpeedHz`](../../src/BadMango.Emulator.Core/Interfaces/IMachine.cs) is the throttle target in hertz. Zero means unthrottled. [`Machine.RunAsync`](../../src/BadMango.Emulator.Core/Machine.cs) and `ResumeAsync` both enter `ExecuteLoopAsync`. That loop calls `RunSlice`, then, when `ClockSpeedHz > 0`, compares a `Stopwatch` with the cycles accumulated since the window opened:
 
 - `expectedMs = throttleCycleBase * 1000.0 / clockSpeed`
 - Sleep when the machine is at least 1 ms ahead (`Task.Delay`).
 - When the machine falls more than 100 ms behind, restart the stopwatch and zero `throttleCycleBase` so a pause does not become a catch-up burst.
 
-`RunSlice` returns after `YieldIntervalCycles` (10,000) cycles, or earlier on WAI-with-nothing-scheduled, STP/halt, or a stop request. [`Machine.Run`](../../src/BadMango.Emulator.Bus/Machine.cs) calls the same slice in a tight loop and never sleeps. `Step` advances one instruction. Neither path reads `ClockSpeedHz`.
+`RunSlice` returns after `YieldIntervalCycles` (10,000) cycles, or earlier on WAI-with-nothing-scheduled, STP/halt, or a stop request. [`Machine.Run`](../../src/BadMango.Emulator.Core/Machine.cs) calls the same slice in a tight loop and never sleeps. `Step` advances one instruction. Neither path reads `ClockSpeedHz`.
 
 ### Profile clock versus throttle
 
-[`MachineBuilder.FromProfile`](../../src/BadMango.Emulator.Bus/MachineBuilder.FromProfile.cs) copies `cpu.clockSpeed` twice:
+[`MachineBuilder.FromProfile`](../../src/BadMango.Emulator.Core/MachineBuilder.FromProfile.cs) copies `cpu.clockSpeed` twice:
 
 - `clockSpeedHz = profile.Cpu.ClockSpeed ?? 0`, later assigned to `Machine.ClockSpeedHz`. Omitted `clockSpeed` leaves the run loop unthrottled.
-- `profileCpuClockHz` is `cpu.clockSpeed` when that value is positive, otherwise `DefaultProfileCpuClockHz` (1,000,000). [`MachineBuilder.ProfileCpuClockHz`](../../src/BadMango.Emulator.Bus/MachineBuilder.cs) is the clock used to turn emulated milliseconds into cycles. It is fixed at build.
+- `profileCpuClockHz` is `cpu.clockSpeed` when that value is positive, otherwise `DefaultProfileCpuClockHz` (1,000,000). [`MachineBuilder.ProfileCpuClockHz`](../../src/BadMango.Emulator.Core/MachineBuilder.cs) is the clock used to turn emulated milliseconds into cycles. It is fixed at build.
 
 Shipped Pocket2e profiles set `clockSpeed` to 1,020,484. `simple-65c02` sets 1,000,000. The schema field is `cpu.clockSpeed` (`schemas/machine-profile.schema.json`); there is no separate pacing field and no disk-acceleration flag.
 
 ### Scheduler
 
-[`Scheduler`](../../src/BadMango.Emulator.Bus/Scheduler.cs) is a cycle queue. `Now` advances only when the CPU, or another machine-thread caller, supplies cycles. It has no wall-clock timer. [`Cpu65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs) calls `IScheduler.Advance` with the cycles the instruction consumed. Device deadlines (VBlank, the NE556 hold, keyboard typing) are cycle counts on that queue. See [`scheduler.md`](scheduler.md).
+[`Scheduler`](../../src/BadMango.Emulator.Core/Scheduler.cs) is a cycle queue. `Now` advances only when the CPU, or another machine-thread caller, supplies cycles. It has no wall-clock timer. [`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs) calls `IScheduler.Advance` with the cycles the instruction consumed. Device deadlines (VBlank, the NE556 hold, keyboard typing) are cycle counts on that queue. See [`scheduler.md`](scheduler.md).
 
 ### Speaker
 

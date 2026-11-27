@@ -8,9 +8,7 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 
 | Project | Responsibility |
 | --- | --- |
-| `BadMango.Emulator.Core` | CPU contracts and state, signal bus, machine-profile models |
-| `BadMango.Emulator.Bus` | Main bus, layered memory map, device registry, machine builder, `IPeripheral` |
-| `BadMango.Emulator.Emulation` | `Cpu65C02`, plus `Cpu65816` and `Cpu65832` placeholder types |
+| `BadMango.Emulator.Core` | CPU, bus, and emulation: contracts and state, signal bus, machine profiles, `MainBus`, `MachineBuilder`, and `Cpu65C02` (`Cpu65816` and `Cpu65832` are placeholders). Namespaces `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation` stay |
 | `BadMango.Emulator.Devices` | Keyboard, video, speaker, language card, Disk II, clock cards, game I/O |
 | `BadMango.Emulator.Storage` | Disk-image formats, storage backends, GCR nibblizing |
 | `BadMango.Emulator.Rendering` | Pixel buffers and character rendering |
@@ -23,12 +21,12 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 
 | Project | Assembly | Responsibility |
 | --- | --- | --- |
-| `BadMango.Emulator.Debug` | `emudbg` | Console debugger. References Core, Bus, Emulation, Debug.Infrastructure, and Debug.UI |
+| `BadMango.Emulator.Debug` | `emudbg` | Console debugger. References Core, Debug.Infrastructure, and Debug.UI |
 | `BadMango.Emulator.UI` | `bpui` | Avalonia GUI. References Core. Holds the event aggregator, application settings, and UI contracts |
 
 ## Tests
 
-`tests/BadMango.Unit.Components` is the shared test library. Every `tests/BadMango.Emulator.*.Tests` project references it and the library it covers. `BadMango.Emulator.Tests` is the cross-project suite for the CPU, machine builder, Emulation, Systems, and Core.
+`tests/BadMango.Unit.Components` is the shared test library. Every `tests/BadMango.Emulator.*.Tests` project references it and the library it covers. `BadMango.Emulator.Core.Tests` covers the bus, memory map, and device registry. `BadMango.Emulator.Tests` is the cross-project suite for the CPU, machine builder, Systems, and Core.
 
 ## Naming
 

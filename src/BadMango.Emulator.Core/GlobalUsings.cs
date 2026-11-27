@@ -4,7 +4,9 @@
 
 #pragma warning disable SA1200 // Using directives should be placed correctly
 
-// Global type aliases for semantic clarity across CPU implementations
+global using BadMango.Emulator.Core;
+
+// Global type aliases for semantic clarity across bus implementations
 global using Addr = uint;  // Address type - 32-bit for future flat addressing
 global using DWord = uint; // Double word - 32-bit unsigned integer
 global using Word = ushort;  // Word - 16-bit unsigned integer

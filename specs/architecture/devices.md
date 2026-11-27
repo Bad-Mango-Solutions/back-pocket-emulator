@@ -64,14 +64,6 @@ I/O-page bus plumbing targets `BadMango.Emulator.Core`, retaining the existing
 `CompositeIOTarget`, `SlotManager`, and the slot/peripheral interfaces.
 Machine/profile composition remains in `BadMango.Emulator.Systems`.
 
-> **Current location (until #562):**
-> `src/BadMango.Emulator.Bus`; target:
-> `src/BadMango.Emulator.Core` (namespace `BadMango.Emulator.Bus` unchanged).
-
-> **Current location (until #562):**
-> `tests/BadMango.Emulator.Bus.Tests`; target:
-> `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
-
 > **Current location (until #565):**
 > `tests/BadMango.Emulator.Tests`; target: subject-specific test projects
 > (namespace unchanged).
@@ -220,11 +212,6 @@ The concrete target layout does not imply that every historical peripheral
 card is implemented. Card implementations in the tree include Disk II and
 clock/Thunderclock families, and other slot cards remain profile-dependent.
 
-> **Current location (until #562):**
-> `src/BadMango.Emulator.Bus/Interfaces/IPeripheral.cs`,
-> `src/BadMango.Emulator.Bus/Interfaces/ISlotCard.cs`, and slot registration
-> types; target: `src/BadMango.Emulator.Core` (namespaces unchanged).
-
 ## 7.4 Slot manager — Implemented
 
 `SlotManager` is the routing owner for:
@@ -249,14 +236,6 @@ tracked in
 [#549](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/549).
 The implemented Pocket2e map is the built 128KB machine. PocketGS and PocketME
 maps are not built.
-
-> **Current location (until #562):**
-> `src/BadMango.Emulator.Bus/MachineBuilder.FromProfile.cs` and related bus
-> wiring; target: `src/BadMango.Emulator.Core` (namespace unchanged).
->
-> **Current location (until #562):**
-> `src/BadMango.Emulator.Bus/MachineBuilder.cs`; target:
-> `src/BadMango.Emulator.Core` (namespace unchanged).
 
 ## 7.6 Composite I/O page handler — Implemented
 
@@ -362,11 +341,11 @@ $C01F are implemented on `VideoDevice`; $C01E is implemented on
 
 The primary audited implementation paths are:
 
-- [IOPageDispatcher](../../src/BadMango.Emulator.Bus/IOPageDispatcher.cs)
-- [CompositeIOTarget](../../src/BadMango.Emulator.Bus/CompositeIOTarget.cs)
-- [SlotManager](../../src/BadMango.Emulator.Bus/SlotManager.cs)
-- [ISlotCard](../../src/BadMango.Emulator.Bus/Interfaces/ISlotCard.cs)
-- [IPeripheral](../../src/BadMango.Emulator.Bus/Interfaces/IPeripheral.cs)
+- [IOPageDispatcher](../../src/BadMango.Emulator.Core/IOPageDispatcher.cs)
+- [CompositeIOTarget](../../src/BadMango.Emulator.Core/CompositeIOTarget.cs)
+- [SlotManager](../../src/BadMango.Emulator.Core/SlotManager.cs)
+- [ISlotCard](../../src/BadMango.Emulator.Core/Interfaces/ISlotCard.cs)
+- [IPeripheral](../../src/BadMango.Emulator.Core/Interfaces/IPeripheral.cs)
 - [AppleIIeKeyboard](../../src/BadMango.Emulator.Devices/AppleIIeKeyboard.cs)
 - [Extended80ColumnDevice](../../src/BadMango.Emulator.Devices/Extended80ColumnDevice.cs)
 - [LanguageCardDevice](../../src/BadMango.Emulator.Devices/LanguageCardDevice.cs)
@@ -377,15 +356,15 @@ The primary audited implementation paths are:
 
 ## Source and test pointers
 
-Target homes are listed above. Until the #477 moves:
+Target homes are listed above.
 
-- Bus I/O-page types and slot types remain under
-  `src/BadMango.Emulator.Bus`; use the #562 blockquote above for the target.
+- Bus I/O-page types and slot types live in
+  `src/BadMango.Emulator.Core` (namespace `BadMango.Emulator.Bus`).
 - Peripherals and soft-switch devices remain under
-  `src/BadMango.Emulator.Devices`; that is already a surviving target assembly
+  `src/BadMango.Emulator.Devices`; that is a surviving target assembly
   and keeps the existing namespaces.
-- Bus tests remain under `tests/BadMango.Emulator.Bus.Tests`; use the #562
-  blockquote for their target.
+- Bus tests live in `tests/BadMango.Emulator.Core.Tests` (namespace
+  `BadMango.Emulator.Bus.Tests`).
 - Cross-suite device/machine tests remain under
   `tests/BadMango.Emulator.Tests`; use the #565 blockquote for their target
   split.
@@ -393,4 +372,6 @@ Target homes are listed above. Until the #477 moves:
 Current test areas include `IOPageDispatcherTests`,
 `CompositeIOTargetTests`, `SlotManagerTests`, `LanguageCardDeviceTests`,
 `Extended80ColumnDeviceTests`, `SpeakerControllerTests`, and
-`GameIOControllerTests`. Their exact projects remain subject to #562/#565.
+`GameIOControllerTests`. The bus tests are in `BadMango.Emulator.Core.Tests`.
+Device tests stay in `BadMango.Emulator.Devices.Tests`. Cross-suite tests
+remain subject to #565.

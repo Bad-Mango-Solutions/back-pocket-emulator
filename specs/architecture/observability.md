@@ -24,24 +24,24 @@ device I/O behavior, machine profiles, and the `bpui` shell are other pages.
 
 ## Code paths
 
-- [`BusFaultRing`](../../src/BadMango.Emulator.Bus/BusFaultRing.cs) is the
-  fixed ring of [`BusFault`](../../src/BadMango.Emulator.Bus/BusFault.cs)
-  values. [`IBusFaultRecorder`](../../src/BadMango.Emulator.Bus/Interfaces/IBusFaultRecorder.cs)
+- [`BusFaultRing`](../../src/BadMango.Emulator.Core/BusFaultRing.cs) is the
+  fixed ring of [`BusFault`](../../src/BadMango.Emulator.Core/BusFault.cs)
+  values. [`IBusFaultRecorder`](../../src/BadMango.Emulator.Core/Interfaces/IBusFaultRecorder.cs)
   is the write side `MainBus` calls.
-  [`IBusFaultRing`](../../src/BadMango.Emulator.Bus/Interfaces/IBusFaultRing.cs)
+  [`IBusFaultRing`](../../src/BadMango.Emulator.Core/Interfaces/IBusFaultRing.cs)
   is the read side the `fault` and `buslog` commands use.
-- [`DevicePageId`](../../src/BadMango.Emulator.Bus/DevicePageId.cs),
-  [`DevicePageClass`](../../src/BadMango.Emulator.Bus/DevicePageClass.cs),
-  [`DeviceRegistry`](../../src/BadMango.Emulator.Bus/DeviceRegistry.cs), and
-  [`DeviceInfo`](../../src/BadMango.Emulator.Bus/DeviceInfo.cs) are the device-id
-  types. [`IDeviceRegistry`](../../src/BadMango.Emulator.Bus/Interfaces/IDeviceRegistry.cs)
-  is the registry contract. [`IMemoryBus`](../../src/BadMango.Emulator.Bus/Interfaces/IMemoryBus.cs)
+- [`DevicePageId`](../../src/BadMango.Emulator.Core/DevicePageId.cs),
+  [`DevicePageClass`](../../src/BadMango.Emulator.Core/DevicePageClass.cs),
+  [`DeviceRegistry`](../../src/BadMango.Emulator.Core/DeviceRegistry.cs), and
+  [`DeviceInfo`](../../src/BadMango.Emulator.Core/DeviceInfo.cs) are the device-id
+  types. [`IDeviceRegistry`](../../src/BadMango.Emulator.Core/Interfaces/IDeviceRegistry.cs)
+  is the registry contract. [`IMemoryBus`](../../src/BadMango.Emulator.Core/Interfaces/IMemoryBus.cs)
   exposes `FaultStatus`, `FaultAddress`, and `ClearFaultStatus`.
 - [`InstructionTrace`](../../src/BadMango.Emulator.Core/Cpu/InstructionTrace.cs)
   is the CPU-side trace struct in `BadMango.Emulator.Core.Cpu`.
-  [`Cpu65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs) fills it
+  [`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs) fills it
   while a debug listener is attached.
-  [`CpuBase.DetachDebugger`](../../src/BadMango.Emulator.Emulation/Cpu/CpuBase.cs)
+  [`CpuBase.DetachDebugger`](../../src/BadMango.Emulator.Core/Cpu/CpuBase.cs)
   clears it.
 - [`TracingDebugListener`](../../src/BadMango.Emulator.Debug.Infrastructure/TracingDebugListener.cs)
   and [`TraceRecord`](../../src/BadMango.Emulator.Debug.Infrastructure/TraceRecord.cs)
@@ -73,17 +73,6 @@ Bus fault records, device-id types, and the CPU trace struct land in
 namespace. `InstructionTrace` already lives in `BadMango.Emulator.Core` under
 `BadMango.Emulator.Core.Cpu`. The 65C02 that writes the trace still lives in
 the Emulation project under `BadMango.Emulator.Emulation.Cpu`.
-
-> **Current location (until #562):** `src/BadMango.Emulator.Bus`; target:
-> `src/BadMango.Emulator.Core` (namespace `BadMango.Emulator.Bus` unchanged).
->
-> **Current location (until #562):** `src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs`
-> and `src/BadMango.Emulator.Emulation/Cpu/CpuBase.cs`; target:
-> `src/BadMango.Emulator.Core/Cpu/` (namespace `BadMango.Emulator.Emulation.Cpu`
-> unchanged).
->
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`; target:
-> `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
 
 Debugger services, including the contracts, land in
 `BadMango.Emulator.Debug.Infrastructure`. `WatchpointManager`,
@@ -267,12 +256,12 @@ type exists. The §9.1 bus trace ring was not built.
 
 What the tree has instead:
 
-- [`BusFaultRing`](../../src/BadMango.Emulator.Bus/BusFaultRing.cs) records
+- [`BusFaultRing`](../../src/BadMango.Emulator.Core/BusFaultRing.cs) records
   faults. Recording defaults off. A successful access does not enter the ring.
 - [`InstructionTrace`](../../src/BadMango.Emulator.Core/Cpu/InstructionTrace.cs)
   plus [`TraceCommand`](../../src/BadMango.Emulator.Debug.Infrastructure/Commands/TraceCommand.cs)
   are the CPU instruction stream described above.
-- [`MappingTraceRing`](../../src/BadMango.Emulator.Bus/MappingTraceRing.cs) is
+- [`MappingTraceRing`](../../src/BadMango.Emulator.Core/MappingTraceRing.cs) is
   a third ring. `MainBus` owns one. `MappingTraceEnabled` defaults to false,
   and the CPU fast path does not write the ring. When trace is on, the bus
   appends remap records and slow-path byte accesses. The `maptrace` command
@@ -295,7 +284,7 @@ and `GenerateId`. The implementation also has `Get`, `TryGetByPageId`,
 
 Built machines call the integer `Register` overload. Pocket2e registers main
 RAM, auxiliary RAM, and the I/O page that way.
-[`MachineBuilder.MapRom`](../../src/BadMango.Emulator.Bus/MachineBuilder.cs)
+[`MachineBuilder.MapRom`](../../src/BadMango.Emulator.Core/MachineBuilder.cs)
 registers ROM the same way, and slot-card insert registers `DeviceType`,
 `Name`, and a wiring path. `PageEntry.DeviceId` is that integer. The page-id
 overload is implemented and covered by the registry tests. Class numbers
@@ -328,17 +317,14 @@ stays **Partly implemented**. Nothing in the built page table interprets
 
 ## Tests and evidence
 
-Bus fault and device-id tests live in `BadMango.Emulator.Bus.Tests`.
-
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`; target:
-> `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
+Bus fault and device-id tests live in `BadMango.Emulator.Core.Tests`.
 
 Representative files:
 
-- [`BusFaultRingTests`](../../tests/BadMango.Emulator.Bus.Tests/BusFaultRingTests.cs)
-- [`MainBusFaultRecordingTests`](../../tests/BadMango.Emulator.Bus.Tests/MainBusFaultRecordingTests.cs)
-- [`DevicePageIdTests`](../../tests/BadMango.Emulator.Bus.Tests/DevicePageIdTests.cs)
-- [`DeviceRegistryTests`](../../tests/BadMango.Emulator.Bus.Tests/DeviceRegistryTests.cs)
+- [`BusFaultRingTests`](../../tests/BadMango.Emulator.Core.Tests/BusFaultRingTests.cs)
+- [`MainBusFaultRecordingTests`](../../tests/BadMango.Emulator.Core.Tests/MainBusFaultRecordingTests.cs)
+- [`DevicePageIdTests`](../../tests/BadMango.Emulator.Core.Tests/DevicePageIdTests.cs)
+- [`DeviceRegistryTests`](../../tests/BadMango.Emulator.Core.Tests/DeviceRegistryTests.cs)
 
 Debugger command and listener tests already live in
 `BadMango.Emulator.Debug.Infrastructure.Tests` and do not move:

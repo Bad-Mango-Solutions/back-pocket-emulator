@@ -52,9 +52,7 @@ dotnet test BackPocketEmulator.slnx --collect "XPlat Code Coverage"
 ```
 back-pocket-emulator/
 ├── src/
-│   ├── BadMango.Emulator.Core/                 # CPU contracts, registers, signals, machine profiles
-│   ├── BadMango.Emulator.Bus/                  # Main bus, memory map, device registry, machine builder
-│   ├── BadMango.Emulator.Emulation/            # 65C02 CPU; 65816 and 65832 placeholders
+│   ├── BadMango.Emulator.Core/                 # CPU, bus, and emulation; Bus and Emulation namespaces stay
 │   │   └── Cpu/
 │   ├── BadMango.Emulator.Devices/              # Peripherals (video, keyboard, speaker, Disk II, cards)
 │   ├── BadMango.Emulator.Storage/              # Disk images, block media, GCR nibblizing
@@ -69,7 +67,7 @@ back-pocket-emulator/
 ├── tests/
 │   ├── BadMango.Unit.Components/               # Shared test helpers
 │   ├── BadMango.Emulator.Tests/                # CPU, machine, and cross-project tests
-│   ├── BadMango.Emulator.Bus.Tests/
+│   ├── BadMango.Emulator.Core.Tests/           # Bus, memory map, and device-registry tests
 │   ├── BadMango.Emulator.Debug.Infrastructure.Tests/
 │   ├── BadMango.Emulator.Debug.Tests/
 │   ├── BadMango.Emulator.Debug.UI.Tests/

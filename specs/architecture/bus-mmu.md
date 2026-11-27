@@ -10,18 +10,14 @@ The built emulator routes 65C02 memory operations through a host page table of 4
 
 ## Code paths
 
-- [MainBus](../../src/BadMango.Emulator.Bus/MainBus.cs) owns routing and the live page table.
-- [PageEntry](../../src/BadMango.Emulator.Bus/PageEntry.cs) describes a page's target, permissions, region, and host fast-path eligibility.
-- [IBusTarget](../../src/BadMango.Emulator.Bus/Interfaces/IBusTarget.cs) is the target contract; [ICompositeTarget](../../src/BadMango.Emulator.Bus/Interfaces/ICompositeTarget.cs) supports pages that dispatch within the 4 KB region.
-- [IMemoryBus](../../src/BadMango.Emulator.Bus/Interfaces/IMemoryBus.cs) exposes checked access and page remapping.
-- [RamTarget](../../src/BadMango.Emulator.Bus/RamTarget.cs), [RomTarget](../../src/BadMango.Emulator.Bus/RomTarget.cs), and [CompositeIOTarget](../../src/BadMango.Emulator.Bus/CompositeIOTarget.cs) are the principal target implementations.
-- [BusAccess](../../src/BadMango.Emulator.Bus/BusAccess.cs), [BusResult](../../src/BadMango.Emulator.Bus/BusResult.cs), [BusResult\<T\>](../../src/BadMango.Emulator.Bus/BusResult%7BT%7D.cs), [PagePerms](../../src/BadMango.Emulator.Bus/PagePerms.cs), and [TargetCaps](../../src/BadMango.Emulator.Bus/TargetCaps.cs) describe access context, results, permissions, and capabilities.
+- [MainBus](../../src/BadMango.Emulator.Core/MainBus.cs) owns routing and the live page table.
+- [PageEntry](../../src/BadMango.Emulator.Core/PageEntry.cs) describes a page's target, permissions, region, and host fast-path eligibility.
+- [IBusTarget](../../src/BadMango.Emulator.Core/Interfaces/IBusTarget.cs) is the target contract; [ICompositeTarget](../../src/BadMango.Emulator.Core/Interfaces/ICompositeTarget.cs) supports pages that dispatch within the 4 KB region.
+- [IMemoryBus](../../src/BadMango.Emulator.Core/Interfaces/IMemoryBus.cs) exposes checked access and page remapping.
+- [RamTarget](../../src/BadMango.Emulator.Core/RamTarget.cs), [RomTarget](../../src/BadMango.Emulator.Core/RomTarget.cs), and [CompositeIOTarget](../../src/BadMango.Emulator.Core/CompositeIOTarget.cs) are the principal target implementations.
+- [BusAccess](../../src/BadMango.Emulator.Core/BusAccess.cs), [BusResult](../../src/BadMango.Emulator.Core/BusResult.cs), [BusResult\<T\>](../../src/BadMango.Emulator.Core/BusResult%7BT%7D.cs), [PagePerms](../../src/BadMango.Emulator.Core/PagePerms.cs), and [TargetCaps](../../src/BadMango.Emulator.Core/TargetCaps.cs) describe access context, results, permissions, and capabilities.
 
 The target assembly for this layer is `BadMango.Emulator.Core`, retaining the existing `BadMango.Emulator.Bus` and Core namespaces. `Devices` remains separate and references Core and Storage.
-
-> **Current location (until #562):** `src/BadMango.Emulator.Bus` and `src/BadMango.Emulator.Emulation`; target: `src/BadMango.Emulator.Core` (namespaces such as `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation.Cpu` unchanged).
-
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`; target: `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
 
 > **Current location (until #565):** relevant cross-suite coverage in `tests/BadMango.Emulator.Tests`; target: subject-specific test projects (namespace unchanged).
 

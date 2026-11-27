@@ -64,24 +64,21 @@ Trap registration and expansion-ROM bus plumbing target
 target `BadMango.Emulator.Devices` and keep the `BadMango.Emulator.Devices`
 namespace. Pocket2e builder extensions stay in `BadMango.Emulator.Systems`.
 
-> **Current location (until #562):** `src/BadMango.Emulator.Bus`; target:
-> `src/BadMango.Emulator.Core` (namespace `BadMango.Emulator.Bus` unchanged).
-
-- [`TrapRegistry`](../../src/BadMango.Emulator.Bus/TrapRegistry.cs) and
-  [`ITrapRegistry`](../../src/BadMango.Emulator.Bus/Interfaces/ITrapRegistry.cs)
+- [`TrapRegistry`](../../src/BadMango.Emulator.Core/TrapRegistry.cs) and
+  [`ITrapRegistry`](../../src/BadMango.Emulator.Core/Interfaces/ITrapRegistry.cs)
   store handlers.
-  [`NullTrapRegistry`](../../src/BadMango.Emulator.Bus/NullTrapRegistry.cs) is
+  [`NullTrapRegistry`](../../src/BadMango.Emulator.Core/NullTrapRegistry.cs) is
   what `Cpu65C02` holds until a concrete registry is assigned.
-- [`SlotManager`](../../src/BadMango.Emulator.Bus/SlotManager.cs) tracks slots
+- [`SlotManager`](../../src/BadMango.Emulator.Core/SlotManager.cs) tracks slots
   1–7 and `ActiveExpansionSlot`.
-- [`CompositeIOTarget`](../../src/BadMango.Emulator.Bus/CompositeIOTarget.cs)
+- [`CompositeIOTarget`](../../src/BadMango.Emulator.Core/CompositeIOTarget.cs)
   selects and deselects expansion ROM. It implements
-  [`IInternalRomHandler`](../../src/BadMango.Emulator.Bus/Interfaces/IInternalRomHandler.cs).
-- [`MemoryContexts`](../../src/BadMango.Emulator.Bus/MemoryContexts.cs) names
+  [`IInternalRomHandler`](../../src/BadMango.Emulator.Core/Interfaces/IInternalRomHandler.cs).
+- [`MemoryContexts`](../../src/BadMango.Emulator.Core/MemoryContexts.cs) names
   ROM, language-card RAM, auxiliary RAM, and custom contexts.
-- [`Cpu65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs) calls
+- [`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs) calls
   `ContainsAddress`, then `TryExecute`, on fetch.
-- [`MachineBuilder`](../../src/BadMango.Emulator.Bus/MachineBuilder.cs)
+- [`MachineBuilder`](../../src/BadMango.Emulator.Core/MachineBuilder.cs)
   constructs the empty registry in `Build`.
 - [`Pocket2eMachineBuilderExtensions`](../../src/BadMango.Emulator.Systems/Pocket2eMachineBuilderExtensions.cs)
   supplies `WithStubRom`.
@@ -96,11 +93,6 @@ namespace. Pocket2e builder extensions stay in `BadMango.Emulator.Systems`.
   [`BreakpointManager`](../../src/BadMango.Emulator.Debug.Infrastructure/BreakpointManager.cs)
   can register debugger call traps after the machine exists.
 
-> **Current location (until #562):**
-> `src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs`; target:
-> `src/BadMango.Emulator.Core/Cpu/` (namespace `BadMango.Emulator.Emulation.Cpu`
-> unchanged).
-
 `Build` adds an empty `TrapRegistry` and assigns that same instance to a
 `Cpu65C02`. `NullTrapRegistry` remains the default for a CPU that was not
 built by `MachineBuilder`. `NullTrapRegistry.Register` throws
@@ -114,7 +106,7 @@ Target assemblies come from
 and
 [`Solution Consolidation Design.md`](../Solution%20Consolidation%20Design.md).
 [#477](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/477)
-has not folded Bus or Emulation into Core. Namespaces stay as they are. The
+has folded Bus and Emulation into Core. Namespaces stay as they are. The
 target layout does not put handlers into the registry.
 
 | Concern | Target assembly | Namespace |
@@ -562,15 +554,12 @@ the v1.0 ROM-free handler table.
 ## Tests
 
 Bus-level coverage of the registry, the null registry, slot selection, and
-the composite `$CFFF` path is in `tests/BadMango.Emulator.Bus.Tests`:
+the composite `$CFFF` path is in `tests/BadMango.Emulator.Core.Tests`:
 
-- [`TrapRegistryTests`](../../tests/BadMango.Emulator.Bus.Tests/TrapRegistryTests.cs)
-- [`NullTrapRegistryTests`](../../tests/BadMango.Emulator.Bus.Tests/NullTrapRegistryTests.cs)
-- [`SlotManagerTests`](../../tests/BadMango.Emulator.Bus.Tests/SlotManagerTests.cs)
-- [`CompositeIOTargetTests`](../../tests/BadMango.Emulator.Bus.Tests/CompositeIOTargetTests.cs)
-
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`;
-> target: `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
+- [`TrapRegistryTests`](../../tests/BadMango.Emulator.Core.Tests/TrapRegistryTests.cs)
+- [`NullTrapRegistryTests`](../../tests/BadMango.Emulator.Core.Tests/NullTrapRegistryTests.cs)
+- [`SlotManagerTests`](../../tests/BadMango.Emulator.Core.Tests/SlotManagerTests.cs)
+- [`CompositeIOTargetTests`](../../tests/BadMango.Emulator.Core.Tests/CompositeIOTargetTests.cs)
 
 Cross-suite coverage of the component `Build` installs, fetch-time
 execution, and `WithStubRom` is in `tests/BadMango.Emulator.Tests`:

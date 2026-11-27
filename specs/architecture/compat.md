@@ -59,20 +59,12 @@ composition stays in `BadMango.Emulator.Systems`. Peripherals stay in
 `BadMango.Emulator.Devices`. None of those homes is an IIc machine or a
 65832 guest runtime.
 
-> **Current location (until #562):** `src/BadMango.Emulator.Bus` and
-> `src/BadMango.Emulator.Emulation`; target: `src/BadMango.Emulator.Core`
-> (namespaces such as `BadMango.Emulator.Bus` and
-> `BadMango.Emulator.Emulation.Cpu` unchanged).
-
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`;
-> target: `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
-
 Checked against the tree:
 
 - No IIc profile and no `AppleIIc` type. Profiles are `pocket2e*.json` and
   `simple-65c02*.json`, including
   [`profiles/pocket2e.json`](../../profiles/pocket2e.json).
-- [`SlotManager`](../../src/BadMango.Emulator.Bus/SlotManager.cs) always
+- [`SlotManager`](../../src/BadMango.Emulator.Core/SlotManager.cs) always
   allocates seven peripheral slots (`PeripheralSlots` 1-7).
 - No built-in serial, mouse, or memory-expansion ROM window.
 - `RegisterIIcTraps` does not exist.
@@ -80,19 +72,19 @@ Checked against the tree:
   [`SystemRegisters`](../../src/BadMango.Emulator.Core/Cpu/SystemRegisters.cs)
   has CR0, PTBR, VBAR, FAR, FSC, and TLS, and no COMPATID field.
 - No `IDevicePageObject`. Devices implement
-  [`IBusTarget`](../../src/BadMango.Emulator.Bus/Interfaces/IBusTarget.cs)
+  [`IBusTarget`](../../src/BadMango.Emulator.Core/Interfaces/IBusTarget.cs)
   or register on
-  [`IOPageDispatcher`](../../src/BadMango.Emulator.Bus/IOPageDispatcher.cs).
-- [`Cpu65832`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65832.cs) throws
+  [`IOPageDispatcher`](../../src/BadMango.Emulator.Core/IOPageDispatcher.cs).
+- [`Cpu65832`](../../src/BadMango.Emulator.Core/Cpu/Cpu65832.cs) throws
   `NotImplementedException` from `Step` and `Reset`.
 - The built machine is
   [`Pocket2eMachineBuilderExtensions`](../../src/BadMango.Emulator.Systems/Pocket2eMachineBuilderExtensions.cs).
 
-[`DevicePageId.CreateCompatIO`](../../src/BadMango.Emulator.Bus/DevicePageId.cs)
+[`DevicePageId.CreateCompatIO`](../../src/BadMango.Emulator.Core/DevicePageId.cs)
 and
-[`DevicePageClass.CompatIO`](../../src/BadMango.Emulator.Bus/DevicePageClass.cs)
+[`DevicePageClass.CompatIO`](../../src/BadMango.Emulator.Core/DevicePageClass.cs)
 encode a 24-bit identifier in `BadMango.Emulator.Bus`.
-[`DevicePageIdTests`](../../tests/BadMango.Emulator.Bus.Tests/DevicePageIdTests.cs)
+[`DevicePageIdTests`](../../tests/BadMango.Emulator.Core.Tests/DevicePageIdTests.cs)
 checks that encoding. No production caller maps a guest I/O page from it,
 and it is not `IDevicePageObject`. The encoding belongs to
 [#548](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/548).
@@ -100,12 +92,12 @@ and it is not `IDevicePageObject`. The encoding belongs to
 The partly implemented overlap is the IIe card, already in Devices:
 [`Extended80ColumnDevice`](../../src/BadMango.Emulator.Devices/Extended80ColumnDevice.cs)
 writes $C006/$C007 through
-[`IInternalRomHandler`](../../src/BadMango.Emulator.Bus/Interfaces/IInternalRomHandler.cs)
+[`IInternalRomHandler`](../../src/BadMango.Emulator.Core/Interfaces/IInternalRomHandler.cs)
 on
-[`CompositeIOTarget`](../../src/BadMango.Emulator.Bus/CompositeIOTarget.cs).
+[`CompositeIOTarget`](../../src/BadMango.Emulator.Core/CompositeIOTarget.cs).
 [`Extended80ColumnDeviceTests`](../../tests/BadMango.Emulator.Devices.Tests/Extended80ColumnDeviceTests.cs)
 and
-[`CompositeIOTargetTests`](../../tests/BadMango.Emulator.Bus.Tests/CompositeIOTargetTests.cs)
+[`CompositeIOTargetTests`](../../tests/BadMango.Emulator.Core.Tests/CompositeIOTargetTests.cs)
 cover that IIe overlay. No test registers an IIc personality.
 
 ## 7.8 Apple IIc Differences — Aspirational

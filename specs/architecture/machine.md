@@ -66,31 +66,24 @@ Programmatic Pocket2e wiring lives in `BadMango.Emulator.Systems`:
 `MachineBuilder`, `Machine`, and `IMachine` live in namespace
 `BadMango.Emulator.Bus`. Their target assembly is `BadMango.Emulator.Core`.
 
-- [`MachineBuilder`](../../src/BadMango.Emulator.Bus/MachineBuilder.cs) and
-  [`MachineBuilder.FromProfile`](../../src/BadMango.Emulator.Bus/MachineBuilder.FromProfile.cs)
-- [`Machine`](../../src/BadMango.Emulator.Bus/Machine.cs),
-  [`MachineState`](../../src/BadMango.Emulator.Bus/MachineState.cs), and
-  [`IMachine`](../../src/BadMango.Emulator.Bus/Interfaces/IMachine.cs)
-- [`PowerOnMemoryPattern`](../../src/BadMango.Emulator.Bus/PowerOnMemoryPattern.cs)
-- [`SlotSetRuntimeState`](../../src/BadMango.Emulator.Bus/SlotSetRuntimeState.cs) and
-  [`SlotSetRuntimeDefinition`](../../src/BadMango.Emulator.Bus/SlotSetRuntimeDefinition.cs)
-- [`MachineBuilderExtensions`](../../src/BadMango.Emulator.Bus/MachineBuilderExtensions.cs)
+- [`MachineBuilder`](../../src/BadMango.Emulator.Core/MachineBuilder.cs) and
+  [`MachineBuilder.FromProfile`](../../src/BadMango.Emulator.Core/MachineBuilder.FromProfile.cs)
+- [`Machine`](../../src/BadMango.Emulator.Core/Machine.cs),
+  [`MachineState`](../../src/BadMango.Emulator.Core/MachineState.cs), and
+  [`IMachine`](../../src/BadMango.Emulator.Core/Interfaces/IMachine.cs)
+- [`PowerOnMemoryPattern`](../../src/BadMango.Emulator.Core/PowerOnMemoryPattern.cs)
+- [`SlotSetRuntimeState`](../../src/BadMango.Emulator.Core/SlotSetRuntimeState.cs) and
+  [`SlotSetRuntimeDefinition`](../../src/BadMango.Emulator.Core/SlotSetRuntimeDefinition.cs)
+- [`MachineBuilderExtensions`](../../src/BadMango.Emulator.Core/MachineBuilderExtensions.cs)
   registers the `composite-io` handler.
-
-> **Current location (until #562):** `src/BadMango.Emulator.Bus`; target:
-> `src/BadMango.Emulator.Core` (namespace `BadMango.Emulator.Bus` unchanged).
 
 The 65C02 implementation lives in namespace `BadMango.Emulator.Emulation.Cpu`.
 Pocket2e passes an `IEventContext` to `Cpu65C02`.
 
-- [`Cpu65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs) reads the
+- [`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs) reads the
   reset vector at `$FFFC` (`Cpu65C02Constants.ResetVector`).
 - [`CpuFamily`](../../src/BadMango.Emulator.Core/Cpu/CpuFamily.cs) names
   `Cpu65C02`, `Cpu65C816`, and `Cpu65832`.
-
-> **Current location (until #562):** `src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs`;
-> target: `src/BadMango.Emulator.Core/Cpu/` (namespace
-> `BadMango.Emulator.Emulation.Cpu` unchanged).
 
 Profile types already live in `BadMango.Emulator.Core.Configuration`:
 
@@ -111,8 +104,8 @@ Language-card and auxiliary-memory devices used by the layout:
 
 - [`LanguageCardDevice`](../../src/BadMango.Emulator.Devices/LanguageCardDevice.cs)
   in `BadMango.Emulator.Devices`.
-- [`AuxiliaryMemoryController`](../../src/BadMango.Emulator.Bus/AuxiliaryMemoryController.cs)
-  in `BadMango.Emulator.Bus` (same #562 fold as `MachineBuilder`).
+- [`AuxiliaryMemoryController`](../../src/BadMango.Emulator.Core/AuxiliaryMemoryController.cs)
+  in namespace `BadMango.Emulator.Bus`, in Core with `MachineBuilder`.
 - [`DeviceFactoryExtensions`](../../src/BadMango.Emulator.Devices/DeviceFactoryExtensions.cs)
   registers motherboard and slot-card factories, including the language-card
   and extended 80-column factories that configure their own RAM.
@@ -125,13 +118,7 @@ Devices. It stays a separate assembly. `BadMango.Emulator.Core` holds
 `BadMango.Emulator.Bus` and `BadMango.Emulator.Emulation.Cpu` namespaces.
 Profiles stay under `profiles/`. The `bpui` shell does not reference the machine.
 
-Systems today also references Bus and Emulation. Those project references drop
-when #562 folds Bus and Emulation into Core. The Systems source path does not move.
-
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`
-> (`MachineBuilderTests`, `MachineTests`, `MachineLifecycleTests`,
-> `MachineStateTests`); target: `tests/BadMango.Emulator.Core.Tests`
-> (namespace unchanged).
+Systems references Core and Devices. The Systems source path does not move.
 
 > **Current location (until #565):** Pocket2e and machine cross-suite tests in
 > `tests/BadMango.Emulator.Tests` (`MachineBuilderIntegrationTests`,
@@ -142,8 +129,8 @@ when #562 folds Bus and Emulation into Core. The Systems source path does not mo
 > **Conditional removal (#566):** `IBringUpHandler`, `BringUpHandlerBase`,
 > `IBringUpResult`, `BringUpResult`, `BringUpValidationResult`,
 > `IProvisioningBundle`, `ProvisioningBundle`, `IMachineConstants`, and
-> `BringUpHandlerTests`. Current files are under `src/BadMango.Emulator.Bus/`
-> and `tests/BadMango.Emulator.Bus.Tests/BringUpHandlerTests.cs`. `MachineBuilder`,
+> `BringUpHandlerTests`. Current files are under `src/BadMango.Emulator.Core/`
+> and `tests/BadMango.Emulator.Core.Tests/BringUpHandlerTests.cs`. `MachineBuilder`,
 > Systems, and Devices do not use them. They do not power machine construction.
 > Removal stays conditional on #566's verification. This note does not assign
 > them a destination.

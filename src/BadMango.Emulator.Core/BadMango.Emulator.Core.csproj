@@ -20,8 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="BadMango.Emulator.Core.Tests" />
     <InternalsVisibleTo Include="BadMango.Emulator.Tests" />
-    <InternalsVisibleTo Include="BadMango.Emulator.Emulation" />
   </ItemGroup>
 
   <ItemGroup>
