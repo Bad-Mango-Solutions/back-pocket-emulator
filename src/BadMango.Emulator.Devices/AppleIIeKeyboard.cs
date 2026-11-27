@@ -23,11 +23,12 @@ using Interfaces;
 /// </para>
 /// <list type="bullet">
 /// <item><description>$C000: Keyboard data (bit 7 = strobe, bits 6-0 = ASCII)</description></item>
-/// <item><description>$C010: Any-key-down in bit 7 and the latched ASCII in bits 0–6 (read); clears the strobe (read or write). Writes to $C011–$C01F also clear the strobe.</description></item>
+/// <item><description>$C010: Any-key-down in bit 7 and the latched ASCII in bits 0–6. A read or write with side effects clears the strobe; a side-effect-free access does not. A write with side effects anywhere in $C011–$C01F also clears the strobe.</description></item>
 /// </list>
 /// <para>
 /// When a key is pressed, the ASCII code is latched into the keyboard data register
-/// with the high bit (strobe) set. The strobe remains set until cleared by accessing $C010.
+/// with the high bit (strobe) set. The strobe remains set until a side-effecting read or write
+/// of $C010, or a side-effecting write in $C011–$C01F, clears it. A side-effect-free access does not.
 /// </para>
 /// <para>
 /// The keyboard tracks the modifier inputs that map to the Apple II pushbuttons:
@@ -233,7 +234,7 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
         // $C000: Keyboard data (read-only for keyboard, write-only for 80STORE)
         dispatcher.RegisterRead(KeyboardDataOffset, ReadKeyboardData);
 
-        // $C010: AKD and latched ASCII on read; either access clears the strobe.
+        // $C010: AKD and latched ASCII on read. A read or write with side effects clears the strobe.
         dispatcher.Register(KeyboardStrobeOffset, ClearStrobeRead, ClearStrobeWrite);
 
         // $C011–$C01F writes have no owner. The IOU, MMU, video, and character devices
