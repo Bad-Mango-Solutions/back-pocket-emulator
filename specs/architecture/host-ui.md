@@ -26,7 +26,7 @@ The target layout is defined by [#478](https://github.com/Bad-Mango-Solutions/ba
 
 | Target surface | Assembly and executable | Role |
 | --- | --- | --- |
-| Desktop UI host | [`BadMango.Emulator.UI`](../../src/BadMango.Emulator.UI/) (`bpui`) | Host shell. It absorbs Configuration, Infrastructure, and UI.Abstractions; `bpui` directly references `BadMango.Emulator.Core`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions`. Existing namespaces such as `BadMango.Emulator.Configuration`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions` remain unchanged. |
+| Desktop UI host | [`BadMango.Emulator.UI`](../../src/BadMango.Emulator.UI/) (`bpui`) | Host shell. Configuration, Infrastructure, and UI.Abstractions live in this project. The direct project reference is `BadMango.Emulator.Core`. Namespaces `BadMango.Emulator.Configuration`, `BadMango.Emulator.Infrastructure`, and `BadMango.Emulator.UI.Abstractions` are unchanged. |
 | Debugger UI | [`BadMango.Emulator.Debug.UI`](../../src/BadMango.Emulator.Debug.UI/) | Debugger windows and the text editor. It absorbs TextEditor; the existing `BadMango.Emulator.TextEditor` namespace remains unchanged. |
 | Debug console | [`BadMango.Emulator.Debug`](../../src/BadMango.Emulator.Debug/) (`emudbg`) | Separate executable host for the shared debugger surface. |
 | Debug MCP host | [`BadMango.Emulator.Debug.Mcp`](../../src/BadMango.Emulator.Debug.Mcp/) (`emudbg-mcp`) | Separate stdio MCP executable. Its only direct project reference remains `BadMango.Emulator.Debug.Infrastructure`. |
@@ -35,10 +35,6 @@ The target layout is defined by [#478](https://github.com/Bad-Mango-Solutions/ba
 `emudbg` and `emudbg-mcp` stay separate processes. `emudbg-mcp` does not directly reference `BadMango.Emulator.Debug.UI`.
 
 ## Pending source moves
-
-> **Current location (until #559):** `src/BadMango.Emulator.Configuration`, `src/BadMango.Emulator.Infrastructure`, and `src/BadMango.Emulator.UI.Abstractions`; target: `src/BadMango.Emulator.UI` (namespaces unchanged).
-
-> **Current location (until #559):** `tests/BadMango.Emulator.Infrastructure.Tests` and `tests/BadMango.Emulator.Configuration.Tests`; target: `tests/BadMango.Emulator.UI.Tests` (namespace unchanged).
 
 > **Current location (until #560):** `src/BadMango.Emulator.Debug.Abstractions`; target: `src/BadMango.Emulator.Debug.Infrastructure` (namespace `BadMango.Emulator.Debug.Abstractions` unchanged).
 

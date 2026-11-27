@@ -59,12 +59,10 @@ tests/
 ├── BadMango.Unit.Components/                        # Shared helpers
 ├── BadMango.Emulator.Tests/                         # CPU, machine, and cross-project tests
 ├── BadMango.Emulator.Bus.Tests/
-├── BadMango.Emulator.Configuration.Tests/
 ├── BadMango.Emulator.Debug.Infrastructure.Tests/
 ├── BadMango.Emulator.Debug.Tests/
 ├── BadMango.Emulator.Debug.UI.Tests/
 ├── BadMango.Emulator.Devices.Tests/
-├── BadMango.Emulator.Infrastructure.Tests/
 ├── BadMango.Emulator.Rendering.Tests/
 ├── BadMango.Emulator.Storage.Tests/
 ├── BadMango.Emulator.TextEditor.Tests/

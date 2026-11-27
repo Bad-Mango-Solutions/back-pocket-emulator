@@ -57,8 +57,6 @@ graph TD
 | `BadMango.Emulator.Debug` (`emudbg`) | debug console executable host | `Debug.Infrastructure`, `Debug.UI` |
 | `BadMango.Emulator.Debug.Mcp` (`emudbg-mcp`) | MCP stdio host | `Debug.Infrastructure` only |
 
-> **Current location (until #559):** `src/BadMango.Emulator.Configuration`, `src/BadMango.Emulator.Infrastructure`, and `src/BadMango.Emulator.UI.Abstractions`; target: `src/BadMango.Emulator.UI` (namespaces unchanged).
->
 > **Current location (until #560):** `src/BadMango.Emulator.Debug.Abstractions`; target: `src/BadMango.Emulator.Debug.Infrastructure` (namespace `BadMango.Emulator.Debug.Abstractions` unchanged).
 >
 > **Current location (until #561):** `src/BadMango.Emulator.TextEditor`; target: `src/BadMango.Emulator.Debug.UI` (namespace `BadMango.Emulator.TextEditor` unchanged).
