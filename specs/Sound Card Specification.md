@@ -20,7 +20,7 @@ The work splits into four devices that other cards can reuse:
 
 1. A **6522 VIA** clocked by the bus cycle, with timers, ports, IFR/IER, and a level IRQ on `SignalLine.IRQ`.
 2. An **AY-3-8910 / AY-3-8913** tone, noise, and envelope model. Register writes arrive through the VIA port protocol (BDIR, BC1, BC2 tied high).
-3. A **host mixer** that folds the speaker and every PSG into the one OpenAL stream the speaker already owns.
+3. A **host-independent line-out mixer** that folds the speaker and every PSG into one standard machine-owned PCM stream (`line out`) that host sinks consume as taps.
 4. **Slot cards** (`mockingboard`, then `phasor`) installed through the existing profile and `ISlotCard` path. Default for the music profile is slot 4, which is where Ultima IV looks.
 
 Detection is behavioral. Software pokes the 6522 and watches it count. Nothing in this epic plants signature bytes at `$Cn00`.
@@ -37,7 +37,9 @@ Where this spec and a later sub-issue of #445 disagree, this spec wins until Jos
 
 **The speaker is a motherboard device with its own host stream.** `SpeakerController` (`[DeviceType("speaker")]`) toggles on `$C030` through `IOPageDispatcher`, records `(cycle, state)` pairs where `state` is the bool level after the toggle, and synthesizes 16-bit mono PCM at a hardcoded 44 100 Hz. The decaying sample amplitude is a separate `double`, not that queued state. The cycle-to-sample conversion divides by `IMachine.ClockSpeedHz` when that value is greater than zero, and by `1_020_484` otherwise. A one-pole decay (`SpeakerDecayTimeConstantSeconds = 0.005`) pulls the cone back to silence. A 50 ms `System.Timers.Timer` calls `Flush()`, which hands a `short[]` to `IAudioOutput.Play`. The default constructor builds `OpenAlAudioOutput` and falls back to `NullAudioOutput` if OpenAL cannot start. Profile `config.sampleRate` (48000 on the checked-in Pocket2e profiles) is not read.
 
-`OpenAlAudioOutput` is mono, 16-bit, three 1024-sample buffers, and a ring of `sampleRate * 200 / 1000` samples (8820 at 44.1 kHz, about 200 ms). Overrun drops the oldest samples. The playback thread is the only consumer. `IAudioOutput` extends `IDisposable` and its only playback method is `Play(short[])`. `Dispose` is the lifetime: `OpenAlAudioOutput.Dispose` cancels the playback thread and joins it (2 s timeout) before releasing the OpenAL device and context. `SpeakerController.Dispose` disposes that sink today, because the speaker constructed it. There is no gain, no second source, and no clock domain shared with a slot card.
+`OpenAlAudioOutput` is mono, 16-bit, three 1024-sample buffers, and a ring of `sampleRate * 200 / 1000` samples (8820 at 44.1 kHz, about 200 ms). Overrun drops the oldest samples. The playback thread is the only consumer. `IAudioOutput` extends `IDisposable` and its only playback method is `Play(short[])`. `Dispose` is the lifetime: `OpenAlAudioOutput.Dispose` cancels the playback thread and joins it (2 s timeout) before releasing the OpenAL device and context. `SpeakerController.Dispose` disposes that sink today, because the speaker constructed it.
+
+**There is no standard machine-owned line-out contract yet.** The current path has no format descriptor object, no cycle-stamped block contract, no fan-out taps, and no policy for slow consumers beyond the OpenAL ring's own drop behavior. Cassette out (`$C020`) is not modeled as a mix source, and cassette in (`$C060` bit 7) does not yet consume the same stream shape from tape audio.
 
 `ScheduledEventKind.AudioTick` exists. The speaker does not schedule it. Synthesis is driven by bus-access timestamps plus the wall-clock flush timer.
 
@@ -101,13 +103,17 @@ flowchart LR
     VIA["Via6522 × 2<br/>DeviceTimer underflows"]
     AY["Ay3Psg × 2 or × 4"]
     SPK["SpeakerController<br/>$C030"]
+    CASO["CassetteOutSource<br/>$C020"]
     MIX["AudioMixer<br/>AudioTick quantum"]
+    LINE["LineOut stream<br/>format + cycle-stamped PCM blocks"]
     SIG["SignalBus IRQ<br/>one deviceId per VIA"]
   end
 
-  subgraph Host["Host thread"]
-    RING["AudioSampleRingBuffer"]
-    OAL["OpenAlAudioOutput<br/>or recording / null sink"]
+  subgraph Client["Client-level consumers"]
+    TAPS["Tap fan-out<br/>non-blocking"]
+    SINK["Host sink(s)<br/>OpenAL/WASAPI/..."]
+    REC["Recorder / hash / visualizer taps"]
+    CASI["CassetteInSource<br/>stream -> threshold -> $C060 bit 7"]
   end
 
   CPU --> CX --> VIA
@@ -115,13 +121,30 @@ flowchart LR
   VIA --> AY
   VIA --> SIG
   SPK --> MIX
+  CASO --> MIX
   AY --> MIX
-  MIX --> RING --> OAL
+  MIX --> LINE --> TAPS
+  TAPS --> SINK
+  TAPS --> REC
+  TAPS --> CASI
 ```
 
-The hot thread does three small things for audio. It applies register writes on the bus access that caused them. It fires a VIA underflow from a `ScheduledEventKind.DeviceTimer` event, which updates IFR and the signal bus. It renders a quantum of PCM on `ScheduledEventKind.AudioTick` into a buffer the mixer already owns. The OpenAL thread only drains the ring. Goldens never start that thread.
+The hot thread does three small things for audio. It applies register writes on the bus access that caused them. It fires a VIA underflow from a `ScheduledEventKind.DeviceTimer` event, which updates IFR and the signal bus. It renders a quantum of PCM on `ScheduledEventKind.AudioTick` into a buffer the mixer already owns and publishes one line-out block. Host playback, recording, and visualization consume published blocks from taps outside the emulation core.
 
-`Via6522` and `Ay3Psg` do not reference slots, profiles, or OpenAL. The card owns the wiring between them. The mixer does not know what a 6522 is. It asks each `IAudioSource` for samples over a cycle range.
+`Via6522` and `Ay3Psg` do not reference slots, profiles, or host audio APIs. The card owns the wiring between them. The mixer does not know what a 6522 is. It asks each `IAudioSource` for samples over a cycle range.
+
+### 7.1 Standard line out and ownership (amends #606)
+
+Every machine instance owns one `line out` stream. The stream contract is host-independent and machine-agnostic: it lives with core/devices and is reused by every machine type (#471), with one stream per machine instance.
+
+The stream publishes fixed-size PCM quanta with:
+
+- `AudioLineOutFormat`: sample rate, sample type, channel count, and channel layout metadata.
+- `AudioLineOutBlock`: sample payload plus `[fromCycle, toCycle)` coverage in emulated time.
+
+For v1, the format is 44 100 Hz, signed 16-bit PCM, mono. The contract MUST still carry channel count/layout so stereo is a format change, not an interface change (decision 16).
+
+Ownership rules in #606 are reconciled as follows: the mixer owns line-out production; host sinks are subscribers (taps) registered by the client host (`emudbg`, `bpui`, MCP tools), not by speaker/sound-card/core device construction. The emulation thread MUST NOT block on tap delivery. A slow tap drops blocks and records a drop counter; emulation timeline progress wins over tap completeness.
 
 Suggested types, all new unless named as existing:
 
@@ -133,10 +156,16 @@ Suggested types, all new unless named as existing:
 | `MockingboardCard` | `ISlotCard`, `IResetReceiver`. Two VIAs, two PSGs. `[DeviceType("mockingboard")]`. |
 | `PhasorCard` | Same shape plus the mode latch, four PSGs, and the native / Echo+ maps. `[DeviceType("phasor")]`. |
 | `IAudioSource` | `Render(Span<int> into, Cycle from, Cycle to)` adding into a 32-bit mix. |
-| `AudioMixer` | Owns the one `IAudioOutput`. Sums sources. Implements the speed policy in §11. `Dispose` disposes the sink. |
-| `ISoundCardDebug` | Register snapshot, mute, the mixer recording hook. |
+| `AudioLineOutFormat` | Host-independent stream descriptor (rate, sample type, channel count/layout). |
+| `AudioLineOutBlock` | One PCM block plus covered emulated cycle range. |
+| `IAudioTap` | Non-blocking subscriber for published line-out blocks. |
+| `AudioMixer` | Owns line-out production and fan-out to registered taps. Sums sources. Implements speed policy in §11. |
+| `IAudioOutput` | Legacy sink contract, adapted at the client boundary as one `IAudioTap` implementation. |
+| `ISoundCardDebug` | Register snapshot, mute, line-out recording hook. |
 
-`SpeakerController` grows an `IAudioSource` implementation and stops constructing `OpenAlAudioOutput`. The machine builder creates one mixer when the profile has a speaker or a sound card, and the mixer constructs the sink. One owner disposes it: `AudioMixer.Dispose` calls `IAudioOutput.Dispose`, which joins the playback thread. The machine disposes the mixer with the rest of its components. `SpeakerController.Dispose` keeps disposing the flush timer until §11.2 removes that timer, and it MUST NOT dispose the shared sink. The internal test constructor that takes an `IAudioOutput` still owns that instance and still disposes it, which is how `SpeakerControllerTests` pass a recording sink today. The mixer tests use the same shape: the test passes a recording sink, and disposing the mixer disposes the sink. A production speaker and a production card never see the sink.
+`SpeakerController` grows an `IAudioSource` implementation and stops constructing `OpenAlAudioOutput`. Cassette out (`$C020`) is another `IAudioSource` mixed into line out. The machine builder creates one mixer when the profile has a speaker or a sound card, and the machine exposes one line-out stream per instance.
+
+Host sinks (`OpenAlAudioOutput` today, others later) are attached by client-level composition as taps. Headless runs attach no host sink and still produce the same line-out blocks for tests and hash recording. `AudioMixer.Dispose` tears down stream publication state only; host sink disposal belongs to the client that attached the sink tap. `SpeakerController.Dispose` MUST NOT dispose shared line-out taps.
 
 ## 8. Bus placement
 
@@ -297,17 +326,25 @@ The mixer renders in quanta (§11), not per cycle. A register write that lands m
 
 Timer IRQs are not delayed to the quantum. They fire from `DeviceTimer` on their cycle (§9).
 
-## 11. Mixing, rate, latency, and speed
+## 11. Mixing, line-out format, latency, and speed
 
-### 11.1 One stream
+### 11.1 Stream contract
 
-`AudioMixer` is the only constructor of `OpenAlAudioOutput` on the machine path. It opens 44 100 Hz, 16-bit, mono, and on failure uses `NullAudioOutput`, logging the same warning the speaker logs today. Sources add into a `Span<int>`. The mixer clamps to `short` once and calls `Play`.
+`AudioMixer` produces one host-independent line-out stream per machine. The stream contract is `AudioLineOutFormat` + `AudioLineOutBlock` (`short[]` payload plus `[fromCycle, toCycle)` stamp). v1 format is 44 100 Hz, signed 16-bit PCM, mono. The format descriptor MUST include channel count/layout so a later stereo rollout does not require an interface change.
+
+### 11.2 Tap fan-out and back-pressure
+
+The mixer publishes each quantum to zero or more `IAudioTap` subscribers (host sink, WAV recorder, golden/hash recorder, visualizer, cassette input threshold path). Tap delivery MUST be non-blocking for emulation. If a tap cannot keep up, that tap drops older blocks and updates a drop counter; emulated cycle progression and source state updates continue with no stall.
+
+The OpenAL backend is one tap attached by `emudbg`/`bpui` composition and is not owned by core devices. Headless runs attach no host sink.
+
+### 11.3 One stream
 
 The speaker's decay model is unchanged. Its step is `2 * SpeakerAmplitude` (16384) and then it decays. Each AY channel adds its normalized DAC level. Full scale for one channel (level 15, tone enabled, the other channels muted) SHOULD land near ±8192, so one voice sits under a hard speaker toggle. Three channels of one chip sum to about ±24576 and still fit in a `short`. A second chip, or the speaker step on top of a full chip, can exceed ±32767. That overflow is clamped once, at the end, and the mix before the clamp is 32-bit. The scale constant lives next to the DAC table and has a test. There is no per-card volume in v1.
 
 Left and right chips both add at full scale. Mute (§16) zeros a channel before the add, so a muted chip still runs its counters and its IRQ.
 
-### 11.2 Quantum and latency
+### 11.4 Quantum and latency
 
 The mixer schedules `AudioTick` on a fixed host-sample quantum: 441 samples, which is 10 ms at 44.1 kHz. That sample count does not change with `ClockSpeedHz`. What changes is how many bus cycles those 441 samples cover. The pitch divisor is `ClockSpeedHz` when it is greater than zero, else `1_020_484`, the same split `SpeakerController.GetCyclesPerSecond` uses. At the nominal clock a tick spans about 10 205 cycles. At a throttled 4 MHz it spans about four times that many cycles, so the same latch sounds higher, and each tick is still 10 ms of host audio. Wall-clock latency stays put because the ring is filled in sample time, not in bus-cycle time. The tick runs on the machine thread, renders, and enqueues.
 
@@ -315,11 +352,11 @@ The OpenAL ring SHOULD shrink from 200 ms to about 60 ms (three quanta plus one 
 
 `AudioTick` does no work when nothing is playing and no consumer is recording: a silent, idle PSG and a resting speaker produce a single zero quantum and then the mixer stops scheduling until the next toggle or register write. That is the same "no consumer, no work" idea the video pipeline uses, applied to a much cheaper tick.
 
-### 11.3 Throttled non-stock clocks
+### 11.5 Throttled non-stock clocks
 
 `#443` allows a throttled clock other than 1.02 MHz (Zip-style 2.8 or 4 MHz, or a custom value). The VIA and the AY keep counting bus cycles. The mixer's divisor is `ClockSpeedHz` when it is greater than zero, matching `SpeakerController.GetCyclesPerSecond`. A song whose timer latches were computed for 1.02 MHz plays proportionally faster and higher. That is what the same card does on a real accelerator: φ2 is the card's clock. v1 does not pitch-correct back to 1.02 MHz.
 
-### 11.4 Unthrottled and disk acceleration
+### 11.6 Unthrottled and disk acceleration
 
 When `ClockSpeedHz` is 0, the machine runs as fast as the host allows. Synthesizing every cycle into the ring would overrun it and play garbage, which is what the speaker can do today.
 
@@ -453,7 +490,7 @@ Device commands stay in `BadMango.Emulator.Debug.Infrastructure` with `[DeviceDe
 
 ### 16.1 `mb` command
 
-`mb` with no arguments lists every sound card: slot, type, Phasor mode, whether playback is held (§11.4).
+`mb` with no arguments lists every sound card: slot, type, Phasor mode, whether playback is held (§11.6).
 
 `mb regs <slot>` prints, for that slot, both VIAs (ORB, ORA, DDRB, DDRA, T1 counter, T1 latch, T2 counter, T2 latch, ACR, PCR, IFR, IER, IRQ level) and every PSG (16 registers, current index, reset pin, envelope step). Hex, one block per chip.
 
@@ -526,7 +563,7 @@ The suite already uses all four, for different jobs. Sound tests follow that spl
 
 ### 17.3 Audio goldens
 
-Goldens are headless. The mixer is given a `RecordingAudioOutput` that implements `IAudioOutput` and stores the `short[]`. No OpenAL, no timer thread. The test calls the mixer quantum directly, or runs a machine for a fixed cycle count with the flush timer disabled (the speaker's internal constructor already takes `startFlushTimer: false`; the mixer gets the same switch).
+Goldens are headless. The mixer publishes `AudioLineOutBlock` quanta to a recording tap that stores PCM plus cycle ranges. No OpenAL and no host playback thread are required. The test calls the mixer quantum directly, or runs a machine for a fixed cycle count with the flush timer disabled (the speaker's internal constructor already takes `startFlushTimer: false`; the mixer gets the same switch).
 
 **Hash, not tolerance, for the exact renderer.** The renderer is integer and seeded. A SHA-256 of the PCM is stable across machines. Tolerance would hide an off-by-one in the envelope. The test stores the hash in source next to a one-line description of the stimulus ("A440-equivalent latch, 200 ms, reset seed"). Regenerating a hash is a deliberate edit, reviewed like any other golden.
 
@@ -538,7 +575,7 @@ Stimuli, each small enough to run in well under a second:
 2. The same period with a register write at sample 50. The hash changes, and a second run matches.
 3. Noise on, tone off, 50 ms. Hash, proving the LFSR seed.
 4. Speaker toggle at a known cycle plus one PSG tone. The sum differs from each source alone.
-5. Unthrottled: no samples enqueued (§11.4).
+5. Unthrottled: no samples enqueued (§11.6).
 6. Double clock: the tone's zero-crossing count doubles.
 
 ### 17.4 Guest probe
@@ -579,12 +616,14 @@ Appendix A is the issue split. Sizes: S is one component and a handful of tests,
 15. **Speech is the SSI-263 only.** No SC-01 and no Votrax. Josh, 2026-11-19.
 16. **Stereo is a follow-up after the hash goldens exist.** v1 stays mono. Josh, 2026-11-19.
 17. **The unread speaker `sampleRate` key is deleted by S11.** The mixer does not grow a reader for it. Josh, 2026-11-19.
+18. **Line out is the machine-owned audio contract.** Host backends are taps and never block emulation. Josh, 2026-11-24.
+19. **Cassette out and cassette in use the same stream family.** `$C020` is an `IAudioSource`; cassette input thresholds subscribed stream blocks into `$C060` bit 7. Josh, 2026-11-24.
 
-Decisions 4, 5, 6, and 8 were confirmed the same day: period 0 is 1, v1 is mono, unthrottled and #443 bursts are silence, and reset restores the configured Phasor mode.
+Decisions 4, 5, 6, and 8 were confirmed the same day: period 0 is 1, v1 is mono, unthrottled and #443 bursts are silence, and reset restores the configured Phasor mode. Decisions 18 and 19 align this spec with #691 and supersede the earlier ownership sketch in #606.
 
 ## 20. Open questions
 
-None. The questions that were here are decisions 4, 5, 6, 8, and 12 through 17. Josh, 2026-11-19.
+None. The questions that were here are decisions 4, 5, 6, 8, and 12 through 19. Josh, 2026-11-19.
 
 ## 21. Sources
 
@@ -623,7 +662,7 @@ This appendix does not file issues. Sizes and owners are suggestions. "Depends o
 | S1 | Forward `$Cn00–$CnFF` writes to a card `ROMRegion` | `CompositeIOTarget.WriteSlotRom` calls `Write8` when the card published a region; `RomTarget` still drops guest writes; `INTCXROM` still blocks the window. Bus tests only. | S | — | Copilot |
 | S2 | Reusable `Via6522` | Registers in §9, N+2 timers, scheduler `DeviceTimer`, IFR/IER, port listeners, per-instance IRQ callback, side-effect-free reads, reset. Unit tests in §17.2. No AY and no slot. | L | — | Cursor |
 | S3 | `Ay3Psg`, `AyBus`, and the exact renderer | Datasheet register file, port protocol, period 0 = 1, logarithmic DAC from the GI table, integer ZOH renderer, LFSR seed. Hash goldens 1–3 in §17.3. No VIA. | M | — | Copilot |
-| S4 | `AudioMixer` and speaker as a source | Mixer owns OpenAL / null / recording. Speaker stops building its own sink. 10 ms `AudioTick`. 60 ms ring. Unthrottled hold (§11.4). Existing speaker sample tests stay green. Goldens 4–6. | M | — | Cursor |
+| S4 | `AudioMixer` and speaker as a source | Mixer owns line-out production and recording/null taps. Speaker stops building its own sink. 10 ms `AudioTick`. 60 ms ring target. Unthrottled hold (§11.6). Existing speaker sample tests stay green. Goldens 4–6. | M | — | Cursor |
 | S5 | `MockingboardCard` | Two VIAs, two PSGs, §8.1 decode, §10.3 wiring, two IRQ ids, factory `mockingboard` that rejects `rom`. Guest probe and the end-to-end hash (§17.4). | M | S1, S2, S3, S4 | Cursor |
 | S6 | Music profile and schema | `profiles/pocket2e-mockingboard.json`: slot 4 Mockingboard, PocketWatch in slot 5, slot 2 empty, Disk II in slot 6. A worked example may add a Phasor in slot 1. Schema and the Machine Profile Configuration Guide. Do not edit the other Pocket2e profiles. | S | S5 | Copilot |
 | S7 | `mb` command, mute, WAV, `get_sound_card` | §16. Snapshot does not clear IFR. JSON is source-generated. WAV under the sandbox. MCP tool returns the snapshot. | M | S5, S4 | Copilot |
@@ -631,7 +670,10 @@ This appendix does not file issues. Sizes and owners are suggestions. "Depends o
 | S9 | SSI-263 speech | Phoneme registers, CA1 IRQ on the C, direct IRQ on the Phasor, address windows that phase 4 left as `$FF`. No SC-01, no Votrax, no vendor ROM or phoneme dump. | L | S5, and S8 for the Phasor path | Cursor |
 | S10 | Honor the #443 acceleration window | When #444 exposes the "hold audio" window, the mixer already treats it like `ClockSpeedHz == 0`. Playback during the burst is silence (decision 6). This issue is the wiring, not a new policy. | S | S4, #444 | Copilot |
 | S11 | Delete unread speaker `sampleRate` | Remove `config.sampleRate` from the checked-in speaker entries. The mixer stays at 44 100 Hz and does not read the key. Independent of the cards. | S | — | Copilot |
+| S12 | Standard line-out stream and tap contract (this issue, #691) | Add host-independent `AudioLineOutFormat` + cycle-stamped block contract, tap fan-out/drop policy, and #606 ownership reconciliation in §7/§11. Host sink moved to client composition (#832). | M | S4 | Copilot |
+| S13 | Cassette line-out/line-in stream integration | Model `$C020` as an `IAudioSource` mixed into line out. Add cassette input consumer that thresholds a standard stream into `$C060` bit 7. Include headless WAV-driven tests. | M | S12 | Copilot |
+| S14 | Stream taps follow-up issues filed | Track implementation follow-ups for host sink tap plumbing and cassette in/out stream adapters under epic #831; link rows to the filed implementation issues once created. | S | S12, S13 | Copilot |
 
-S1–S4 are phase 1 and can land in any order, including in parallel. S5 is the first issue that makes a title's probe succeed. S6 and S7 follow S5 and can be parallel with each other. S8 follows S5. S9 follows the card it attaches to. S10 waits on the speed epic's design, not on the Phasor. S11 can land at any time.
+S1–S4 are phase 1 and can land in any order, including in parallel. S5 is the first issue that makes a title's probe succeed. S6 and S7 follow S5 and can be parallel with each other. S8 follows S5. S9 follows the card it attaches to. S10 waits on the speed epic's design, not on the Phasor. S11 can land at any time. S12 precedes S13. S14 tracks filed follow-ups under #831.
 
 Out of this split: band-limited synthesis (§5, §10.4), stereo (decision 16, after the hash goldens), Mockingboard D, Sound I, SC-01, and any change to the speaker's decay.
