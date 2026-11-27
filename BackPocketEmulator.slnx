@@ -107,7 +107,6 @@
   </Folder>
   <Folder Name="/src/emulator/infrastructure/">
     <Project Path="src/BadMango.Emulator.Core/BadMango.Emulator.Core.csproj" />
-    <Project Path="src/BadMango.Emulator.Debug.Abstractions/BadMango.Emulator.Debug.Abstractions.csproj" />
     <Project Path="src/BadMango.Emulator.Debug.Infrastructure/BadMango.Emulator.Debug.Infrastructure.csproj" />
     <Project Path="src/BadMango.Emulator.Host.Contracts/BadMango.Emulator.Host.Contracts.csproj" />
     <Project Path="src/BadMango.Emulator.Rendering/BadMango.Emulator.Rendering.csproj" />
@@ -122,7 +121,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BadMango.Emulator.Core.Tests/BadMango.Emulator.Core.Tests.csproj" />
-    <Project Path="tests/BadMango.Emulator.Debug.Abstractions.Tests/BadMango.Emulator.Debug.Abstractions.Tests.csproj" />
     <Project Path="tests/BadMango.Emulator.Debug.Infrastructure.Tests/BadMango.Emulator.Debug.Infrastructure.Tests.csproj" />
     <Project Path="tests/BadMango.Emulator.Debug.Tests/BadMango.Emulator.Debug.Tests.csproj" />
     <Project Path="tests/BadMango.Emulator.Debug.Mcp.Tests/BadMango.Emulator.Debug.Mcp.Tests.csproj" />
