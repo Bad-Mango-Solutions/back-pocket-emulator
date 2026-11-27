@@ -13,19 +13,6 @@
     <PackageReference Include="Serilog" />
   </ItemGroup>
 
-  <!--
-    GlobalUsings.cs, GlobalUsings.Bus.cs, and GlobalUsings.Emulation.cs each declare
-    the Addr, DWord, and Word aliases. CS1537 is a hard error and cannot be suppressed.
-    GlobalUsings.Bus.cs is a superset: those aliases plus global using BadMango.Emulator.Core.
-    The other two files stay byte-identical and are not compiled; their directives are already in effect.
-  -->
-  <ItemGroup>
-    <Compile Remove="GlobalUsings.cs" />
-    <Compile Remove="GlobalUsings.Emulation.cs" />
-    <None Include="GlobalUsings.cs" />
-    <None Include="GlobalUsings.Emulation.cs" />
-  </ItemGroup>
-
   <ItemGroup>
     <Content Include="..\..\profiles\*.json" LinkBase="profiles">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

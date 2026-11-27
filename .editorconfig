@@ -431,11 +431,3 @@ dotnet_style_prefer_collection_expression = when_types_loosely_match:suggestion
 [tests/BadMango.Emulator.UI.Tests/*.Configuration.cs]
 dotnet_diagnostic.SA1638.severity = none
 
-# Renamed global-using files keep the original copyright file name.
-# SA1638 compares the copyright file attribute to the file name, and the move leaves file contents unchanged.
-[src/BadMango.Emulator.Core/GlobalUsings.Bus.cs]
-dotnet_diagnostic.SA1638.severity = none
-
-[src/BadMango.Emulator.Core/GlobalUsings.Emulation.cs]
-dotnet_diagnostic.SA1638.severity = none
-
