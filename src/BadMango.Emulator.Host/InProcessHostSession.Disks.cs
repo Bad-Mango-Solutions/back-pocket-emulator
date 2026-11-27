@@ -127,9 +127,18 @@ public sealed partial class InProcessHostSession
 
     private async Task<T> ReadOnMachineAsync<T>(MachineHandle handle, CancellationToken cancellationToken, Func<T> read)
     {
-        T result = default!;
-        await RunAtInstructionBoundaryAsync(handle, () => result = read(), cancellationToken).ConfigureAwait(false);
-        return result;
+        DiskReadEntered?.TrySetResult();
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            T result = default!;
+            await RunAtInstructionBoundaryAsync(handle, () => result = read(), cancellationToken).ConfigureAwait(false);
+            return result;
+        }
+        finally
+        {
+            handle.Lifecycle.Release();
+        }
     }
 
     /// <summary>

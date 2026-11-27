@@ -105,6 +105,27 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
     /// </summary>
     internal int LiveRunLoops => Volatile.Read(ref liveRunLoops);
 
+    /// <summary>
+    /// Gets or sets a gate that blocks inside a profile rebuild, before the previous machine is replaced.
+    /// Tests use it to prove a disk read waits for that rebuild.
+    /// </summary>
+    internal ManualResetEventSlim? BlockDuringReplace { get; set; }
+
+    /// <summary>
+    /// Gets or sets the signal set when a profile rebuild is blocked on <see cref="BlockDuringReplace"/>.
+    /// </summary>
+    internal ManualResetEventSlim? ReplaceBlocked { get; set; }
+
+    /// <summary>
+    /// Gets or sets a signal completed when a disk or slot read is about to wait for the machine lifecycle.
+    /// </summary>
+    internal TaskCompletionSource? DiskReadEntered { get; set; }
+
+    /// <summary>
+    /// Gets or sets a callback invoked after a power-on snapshot is taken and before that snapshot is validated.
+    /// </summary>
+    internal Action? BeforeProfileValidation { get; set; }
+
     /// <inheritdoc />
     public void Dispose()
     {
@@ -517,6 +538,12 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
                 {
                     throw new InvalidOperationException($"Cannot power on while {handle.ReportedState}.");
                 }
+            }
+
+            if (BlockDuringReplace is not null)
+            {
+                // The replacement gate blocks. Yield first so that wait is not on the caller's thread.
+                await Task.Yield();
             }
 
             ApplyPendingOverlay(handle);
@@ -957,7 +984,21 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
             }
 
             string merged = MergeProfileJson(profileJson, overlay);
-            MachineProfileSchema.Validate(merged);
+            BeforeProfileValidation?.Invoke();
+            try
+            {
+                MachineProfileSchema.Validate(merged);
+            }
+            catch (InvalidOperationException) when (ProfileSnapshotMoved(handle, overlay, profileJson))
+            {
+                // The overlay or template changed while this snapshot was checked. Validate the current one.
+                continue;
+            }
+
+            if (ProfileSnapshotMoved(handle, overlay, profileJson))
+            {
+                continue;
+            }
 
             lock (handle.Sync)
             {
@@ -974,6 +1015,8 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
 
             MachineProfile profile = serializer.Deserialize(merged);
             (IMachine machine, _, MachineInfo info) = MachineFactory.CreateDebugSystem(profile, new ProfilePathResolver(libraryRoot));
+            ReplaceBlocked?.Set();
+            BlockDuringReplace?.Wait();
             lock (tableLock)
             {
                 if (disposed)
@@ -1002,6 +1045,24 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
                 handle.NoteBuilt(overlay, profileJson);
                 return;
             }
+        }
+    }
+
+    private bool ProfileSnapshotMoved(MachineHandle handle, string? overlay, string profileJson)
+    {
+        lock (handle.Sync)
+        {
+            if (!string.Equals(handle.OverlayJson, overlay, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        lock (tableLock)
+        {
+            ThrowIfDisposed();
+            return !profiles.TryGetValue(handle.ProfileId, out HostProfileDocument? stored)
+                || !string.Equals(stored.Json, profileJson, StringComparison.Ordinal);
         }
     }
 
