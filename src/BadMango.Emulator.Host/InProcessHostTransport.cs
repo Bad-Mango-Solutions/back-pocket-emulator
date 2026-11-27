@@ -20,7 +20,7 @@ public sealed class InProcessHostTransport : IHostTransport
     public InProcessHostTransport(string? libraryRoot = null)
     {
         this.libraryRoot = string.IsNullOrWhiteSpace(libraryRoot)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".backpocket")
+            ? Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".backpocket")
             : Path.GetFullPath(libraryRoot);
     }
 

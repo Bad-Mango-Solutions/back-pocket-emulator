@@ -5,6 +5,8 @@
 namespace BadMango.Emulator.Host;
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading.Channels;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
@@ -15,9 +17,29 @@ using BadMango.Emulator.Host.Contracts;
 /// <summary>
 /// In-process host session backed by live <see cref="IMachine"/> instances.
 /// </summary>
-public sealed class InProcessHostSession : IHostSession, IHostControl
+/// <remarks>
+/// <para>
+/// Each instance keeps the <see cref="IMachine.RunAsync"/> or <see cref="IMachine.ResumeAsync"/>
+/// task that owns its run loop. Power, pause, resume, sleep, and power-off call those lifecycle
+/// methods from the client thread. <see cref="IMachine.PowerOffAsync"/> throws on the machine
+/// thread, and <see cref="IMachine.Pause"/> waits for the loop, so those calls are not posted.
+/// <see cref="IMachineDispatcher.Post"/> stays for work that must land at an instruction boundary
+/// while a loop is actually running. A stopped machine runs a post inline or not at all, so this
+/// session never awaits one.
+/// </para>
+/// <para>
+/// Reported run state follows <see cref="IMachine.StateChanged"/>. Sleeping and Shutting down have
+/// no machine state: Sleep is a pause that the host reports as sleeping, and Shut down is published
+/// before the loop stops. Notices are queued and delivered off the machine thread after the host
+/// has released the command, so a slow sink cannot stall the CPU loop.
+/// </para>
+/// </remarks>
+public sealed partial class InProcessHostSession : IHostSession, IHostControl
 {
+    private static readonly TimeSpan RunStartTimeout = TimeSpan.FromSeconds(5);
+
     private readonly Lock tableLock = new();
+    private readonly Lock operationLock = new();
     private readonly MachineProfileSerializer serializer = new();
     private readonly string libraryRoot;
     private readonly List<MachineHandle> machines = [];
@@ -25,10 +47,17 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
     private readonly Dictionary<string, HostProfileDocument> profiles = [];
     private readonly List<string> profileOrder = [];
     private readonly ConcurrentDictionary<IHostNotificationSink, byte> sinks = [];
+    private readonly Channel<Action> notices = Channel.CreateUnbounded<Action>(
+        new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
+
     private readonly NotSupportedHostPresentation presentation;
     private readonly NotSupportedHostInput input;
     private readonly NotSupportedHostDebugger debugger;
+    private readonly Task noticePump;
 
+    private int liveRunLoops;
+    private int operationsInProgress;
+    private TaskCompletionSource operationsIdle = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool disposed;
 
     /// <summary>
@@ -41,6 +70,8 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
         presentation = new("#810");
         input = new("#809");
         debugger = new("#813");
+        noticePump = Task.Run(DeliverNoticesAsync);
+        ObserveFault(noticePump);
     }
 
     /// <inheritdoc />
@@ -66,6 +97,11 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
     /// <inheritdoc />
     public IHostDebugger Debugger => debugger;
 
+    /// <summary>
+    /// Gets how many run loops are still executing. Used by tests to prove dispose and power-off join them.
+    /// </summary>
+    internal int LiveRunLoops => Volatile.Read(ref liveRunLoops);
+
     /// <inheritdoc />
     public void Dispose()
     {
@@ -88,6 +124,9 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
         {
             machine.Dispose();
         }
+
+        notices.Writer.TryComplete();
+        ObserveFault(noticePump);
     }
 
     /// <inheritdoc />
@@ -115,14 +154,19 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
         MachineProfile profile = serializer.Deserialize(profileDocument.Json);
         ProfilePathResolver resolver = new(libraryRoot);
         (IMachine machine, _, MachineInfo info) = MachineFactory.CreateDebugSystem(profile, resolver);
-
-        MachineId machineId = MachineId.New();
-        MachineHandle handle = new(machineId, spec, machine, info, OnMachineStateChanged);
         machine.ClockSpeedHz = EffectiveClock(spec.NominalClockHz, HostThrottle.Normal);
 
+        MachineId machineId;
         lock (tableLock)
         {
-            ThrowIfDisposed();
+            if (disposed)
+            {
+                machine.Dispose();
+                ThrowIfDisposed();
+            }
+
+            machineId = MachineId.New();
+            MachineHandle handle = new(this, machineId, spec, machine, info);
             machines.Add(handle);
             machinesById.Add(machineId.Value, handle);
         }
@@ -139,7 +183,7 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
         lock (tableLock)
         {
             ThrowIfDisposed();
-            if (machine.State != HostRunState.Off)
+            if (machine.ReportedState != HostRunState.Off)
             {
                 throw new InvalidOperationException("Power the machine off before removing it.");
             }
@@ -238,7 +282,7 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
         MachineHandle machine = Find(machineId);
         lock (machine.Sync)
         {
-            if (machine.State != HostRunState.Off)
+            if (machine.ReportedState != HostRunState.Off)
             {
                 throw new InvalidOperationException("Power the machine off to change the profile.");
             }
@@ -248,166 +292,107 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
     }
 
     /// <inheritdoc />
-    public async Task PowerOnAsync(MachineId machineId, CancellationToken cancellationToken = default)
+    public Task PowerOnAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
-        MachineHandle machine = Find(machineId);
-        cancellationToken.ThrowIfCancellationRequested();
-        lock (machine.Sync)
+        if (cancellationToken.IsCancellationRequested)
         {
-            if (machine.State != HostRunState.Off)
-            {
-                throw new InvalidOperationException($"Cannot power on while {machine.State}.");
-            }
+            return Task.FromCanceled(cancellationToken);
         }
 
-        await machine.Machine.PowerOnAsync(cancellationToken).ConfigureAwait(false);
-        if (machine.StartPaused)
-        {
-            machine.UpdateState(HostRunState.Paused);
-            NotifyStateChanged(machine.Id, HostRunState.Paused);
-            return;
-        }
-
-        machine.UpdateState(HostRunState.Running);
-        NotifyStateChanged(machine.Id, HostRunState.Running);
+        return PowerOnCoreAsync(machineId, cancellationToken);
     }
 
     /// <inheritdoc />
     public Task PauseAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
-        MachineHandle machine = Find(machineId);
-        return PostMutationAsync(machine, cancellationToken, () =>
+        if (cancellationToken.IsCancellationRequested)
         {
-            if (machine.State != HostRunState.Running)
-            {
-                throw new InvalidOperationException($"Cannot pause while {machine.State}.");
-            }
+            return Task.FromCanceled(cancellationToken);
+        }
 
-            machine.UpdateState(HostRunState.Paused);
-            NotifyStateChanged(machine.Id, HostRunState.Paused);
-        });
+        return PauseCoreAsync(machineId, cancellationToken);
     }
 
     /// <inheritdoc />
     public Task ResumeAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
-        MachineHandle machine = Find(machineId);
-        return PostMutationAsync(machine, cancellationToken, () =>
+        if (cancellationToken.IsCancellationRequested)
         {
-            if (machine.State is not (HostRunState.Paused or HostRunState.Sleeping))
-            {
-                throw new InvalidOperationException($"Cannot resume while {machine.State}.");
-            }
+            return Task.FromCanceled(cancellationToken);
+        }
 
-            machine.UpdateState(HostRunState.Running);
-            NotifyStateChanged(machine.Id, HostRunState.Running);
-        });
+        return ResumeCoreAsync(machineId, cancellationToken);
     }
 
     /// <inheritdoc />
     public Task SleepAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
-        MachineHandle machine = Find(machineId);
-        return PostMutationAsync(machine, cancellationToken, () =>
+        if (cancellationToken.IsCancellationRequested)
         {
-            if (machine.PowerCapabilities?.Sleep != true)
-            {
-                throw new InvalidOperationException("This machine cannot sleep.");
-            }
+            return Task.FromCanceled(cancellationToken);
+        }
 
-            if (machine.State != HostRunState.Running)
-            {
-                throw new InvalidOperationException($"Cannot sleep while {machine.State}.");
-            }
-
-            machine.UpdateState(HostRunState.Sleeping);
-            NotifyStateChanged(machine.Id, HostRunState.Sleeping);
-        });
+        return SleepCoreAsync(machineId, cancellationToken);
     }
 
     /// <inheritdoc />
     public Task ResetAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
-        MachineHandle machine = Find(machineId);
-        return PostMutationAsync(machine, cancellationToken, () =>
+        if (cancellationToken.IsCancellationRequested)
         {
-            RequireOn(machine, "reset");
-            machine.Machine.Reset(hardReset: false);
-            Notify(sink => sink.OnReset(new HostResetNotice(machine.Id, Hard: false)));
-        });
+            return Task.FromCanceled(cancellationToken);
+        }
+
+        return ResetCoreAsync(machineId, hardReset: false, cancellationToken);
     }
 
     /// <inheritdoc />
     public Task HardResetAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
-        MachineHandle machine = Find(machineId);
-        return PostMutationAsync(machine, cancellationToken, () =>
+        if (cancellationToken.IsCancellationRequested)
         {
-            RequireOn(machine, "hard reset");
-            if (machine.PowerCapabilities is not null && !machine.PowerCapabilities.HardReset)
-            {
-                throw new InvalidOperationException("Hard Reset is not available on this machine.");
-            }
+            return Task.FromCanceled(cancellationToken);
+        }
 
-            machine.Machine.Reset(hardReset: true);
-            Notify(sink => sink.OnReset(new HostResetNotice(machine.Id, Hard: true)));
-        });
+        return ResetCoreAsync(machineId, hardReset: true, cancellationToken);
     }
 
     /// <inheritdoc />
-    public async Task ShutDownAsync(MachineId machineId, CancellationToken cancellationToken = default)
+    public Task ShutDownAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
-        MachineHandle machine = Find(machineId);
-        await PostMutationAsync(machine, cancellationToken, () =>
+        if (cancellationToken.IsCancellationRequested)
         {
-            if (machine.PowerCapabilities?.SoftPower != true)
-            {
-                throw new InvalidOperationException("Shut Down is only available on a soft-power machine.");
-            }
+            return Task.FromCanceled(cancellationToken);
+        }
 
-            RequireOn(machine, "shut down");
-            machine.UpdateState(HostRunState.ShuttingDown);
-            NotifyStateChanged(machine.Id, HostRunState.ShuttingDown);
-        }).ConfigureAwait(false);
-
-        await machine.Machine.PowerOffAsync(cancellationToken).ConfigureAwait(false);
-        machine.UpdateState(HostRunState.Off);
-        NotifyStateChanged(machine.Id, HostRunState.Off);
+        return ShutDownCoreAsync(machineId, cancellationToken);
     }
 
     /// <inheritdoc />
-    public async Task PowerOffAsync(MachineId machineId, CancellationToken cancellationToken = default)
+    public Task PowerOffAsync(MachineId machineId, CancellationToken cancellationToken = default)
     {
-        MachineHandle machine = Find(machineId);
-        await PostMutationAsync(machine, cancellationToken, () =>
+        if (cancellationToken.IsCancellationRequested)
         {
-            if (machine.PowerCapabilities?.SoftPower == true)
-            {
-                throw new InvalidOperationException("Power Off is not available on a soft-power machine. Shut Down instead.");
-            }
+            return Task.FromCanceled(cancellationToken);
+        }
 
-            RequireOn(machine, "power off");
-        }).ConfigureAwait(false);
-
-        await machine.Machine.PowerOffAsync(cancellationToken).ConfigureAwait(false);
-        machine.UpdateState(HostRunState.Off);
-        NotifyStateChanged(machine.Id, HostRunState.Off);
+        return PowerOffCoreAsync(machineId, cancellationToken);
     }
 
     /// <inheritdoc />
     public Task SetThrottleAsync(MachineId machineId, HostThrottle throttle, CancellationToken cancellationToken = default)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled(cancellationToken);
+        }
+
         if (!Enum.IsDefined(throttle))
         {
             throw new ArgumentOutOfRangeException(nameof(throttle), throttle, "The throttle is not defined.");
         }
 
-        MachineHandle machine = Find(machineId);
-        return PostMutationAsync(machine, cancellationToken, () =>
-        {
-            machine.Throttle = throttle;
-            machine.Machine.ClockSpeedHz = EffectiveClock(machine.NominalClockHz, throttle);
-        });
+        return SetThrottleCoreAsync(machineId, throttle, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -461,6 +446,425 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
         return new SinkSubscription(this, sink);
     }
 
+    /// <summary>
+    /// Reads the scheduler cycle counter. Tests use it to see that a live machine is executing.
+    /// </summary>
+    /// <param name="machineId">The machine.</param>
+    /// <returns>The scheduler time, in cycles.</returns>
+    internal ulong ReadSchedulerCycles(MachineId machineId)
+    {
+        return Find(machineId).Machine.Now.Value;
+    }
+
+    /// <summary>
+    /// Reads the program counter. Tests use it to see that instructions are retiring.
+    /// </summary>
+    /// <param name="machineId">The machine.</param>
+    /// <returns>The current program counter.</returns>
+    internal uint ReadProgramCounter(MachineId machineId)
+    {
+        return Find(machineId).Machine.Cpu.GetPC();
+    }
+
+    /// <summary>
+    /// Gets the live machine. Tests arm signals the guest ROM is waiting on.
+    /// </summary>
+    /// <param name="machineId">The machine.</param>
+    /// <returns>The machine instance.</returns>
+    internal IMachine GetMachine(MachineId machineId)
+    {
+        return Find(machineId).Machine;
+    }
+
+    /// <summary>
+    /// Reads the machine's own lifecycle state.
+    /// </summary>
+    /// <param name="machineId">The machine.</param>
+    /// <returns>The machine state.</returns>
+    internal MachineState ReadMachineState(MachineId machineId)
+    {
+        return Find(machineId).Machine.State;
+    }
+
+    private async Task PowerOnCoreAsync(MachineId machineId, CancellationToken cancellationToken)
+    {
+        MachineHandle handle = Find(machineId);
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        EnterOperation();
+        try
+        {
+            lock (handle.Sync)
+            {
+                if (handle.ReportedState != HostRunState.Off)
+                {
+                    throw new InvalidOperationException($"Cannot power on while {handle.ReportedState}.");
+                }
+            }
+
+            await handle.Machine.PowerOnAsync(cancellationToken).ConfigureAwait(false);
+            if (handle.StartPaused)
+            {
+                await EnterPausedWithoutRunningAsync(handle, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            try
+            {
+                handle.StartRun(static (machine, token) => machine.RunAsync(token));
+                await WaitUntilReportedAsync(handle, HostRunState.Running, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                handle.StopLoop();
+                throw;
+            }
+        }
+        finally
+        {
+            ExitOperation();
+            handle.Lifecycle.Release();
+        }
+    }
+
+    private async Task EnterPausedWithoutRunningAsync(MachineHandle handle, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // RunAsync refuses to start from the machine thread and only enters Paused when its token
+        // is already canceled, before the first slice. That is a powered-on machine with no
+        // instruction retired by the run loop. ResumeAsync is what starts the loop later.
+        lock (handle.Sync)
+        {
+            handle.AcceptPausedOnly = true;
+        }
+
+        try
+        {
+            using CancellationTokenSource startPaused = new();
+            startPaused.Cancel();
+            await handle.Machine.RunAsync(startPaused.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (handle.Sync)
+            {
+                handle.AcceptPausedOnly = false;
+            }
+        }
+
+        if (handle.ReportedState != HostRunState.Paused || handle.Machine.State != MachineState.Paused)
+        {
+            throw new InvalidOperationException("Start paused did not leave the machine paused.");
+        }
+    }
+
+    private async Task PauseCoreAsync(MachineId machineId, CancellationToken cancellationToken)
+    {
+        MachineHandle handle = Find(machineId);
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        EnterOperation();
+        try
+        {
+            lock (handle.Sync)
+            {
+                if (handle.ReportedState != HostRunState.Running)
+                {
+                    throw new InvalidOperationException($"Cannot pause while {handle.ReportedState}.");
+                }
+            }
+
+            StopExecution(handle);
+            if (handle.ReportedState != HostRunState.Paused)
+            {
+                throw new InvalidOperationException($"Cannot pause while {handle.ReportedState}.");
+            }
+        }
+        finally
+        {
+            ExitOperation();
+            handle.Lifecycle.Release();
+        }
+    }
+
+    private async Task ResumeCoreAsync(MachineId machineId, CancellationToken cancellationToken)
+    {
+        MachineHandle handle = Find(machineId);
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        EnterOperation();
+        try
+        {
+            lock (handle.Sync)
+            {
+                if (handle.ReportedState is not (HostRunState.Paused or HostRunState.Sleeping))
+                {
+                    throw new InvalidOperationException($"Cannot resume while {handle.ReportedState}.");
+                }
+
+                handle.ReportSleep = false;
+            }
+
+            try
+            {
+                handle.StartRun(static (machine, token) => machine.ResumeAsync(token));
+                await WaitUntilReportedAsync(handle, HostRunState.Running, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                handle.StopLoop();
+                throw;
+            }
+        }
+        finally
+        {
+            ExitOperation();
+            handle.Lifecycle.Release();
+        }
+    }
+
+    private async Task SleepCoreAsync(MachineId machineId, CancellationToken cancellationToken)
+    {
+        MachineHandle handle = Find(machineId);
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        EnterOperation();
+        try
+        {
+            lock (handle.Sync)
+            {
+                if (handle.PowerCapabilities?.Sleep != true)
+                {
+                    throw new InvalidOperationException("This machine cannot sleep.");
+                }
+
+                if (handle.ReportedState != HostRunState.Running)
+                {
+                    throw new InvalidOperationException($"Cannot sleep while {handle.ReportedState}.");
+                }
+
+                handle.ReportSleep = true;
+            }
+
+            try
+            {
+                StopExecution(handle);
+                if (handle.ReportedState != HostRunState.Sleeping)
+                {
+                    throw new InvalidOperationException($"Cannot sleep while {handle.ReportedState}.");
+                }
+            }
+            finally
+            {
+                if (handle.ReportedState != HostRunState.Sleeping)
+                {
+                    lock (handle.Sync)
+                    {
+                        handle.ReportSleep = false;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            ExitOperation();
+            handle.Lifecycle.Release();
+        }
+    }
+
+    private async Task ResetCoreAsync(MachineId machineId, bool hardReset, CancellationToken cancellationToken)
+    {
+        MachineHandle handle = Find(machineId);
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        EnterOperation();
+        try
+        {
+            HostRunState before;
+            lock (handle.Sync)
+            {
+                RequireOn(handle, hardReset ? "hard reset" : "reset");
+                if (hardReset && handle.PowerCapabilities is not null && !handle.PowerCapabilities.HardReset)
+                {
+                    throw new InvalidOperationException("Hard Reset is not available on this machine.");
+                }
+
+                before = handle.ReportedState;
+            }
+
+            // Reset posts itself when a loop is running and keeps the run state. Calling it here
+            // avoids a second post, which would run Reset on the machine thread inside the loop.
+            handle.Machine.Reset(hardReset);
+            if (handle.ReportedState != before)
+            {
+                throw new InvalidOperationException($"Reset changed the run state from {before} to {handle.ReportedState}.");
+            }
+
+            Notify(sink => sink.OnReset(new HostResetNotice(handle.Id, hardReset)));
+        }
+        finally
+        {
+            ExitOperation();
+            handle.Lifecycle.Release();
+        }
+    }
+
+    private async Task ShutDownCoreAsync(MachineId machineId, CancellationToken cancellationToken)
+    {
+        MachineHandle handle = Find(machineId);
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        EnterOperation();
+        try
+        {
+            bool changed;
+            lock (handle.Sync)
+            {
+                if (handle.PowerCapabilities?.SoftPower != true)
+                {
+                    throw new InvalidOperationException("Shut Down is only available on a soft-power machine.");
+                }
+
+                RequireOn(handle, "shut down");
+                handle.SuppressDerived = true;
+                changed = handle.SetReportedState(HostRunState.ShuttingDown);
+            }
+
+            if (changed)
+            {
+                NotifyStateChanged(handle.Id, HostRunState.ShuttingDown);
+            }
+
+            try
+            {
+                await StopThenPowerOffAsync(handle, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                ClearSuppressUnlessOff(handle);
+            }
+        }
+        finally
+        {
+            ExitOperation();
+            handle.Lifecycle.Release();
+        }
+    }
+
+    private async Task PowerOffCoreAsync(MachineId machineId, CancellationToken cancellationToken)
+    {
+        MachineHandle handle = Find(machineId);
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        EnterOperation();
+        try
+        {
+            lock (handle.Sync)
+            {
+                if (handle.PowerCapabilities?.SoftPower == true)
+                {
+                    throw new InvalidOperationException("Power Off is not available on a soft-power machine. Shut Down instead.");
+                }
+
+                RequireOn(handle, "power off");
+                handle.SuppressDerived = true;
+            }
+
+            try
+            {
+                await StopThenPowerOffAsync(handle, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                ClearSuppressUnlessOff(handle);
+            }
+        }
+        finally
+        {
+            ExitOperation();
+            handle.Lifecycle.Release();
+        }
+    }
+
+    private async Task SetThrottleCoreAsync(MachineId machineId, HostThrottle throttle, CancellationToken cancellationToken)
+    {
+        MachineHandle handle = Find(machineId);
+        await handle.Lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        EnterOperation();
+        try
+        {
+            long clock = EffectiveClock(handle.NominalClockHz, throttle);
+            lock (handle.Sync)
+            {
+                handle.Throttle = throttle;
+                handle.Machine.ClockSpeedHz = clock;
+                if (handle.ReportedState == HostRunState.Running)
+                {
+                    handle.SeedSpeedWindow();
+                }
+            }
+        }
+        finally
+        {
+            ExitOperation();
+            handle.Lifecycle.Release();
+        }
+    }
+
+    private async Task StopThenPowerOffAsync(MachineHandle handle, CancellationToken cancellationToken)
+    {
+        handle.StopLoop();
+        await handle.Machine.PowerOffAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Unblocks a delay inside the run loop, then pauses from this thread.
+    /// </summary>
+    /// <param name="handle">The machine.</param>
+    /// <remarks>
+    /// <see cref="IMachine.Pause"/> waits until the loop leaves. The loop may be inside
+    /// <see cref="Task.Delay(int, CancellationToken)"/> for throttling, which only notices the
+    /// run token. Canceling that token lets the wait finish; <see cref="IMachine.Pause"/> is still
+    /// what stops execution.
+    /// </remarks>
+    private void StopExecution(MachineHandle handle)
+    {
+        handle.CancelRun();
+        handle.Machine.Pause();
+        handle.AwaitRun();
+    }
+
+    private void ClearSuppressUnlessOff(MachineHandle handle)
+    {
+        lock (handle.Sync)
+        {
+            if (handle.Machine.State != MachineState.Off)
+            {
+                handle.SuppressDerived = false;
+            }
+        }
+    }
+
+    private async Task WaitUntilReportedAsync(MachineHandle handle, HostRunState desired, CancellationToken cancellationToken)
+    {
+        long started = Stopwatch.GetTimestamp();
+        while (!handle.IsReported(desired))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Task run = handle.CurrentRun;
+            if (run.IsFaulted)
+            {
+                await run.ConfigureAwait(false);
+            }
+
+            if (run.IsCompleted)
+            {
+                throw new InvalidOperationException($"The run loop ended before the machine was {desired}.");
+            }
+
+            if (Stopwatch.GetElapsedTime(started) > RunStartTimeout)
+            {
+                throw new InvalidOperationException($"The machine did not reach {desired}.");
+            }
+
+            await Task.Delay(5, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     private long EffectiveClock(long nominal, HostThrottle throttle)
     {
         return throttle switch
@@ -477,9 +881,30 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
 
     private void RequireOn(MachineHandle machine, string verb)
     {
-        if (machine.State is HostRunState.Off or HostRunState.ShuttingDown)
+        if (machine.ReportedState is HostRunState.Off or HostRunState.ShuttingDown)
         {
-            throw new InvalidOperationException($"Cannot {verb} while {machine.State}.");
+            throw new InvalidOperationException($"Cannot {verb} while {machine.ReportedState}.");
+        }
+    }
+
+    private void OnMachineStateChanged(MachineHandle handle, MachineState state)
+    {
+        HostRunState? reported;
+        bool changed;
+        lock (handle.Sync)
+        {
+            reported = handle.Translate(state);
+            if (reported is null)
+            {
+                return;
+            }
+
+            changed = handle.SetReportedState(reported.Value);
+        }
+
+        if (changed)
+        {
+            NotifyStateChanged(handle.Id, reported.Value);
         }
     }
 
@@ -488,42 +913,82 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
         Notify(sink => sink.OnStateChanged(new HostStateNotice(machineId, state)));
     }
 
-    private void OnMachineStateChanged(MachineHandle machine, MachineState state)
-    {
-        HostRunState? translated = state switch
-        {
-            MachineState.Off => HostRunState.Off,
-            MachineState.Running => HostRunState.Running,
-            MachineState.Paused => HostRunState.Paused,
-            MachineState.Stopped => null,
-            _ => null,
-        };
-
-        if (translated is null)
-        {
-            return;
-        }
-
-        bool changed = machine.UpdateState(translated.Value);
-        if (!changed)
-        {
-            return;
-        }
-
-        NotifyStateChanged(machine.Id, translated.Value);
-    }
-
     private void Notify(Action<IHostNotificationSink> notify)
     {
-        foreach (KeyValuePair<IHostNotificationSink, byte> sink in sinks)
+        if (sinks.IsEmpty)
         {
-            ThreadPool.UnsafeQueueUserWorkItem(
-                static state =>
-                {
-                    var (callback, target) = ((Action<IHostNotificationSink>, IHostNotificationSink))state!;
-                    callback(target);
-                },
-                (notify, sink.Key));
+            return;
+        }
+
+        IHostNotificationSink[] snapshot = sinks.Keys.ToArray();
+        if (snapshot.Length == 0)
+        {
+            return;
+        }
+
+        notices.Writer.TryWrite(() =>
+        {
+            foreach (IHostNotificationSink sink in snapshot)
+            {
+                notify(sink);
+            }
+        });
+    }
+
+    private async Task DeliverNoticesAsync()
+    {
+        await foreach (Action delivery in notices.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            await WaitUntilIdleAsync().ConfigureAwait(false);
+            delivery();
+        }
+    }
+
+    private void EnterOperation()
+    {
+        lock (operationLock)
+        {
+            operationsInProgress++;
+            if (operationsInProgress == 1)
+            {
+                operationsIdle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+    }
+
+    private void ExitOperation()
+    {
+        TaskCompletionSource? completed = null;
+        lock (operationLock)
+        {
+            operationsInProgress--;
+            if (operationsInProgress == 0)
+            {
+                completed = operationsIdle;
+            }
+        }
+
+        completed?.TrySetResult();
+    }
+
+    private async Task WaitUntilIdleAsync()
+    {
+        while (true)
+        {
+            Task idle;
+            lock (operationLock)
+            {
+                idle = operationsInProgress == 0
+                    ? Task.CompletedTask
+                    : operationsIdle.Task;
+            }
+
+            if (idle.IsCompleted)
+            {
+                return;
+            }
+
+            await idle.ConfigureAwait(false);
         }
     }
 
@@ -552,281 +1017,26 @@ public sealed class InProcessHostSession : IHostSession, IHostControl
         return new InvalidOperationException($"No machine '{machineId.Value}' is on this host.");
     }
 
-    private Task PostMutationAsync(MachineHandle machine, CancellationToken cancellationToken, Action action)
+    private void ObserveFault(Task task)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        machine.Machine.Post(() =>
+        if (task.IsCompleted)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                completed.TrySetCanceled(cancellationToken);
-                return;
-            }
+            _ = task.Exception;
+            return;
+        }
 
-            try
+        task.ContinueWith(
+            static completed =>
             {
-                action();
-                completed.TrySetResult();
-            }
-            catch (Exception ex)
-            {
-                completed.TrySetException(ex);
-            }
-        });
-
-        return completed.Task;
+                _ = completed.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private void Unsubscribe(IHostNotificationSink sink)
     {
         sinks.TryRemove(sink, out _);
-    }
-
-    private sealed class SinkSubscription : IDisposable
-    {
-        private readonly InProcessHostSession session;
-        private readonly IHostNotificationSink sink;
-        private int disposed;
-
-        internal SinkSubscription(InProcessHostSession session, IHostNotificationSink sink)
-        {
-            this.session = session;
-            this.sink = sink;
-        }
-
-        void IDisposable.Dispose()
-        {
-            if (Interlocked.Exchange(ref disposed, 1) != 0)
-            {
-                return;
-            }
-
-            session.Unsubscribe(sink);
-        }
-    }
-
-    private sealed class MachineHandle
-    {
-        private readonly Action<MachineHandle, MachineState> stateChanged;
-        private int disposed;
-
-        internal MachineHandle(
-            MachineId id,
-            HostInstanceSpec spec,
-            IMachine machine,
-            MachineInfo info,
-            Action<MachineHandle, MachineState> stateChanged)
-        {
-            Id = id;
-            Name = spec.Name;
-            ProfileId = spec.ProfileId;
-            StartPaused = spec.StartPaused;
-            PowerCapabilities = spec.PowerCapabilities;
-            NominalClockHz = spec.NominalClockHz;
-            OutputKind = spec.OutputKind;
-            CpuSummary = spec.CpuSummary ?? info.CpuType;
-            SchedulerSummary = spec.SchedulerSummary;
-            Machine = machine;
-            this.stateChanged = stateChanged;
-            machine.StateChanged += OnMachineStateChanged;
-        }
-
-        internal Lock Sync { get; } = new();
-
-        internal MachineId Id { get; }
-
-        internal IMachine Machine { get; }
-
-        internal string Name { get; }
-
-        internal string ProfileId { get; }
-
-        internal bool StartPaused { get; }
-
-        internal PowerCapabilities? PowerCapabilities { get; }
-
-        internal long NominalClockHz { get; }
-
-        internal HostVideoKind OutputKind { get; }
-
-        internal string? CpuSummary { get; }
-
-        internal string? SchedulerSummary { get; }
-
-        internal HostRunState State { get; private set; } = HostRunState.Off;
-
-        internal HostThrottle Throttle { get; set; } = HostThrottle.Normal;
-
-        internal string? OverlayJson { get; set; }
-
-        internal HostMachineInfo ReadInfo()
-        {
-            lock (Sync)
-            {
-                return new HostMachineInfo(
-                    Id,
-                    Name,
-                    State,
-                    PowerCapabilities,
-                    NominalClockHz,
-                    Throttle,
-                    EffectiveClockForInfo(NominalClockHz, Throttle),
-                    CalculateMeasuredSpeed(),
-                    ProfileId,
-                    OverlayJson,
-                    DebuggerAttached: false,
-                    CpuSummary,
-                    SchedulerSummary,
-                    BootDriveId: null,
-                    OutputKind,
-                    StartPaused);
-            }
-        }
-
-        internal bool UpdateState(HostRunState value)
-        {
-            lock (Sync)
-            {
-                if (State == value)
-                {
-                    return false;
-                }
-
-                State = value;
-                return true;
-            }
-        }
-
-        internal void Dispose()
-        {
-            DisposeCore();
-        }
-
-        private void OnMachineStateChanged(MachineState state)
-        {
-            stateChanged(this, state);
-        }
-
-        private double? CalculateMeasuredSpeed()
-        {
-            lock (Sync)
-            {
-                if (State != HostRunState.Running)
-                {
-                    return null;
-                }
-
-                long clockSpeed = Machine.ClockSpeedHz;
-                if (NominalClockHz <= 0)
-                {
-                    return null;
-                }
-
-                if (clockSpeed == 0)
-                {
-                    return null;
-                }
-
-                return Math.Clamp(clockSpeed / (double)NominalClockHz, 0, 1000);
-            }
-        }
-
-        private long EffectiveClockForInfo(long nominal, HostThrottle throttle)
-        {
-            return throttle switch
-            {
-                HostThrottle.Half => nominal / 2,
-                HostThrottle.Normal => nominal,
-                HostThrottle.Double => nominal > (long.MaxValue / 2)
-                    ? 0
-                    : nominal * 2,
-                HostThrottle.Max => 0,
-                _ => nominal,
-            };
-        }
-
-        private void DisposeCore()
-        {
-            if (Interlocked.Exchange(ref disposed, 1) != 0)
-            {
-                return;
-            }
-
-            Machine.StateChanged -= OnMachineStateChanged;
-            Machine.Dispose();
-        }
-    }
-
-    private sealed class NotSupportedHostPresentation(string slice) : IHostPresentation
-    {
-        IPresentationSubscription IHostPresentation.Subscribe(MachineId machineId, string windowId, HostMonitorChoice? monitor)
-        {
-            throw new NotSupportedException($"Presentation is not implemented in host slice {slice}.");
-        }
-
-        HostScreenText IHostPresentation.GetScreenText(MachineId machineId)
-        {
-            throw new NotSupportedException($"Presentation is not implemented in host slice {slice}.");
-        }
-
-        HostVideoState IHostPresentation.GetVideoState(MachineId machineId)
-        {
-            throw new NotSupportedException($"Presentation is not implemented in host slice {slice}.");
-        }
-    }
-
-    private sealed class NotSupportedHostInput(string slice) : IHostInput
-    {
-        void IHostInput.KeyDown(MachineId machineId, HostKey key, HostKeyModifiers modifiers) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        void IHostInput.KeyUp(MachineId machineId, HostKey key, HostKeyModifiers modifiers) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        HostTextReceipt IHostInput.InjectText(MachineId machineId, string text) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        void IHostInput.SetJoystick(MachineId machineId, int index, float x, float y) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        void IHostInput.SetPaddle(MachineId machineId, int paddle, byte position) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        void IHostInput.SetButton(MachineId machineId, int button, bool pressed) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        void IHostInput.MoveMouse(MachineId machineId, HostMouseMotionKind kind, float x, float y) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        void IHostInput.SetMouseButton(MachineId machineId, HostMouseButton button, bool pressed) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        void IHostInput.CapturePointer(MachineId machineId, string windowId) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        void IHostInput.ReleasePointer(MachineId machineId, string windowId) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-
-        HostInputState IHostInput.GetInputState(MachineId machineId) => throw new NotSupportedException($"Input is not implemented in host slice {slice}.");
-    }
-
-    private sealed class NotSupportedHostDebugger(string slice) : IHostDebugger
-    {
-        bool IHostDebugger.IsAttached(MachineId machineId) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        HostMemoryBlock IHostDebugger.ReadMemory(MachineId machineId, uint address, int length) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        void IHostDebugger.WriteMemory(MachineId machineId, uint address, ReadOnlyMemory<byte> data) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        IReadOnlyList<HostDisassemblyLine> IHostDebugger.Disassemble(MachineId machineId, uint address, int count) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        HostRegisters IHostDebugger.GetRegisters(MachineId machineId) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        void IHostDebugger.AddBreakpoint(MachineId machineId, uint address, string? label) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        bool IHostDebugger.RemoveBreakpoint(MachineId machineId, uint address) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        IReadOnlyList<HostBreakpoint> IHostDebugger.GetBreakpoints(MachineId machineId) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        void IHostDebugger.ClearBreakpoints(MachineId machineId) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        void IHostDebugger.AddWatch(MachineId machineId, uint address, HostWatchAccess access, bool stopOnHit, string? label) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        bool IHostDebugger.RemoveWatch(MachineId machineId, uint address) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        IReadOnlyList<HostWatch> IHostDebugger.GetWatches(MachineId machineId) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
-
-        void IHostDebugger.ClearWatches(MachineId machineId) => throw new NotSupportedException($"Debugger is not implemented in host slice {slice}.");
     }
 }

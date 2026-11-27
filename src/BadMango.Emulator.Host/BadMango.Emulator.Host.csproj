@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="BadMango.Emulator.Host.Contracts.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\BadMango.Emulator.Host.Contracts\BadMango.Emulator.Host.Contracts.csproj" />
     <ProjectReference Include="..\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
     <ProjectReference Include="..\BadMango.Emulator.Debug.Infrastructure\BadMango.Emulator.Debug.Infrastructure.csproj" />
