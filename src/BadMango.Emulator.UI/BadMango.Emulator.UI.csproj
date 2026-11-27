@@ -40,7 +40,10 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
     <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" />
 
-    <!-- Logging with Serilog. Logging.Abstractions is inbox on net11.0; NU1510 is suppressed so the folded host-shell reference stays explicit. -->
+    <!-- Logging with Serilog.
+         Microsoft.Extensions.Logging.Abstractions is inbox on net11.0, so a direct PackageReference raises NU1510.
+         The reference stays because the folded host-shell code uses ILogger and the consolidation move requires that dependency on this csproj.
+         NoWarn keeps the explicit reference under warnaserror. The version is pinned in Directory.Packages.props. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions">
       <NoWarn>NU1510</NoWarn>
     </PackageReference>
@@ -66,9 +69,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="BadMango.Emulator.UI.Tests" />
-    <InternalsVisibleTo Include="BadMango.Emulator.Infrastructure.Tests" />
-    <InternalsVisibleTo Include="BadMango.Emulator.Configuration.Tests" />
-    <InternalsVisibleTo Include="BadMango.Emulator.UI" />
   </ItemGroup>
 
   <ItemGroup>
