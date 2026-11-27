@@ -393,6 +393,13 @@
                 "config": {
                     "type": "object",
                     "description": "Device-specific configuration",
+                    "properties": {
+                        "autoRepeat": {
+                            "type": "boolean",
+                            "description": "Keyboard only. When true (the default), a held matrix key sets the strobe again after 40 vertical blanks and then every 4. When false, the key latches once.",
+                            "default": true
+                        }
+                    },
                     "additionalProperties": true
                 }
             }

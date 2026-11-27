@@ -507,10 +507,10 @@ public sealed class ResetSignalMachineTests
         Assert.Multiple(() =>
         {
             Assert.That(keyDataAfterReset, Is.EqualTo((byte)'Z'), "RESET should clear strobe but keep the held key value");
-            Assert.That(keyDownAfterReset, Is.EqualTo(0x80), "Held key should remain physically down through RESET");
+            Assert.That(keyDownAfterReset, Is.EqualTo((byte)('Z' | 0x80)), "Held key should remain physically down through RESET, with the latched ASCII");
             Assert.That(pb0AfterReset, Is.EqualTo(0x80), "Open Apple should remain held through RESET");
             Assert.That(pb2AfterReset, Is.EqualTo(0x80), "Shift should remain held through RESET");
-            Assert.That(keyDownAfterRelease, Is.EqualTo(0x00), "KeyUp after RESET should clear KBDSTRB");
+            Assert.That(keyDownAfterRelease, Is.EqualTo((byte)'Z'), "KeyUp after RESET clears AKD and leaves the ASCII");
         });
     }
 

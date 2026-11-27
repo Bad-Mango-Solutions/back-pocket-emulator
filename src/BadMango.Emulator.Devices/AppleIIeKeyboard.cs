@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Devices;
 
+using System.Text.Json;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
@@ -21,11 +23,12 @@ using Interfaces;
 /// </para>
 /// <list type="bullet">
 /// <item><description>$C000: Keyboard data (bit 7 = strobe, bits 6-0 = ASCII)</description></item>
-/// <item><description>$C010: Any key down flag (read) / clear strobe (read or write)</description></item>
+/// <item><description>$C010: Any-key-down in bit 7 and the latched ASCII in bits 0–6. A read or write with side effects clears the strobe; a side-effect-free access does not. A write with side effects anywhere in $C011–$C01F also clears the strobe.</description></item>
 /// </list>
 /// <para>
 /// When a key is pressed, the ASCII code is latched into the keyboard data register
-/// with the high bit (strobe) set. The strobe remains set until cleared by accessing $C010.
+/// with the high bit (strobe) set. The strobe remains set until a side-effecting read or write
+/// of $C010, or a side-effecting write in $C011–$C01F, clears it. A side-effect-free access does not.
 /// </para>
 /// <para>
 /// The keyboard tracks the modifier inputs that map to the Apple II pushbuttons:
@@ -43,9 +46,16 @@ using Interfaces;
 /// machine's <see cref="KeyboardInput"/>, and only on the machine thread, so they apply directly.
 /// Typed text is not queued here; <see cref="KeyboardInput.TypeText"/> owns that queue.
 /// </para>
+/// <para>
+/// Auto-repeat, when <see cref="AutoRepeat"/> is set, counts <see cref="IVideoDevice.VBlankOccurred"/>
+/// on the machine thread. A matrix key that stays down sets the strobe again on the 40th vertical
+/// blank and then every 4 blanks, with the same ASCII. Forty is the midpoint of the 32–48 blank
+/// delay; the flash-counter phase that picks a point in that range is not modeled. Reset and
+/// modifier keys do not repeat, and pressing another matrix key starts the delay over.
+/// </para>
 /// </remarks>
 [DeviceType("keyboard")]
-public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoftSwitchProvider, IResetReceiver
+public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoftSwitchProvider, IResetReceiver, IProfileConfiguredDevice
 {
     private const ushort KeyboardDataAddress = 0xC000;
     private const ushort KeyboardStrobeAddress = 0xC010;
@@ -64,10 +74,28 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
 
     private const int ResetSourceDeviceId = int.MinValue + 2;
 
+    /// <summary>
+    /// Vertical blanks a matrix key is held before the first auto-repeat strobe.
+    /// </summary>
+    /// <remarks>
+    /// Sather's delay is 32–48 vertical scans, depending on the flash-counter phase.
+    /// That phase is not modeled, so this is the midpoint. The first repeat falls on
+    /// this blank, which is a multiple of <see cref="AutoRepeatIntervalVBlanks"/>.
+    /// </remarks>
+    private const int AutoRepeatDelayVBlanks = 40;
+
+    /// <summary>
+    /// Vertical blanks between auto-repeat strobes (vertical frequency divided by 4).
+    /// </summary>
+    private const int AutoRepeatIntervalVBlanks = 4;
+
     private readonly IKeyTranslator translator;
     private readonly KeystrokeLookup keystrokes;
     private readonly Dictionary<KeyboardKey, int> heldKeys = [];
     private IMachineDispatcher? dispatcher;
+    private IVideoDevice? videoDevice;
+    private KeyboardKey repeatKey;
+    private int vblanksHeld;
     private byte lastKey;
     private bool strobe;
     private bool keyDown;
@@ -127,6 +155,20 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
     /// <inheritdoc />
     public bool RequireControlForReset { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether a held matrix key auto-repeats.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to set the strobe again after <c>40</c> vertical blanks and then
+    /// every <c>4</c>; <see langword="false"/> to latch the key once. The default is
+    /// <see langword="true"/>.
+    /// </value>
+    /// <remarks>
+    /// A profile sets this from <c>config.autoRepeat</c>. The count comes from the video
+    /// device's vertical blank, on the machine thread.
+    /// </remarks>
+    public bool AutoRepeat { get; set; } = true;
+
     /// <inheritdoc />
     public string ProviderName => "Keyboard";
 
@@ -154,6 +196,34 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
         scheduler = context.Scheduler;
         signals = context.Signals;
         dispatcher = context as IMachineDispatcher;
+        AttachVideo(context.GetComponent<IVideoDevice>());
+    }
+
+    /// <summary>
+    /// Applies <c>autoRepeat</c> from the keyboard's profile <c>config</c> object.
+    /// </summary>
+    /// <param name="config">
+    /// The <c>devices.motherboard[].config</c> object, or <see langword="null"/> when the profile omits it.
+    /// </param>
+    /// <exception cref="InvalidOperationException"><c>autoRepeat</c> is present and is not a boolean.</exception>
+    /// <remarks>
+    /// Other config keys belong to later keyboard work and are ignored. An omitted <c>autoRepeat</c>
+    /// leaves <see cref="AutoRepeat"/> as it is, which starts as <see langword="true"/>.
+    /// </remarks>
+    public void ApplyProfileConfig(JsonElement? config)
+    {
+        if (config is not { ValueKind: JsonValueKind.Object } element
+            || !element.TryGetProperty("autoRepeat", out JsonElement value))
+        {
+            return;
+        }
+
+        if (value.ValueKind != JsonValueKind.True && value.ValueKind != JsonValueKind.False)
+        {
+            throw new InvalidOperationException("Keyboard config 'autoRepeat' must be a boolean.");
+        }
+
+        AutoRepeat = value.GetBoolean();
     }
 
     /// <inheritdoc />
@@ -164,8 +234,17 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
         // $C000: Keyboard data (read-only for keyboard, write-only for 80STORE)
         dispatcher.RegisterRead(KeyboardDataOffset, ReadKeyboardData);
 
-        // $C010: Clear strobe (read and write)
+        // $C010: AKD and latched ASCII on read. A read or write with side effects clears the strobe.
         dispatcher.Register(KeyboardStrobeOffset, ClearStrobeRead, ClearStrobeWrite);
+
+        // $C011–$C01F writes have no owner. The IOU, MMU, video, and character devices
+        // register reads only (banking status, RDVBL–RDHIRES, RDALTCHAR, RD80COL).
+        // RegisterWrite does not replace those reads, so the keyboard can clear
+        // KEYSTROBE on W$C01X without taking the read. The reads themselves stay as they are.
+        for (int strobeOffset = KeyboardStrobeOffset + 1; strobeOffset <= 0x1F; strobeOffset++)
+        {
+            dispatcher.RegisterWrite((byte)strobeOffset, ClearStrobeWrite);
+        }
 
         // $C061-$C063: Pushbutton inputs (read-only).
         // Register only when unclaimed so GameIOController can remain the single owner
@@ -183,6 +262,8 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
         directKeyDown = false;
         heldKeys.Clear();
         keyDown = false;
+        repeatKey = KeyboardKey.None;
+        vblanksHeld = 0;
         resetKeyPressed = false;
         SetResetLineState(asserted: false);
     }
@@ -264,6 +345,8 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
         heldKeys[key] = heldKeys.GetValueOrDefault(key) + 1;
         lastKey = (byte)(code.Value & 0x7F);
         strobe = true;
+        repeatKey = key;
+        vblanksHeld = 0;
         SetKeyDownFlag();
     }
 
@@ -292,6 +375,12 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
             }
         }
 
+        if (key == repeatKey && !heldKeys.ContainsKey(key))
+        {
+            repeatKey = KeyboardKey.None;
+            vblanksHeld = 0;
+        }
+
         SetKeyDownFlag();
     }
 
@@ -317,6 +406,10 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
     public void OnResetAsserted(Cycle cycle)
     {
         strobe = false;
+
+        // The repeat counter lives in the IOU, which RESET' clears. A key that is still
+        // held starts the 40-blank delay over instead of repeating immediately.
+        vblanksHeld = 0;
     }
 
     /// <inheritdoc />
@@ -331,7 +424,8 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
 
     private byte ClearStrobeRead(byte offset, in BusAccess context)
     {
-        byte result = keyDown ? KeyDownBit : (byte)0x00;
+        // Bit 7 is AKD. Bits 0–6 are the latched ASCII, which lastKey already stores without bit 7.
+        byte result = keyDown ? (byte)(lastKey | KeyDownBit) : lastKey;
 
         if (!context.IsSideEffectFree)
         {
@@ -365,6 +459,46 @@ public sealed class AppleIIeKeyboard : IKeyboardDevice, IHostKeyboardSink, ISoft
     {
         // PB2 / Shift key: bit 7 set = key pressed
         return modifiers.HasFlag(KeyboardModifiers.Shift) ? ButtonPressedBit : (byte)0x00;
+    }
+
+    private void AttachVideo(IVideoDevice? source)
+    {
+        if (ReferenceEquals(videoDevice, source))
+        {
+            return;
+        }
+
+        if (videoDevice is not null)
+        {
+            videoDevice.VBlankOccurred -= OnVBlank;
+        }
+
+        videoDevice = source;
+        if (videoDevice is not null)
+        {
+            videoDevice.VBlankOccurred += OnVBlank;
+        }
+    }
+
+    /// <summary>
+    /// Counts one vertical blank toward auto-repeat. Runs on the machine thread from
+    /// <see cref="IVideoDevice.VBlankOccurred"/> and does not allocate.
+    /// </summary>
+    private void OnVBlank()
+    {
+        if (!AutoRepeat || repeatKey == KeyboardKey.None)
+        {
+            return;
+        }
+
+        vblanksHeld++;
+        int sinceDelay = vblanksHeld - AutoRepeatDelayVBlanks;
+        if (sinceDelay < 0 || (sinceDelay % AutoRepeatIntervalVBlanks) != 0)
+        {
+            return;
+        }
+
+        strobe = true;
     }
 
     private void OnMachineThread(Action action)

@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Devices.Tests;
 
+using System.Text.Json;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core;
@@ -103,7 +105,22 @@ public class AppleIIeKeyboardTests
 
         byte result = dispatcher.Read(0x10, in context);
 
-        Assert.That(result, Is.EqualTo(0x80)); // Key is down
+        Assert.That(result, Is.EqualTo(0xC1)); // AKD plus latched 'A'
+    }
+
+    /// <summary>
+    /// Verifies that $C010 keeps the latched ASCII after the key is released and clears AKD.
+    /// </summary>
+    [Test]
+    public void ReadC010_AfterKeyUp_ReturnsAsciiWithoutAkd()
+    {
+        device.KeyDown(0x41);
+        device.KeyUp();
+        var context = CreateTestContext();
+
+        byte result = dispatcher.Read(0x10, in context);
+
+        Assert.That(result, Is.EqualTo(0x41));
     }
 
     /// <summary>
@@ -118,6 +135,145 @@ public class AppleIIeKeyboardTests
         dispatcher.Write(0x10, 0x00, in context);
 
         Assert.That(device.KeyData, Is.EqualTo(0x41)); // Strobe cleared
+    }
+
+    /// <summary>
+    /// Verifies that a write anywhere in $C011–$C01F clears the strobe and leaves the ASCII latched.
+    /// </summary>
+    [Test]
+    public void WriteC011ThroughC01F_ClearsStrobe()
+    {
+        var context = CreateTestContext();
+
+        for (byte offset = 0x11; offset <= 0x1F; offset++)
+        {
+            device.KeyDown(0x41);
+            dispatcher.Write(offset, 0x5A, in context);
+            Assert.That(device.KeyData, Is.EqualTo(0x41), $"Write to $C0{offset:X2} should clear the strobe");
+        }
+    }
+
+    /// <summary>
+    /// Verifies that <c>autoRepeat</c> defaults to true, parses a boolean, and rejects any other JSON type.
+    /// </summary>
+    [Test]
+    public void ApplyProfileConfig_ReadsAutoRepeat()
+    {
+        Assert.That(device.AutoRepeat, Is.True);
+
+        device.ApplyProfileConfig(null);
+        Assert.That(device.AutoRepeat, Is.True, "A missing config leaves the default");
+
+        using (JsonDocument omitted = JsonDocument.Parse("{\"preset\":\"enhanced\"}"))
+        {
+            device.AutoRepeat = false;
+            device.ApplyProfileConfig(omitted.RootElement);
+            Assert.That(device.AutoRepeat, Is.False, "Omitting autoRepeat does not force the default back on");
+        }
+
+        using (JsonDocument enabled = JsonDocument.Parse("{\"autoRepeat\":true}"))
+        {
+            device.ApplyProfileConfig(enabled.RootElement);
+            Assert.That(device.AutoRepeat, Is.True);
+        }
+
+        using JsonDocument disabled = JsonDocument.Parse("{\"autoRepeat\":false}");
+        device.ApplyProfileConfig(disabled.RootElement);
+        Assert.That(device.AutoRepeat, Is.False);
+
+        using JsonDocument wrongType = JsonDocument.Parse("{\"autoRepeat\":\"yes\"}");
+        Assert.Throws<InvalidOperationException>(() => device.ApplyProfileConfig(wrongType.RootElement));
+    }
+
+    /// <summary>
+    /// Verifies that the first auto-repeat strobe is the 40th vertical blank, then every 4th.
+    /// </summary>
+    [Test]
+    public void AutoRepeat_SetsStrobeOn40thVBlank_ThenEveryFourth()
+    {
+        Mock<IVideoDevice> video = AttachVideo(device);
+        var context = CreateTestContext();
+        device.OnHostKeyDown(KeyboardKey.A, KeyboardModifiers.Shift);
+        _ = dispatcher.Read(0x10, in context);
+
+        RaiseVBlanks(video, 39);
+        Assert.That(device.KeyData & 0x80, Is.Zero, "39 vertical blanks are still inside the delay");
+
+        RaiseVBlanks(video, 1);
+        Assert.That(device.KeyData, Is.EqualTo((byte)('A' | 0x80)), "The 40th blank repeats 'A'");
+
+        _ = dispatcher.Read(0x10, in context);
+        RaiseVBlanks(video, 3);
+        Assert.That(device.KeyData & 0x80, Is.Zero, "The next three blanks do not repeat");
+
+        RaiseVBlanks(video, 1);
+        Assert.That(device.KeyData, Is.EqualTo((byte)('A' | 0x80)), "The 44th blank repeats 'A'");
+    }
+
+    /// <summary>
+    /// Verifies that <c>autoRepeat: false</c> never sets the strobe again, and that a new matrix
+    /// key restarts the delay.
+    /// </summary>
+    [Test]
+    public void AutoRepeat_DisabledOrNewKey_DoesNotContinueThePreviousDelay()
+    {
+        Mock<IVideoDevice> video = AttachVideo(device);
+        var context = CreateTestContext();
+        using (JsonDocument disabled = JsonDocument.Parse("{\"autoRepeat\":false}"))
+        {
+            device.ApplyProfileConfig(disabled.RootElement);
+        }
+
+        device.OnHostKeyDown(KeyboardKey.A, KeyboardModifiers.None);
+        _ = dispatcher.Read(0x10, in context);
+        RaiseVBlanks(video, 80);
+        Assert.That(device.KeyData, Is.EqualTo((byte)'a'), "autoRepeat false latches the key once");
+
+        device.AutoRepeat = true;
+        device.OnHostKeyDown(KeyboardKey.A, KeyboardModifiers.None);
+        _ = dispatcher.Read(0x10, in context);
+        RaiseVBlanks(video, 39);
+        device.OnHostKeyDown(KeyboardKey.B, KeyboardModifiers.None);
+        _ = dispatcher.Read(0x10, in context);
+        RaiseVBlanks(video, 39);
+        Assert.That(device.KeyData & 0x80, Is.Zero, "B restarts the 40-blank delay");
+
+        RaiseVBlanks(video, 1);
+        Assert.That(device.KeyData, Is.EqualTo((byte)('b' | 0x80)));
+    }
+
+    /// <summary>
+    /// Verifies that releasing the repeating key stops the repeat, including when an older key
+    /// is still down, and that Reset and modifier keys never repeat.
+    /// </summary>
+    [Test]
+    public void AutoRepeat_ReleaseResetAndModifiers_DoNotRepeat()
+    {
+        Mock<IVideoDevice> video = AttachVideo(device);
+        var context = CreateTestContext();
+
+        device.OnHostKeyDown(KeyboardKey.A, KeyboardModifiers.None);
+        device.OnHostKeyDown(KeyboardKey.B, KeyboardModifiers.None);
+        device.OnHostKeyUp(KeyboardKey.B, KeyboardModifiers.None);
+        _ = dispatcher.Read(0x10, in context);
+        RaiseVBlanks(video, 80);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(device.HasKeyDown, Is.True, "A is still held");
+            Assert.That(device.KeyData, Is.EqualTo((byte)'b'), "Releasing B stops the repeat and does not re-latch A");
+        });
+
+        device.OnHostKeyUp(KeyboardKey.A, KeyboardModifiers.None);
+        device.OnHostKeyDown(KeyboardKey.LeftShift, KeyboardModifiers.Shift);
+        device.OnHostKeyDown(KeyboardKey.Reset, KeyboardModifiers.Control);
+        RaiseVBlanks(video, 80);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(device.HasKeyDown, Is.False);
+            Assert.That(device.KeyData & 0x80, Is.Zero, "Shift and Reset do not auto-repeat");
+        });
     }
 
     /// <summary>
@@ -608,6 +764,24 @@ public class AppleIIeKeyboardTests
             Assert.That(device.KeyData, Is.EqualTo(0x41), "Strobe should be cleared while key value is preserved");
             Assert.That(device.Modifiers, Is.EqualTo(KeyboardModifiers.OpenApple | KeyboardModifiers.ClosedApple));
         });
+    }
+
+    private static Mock<IVideoDevice> AttachVideo(AppleIIeKeyboard keyboard)
+    {
+        var video = new Mock<IVideoDevice>();
+        var context = new Mock<IEventContext>();
+        context.Setup(c => c.Scheduler).Returns(Mock.Of<IScheduler>());
+        context.Setup(c => c.GetComponent<IVideoDevice>()).Returns(video.Object);
+        keyboard.Initialize(context.Object);
+        return video;
+    }
+
+    private static void RaiseVBlanks(Mock<IVideoDevice> video, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            video.Raise(v => v.VBlankOccurred += null);
+        }
     }
 
     private static BusAccess CreateTestContext()

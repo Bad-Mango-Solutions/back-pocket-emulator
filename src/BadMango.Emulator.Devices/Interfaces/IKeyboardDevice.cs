@@ -19,7 +19,7 @@ using BadMango.Emulator.Bus.Interfaces;
 /// </para>
 /// <list type="bullet">
 /// <item><description>$C000: Keyboard data (bit 7 = strobe, bits 6-0 = ASCII)</description></item>
-/// <item><description>$C010: Any key down flag / clear strobe</description></item>
+/// <item><description>$C010: Any-key-down in bit 7 and the latched ASCII in bits 0–6. A read or write with side effects clears the strobe; a side-effect-free access does not. Side-effecting writes in $C010–$C01F clear the strobe.</description></item>
 /// </list>
 /// </remarks>
 public interface IKeyboardDevice : IMotherboardDevice, IResetSource
