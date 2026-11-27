@@ -39,7 +39,7 @@ Where this spec and a later sub-issue of #445 disagree, this spec wins until Jos
 
 `OpenAlAudioOutput` is mono, 16-bit, three 1024-sample buffers, and a ring of `sampleRate * 200 / 1000` samples (8820 at 44.1 kHz, about 200 ms). Overrun drops the oldest samples. The playback thread is the only consumer. `IAudioOutput` extends `IDisposable` and its only playback method is `Play(short[])`. `Dispose` is the lifetime: `OpenAlAudioOutput.Dispose` cancels the playback thread and joins it (2 s timeout) before releasing the OpenAL device and context. `SpeakerController.Dispose` disposes that sink today, because the speaker constructed it.
 
-**There is no standard machine-owned line-out contract yet.** The current path has no format descriptor object, no cycle-stamped block contract, no fan-out taps, and no policy for slow consumers beyond the OpenAL ring's own drop behavior. Cassette out (`$C020`) is not modeled as a mix source, and cassette in (`$C060` bit 7) does not yet consume the same stream shape from tape audio.
+**There is no standard machine-owned line-out contract yet.** The current path has no format descriptor object, no cycle-stamped block contract, no fan-out taps, and no policy for slow consumers beyond the OpenAL ring's own drop behavior. Cassette out (`$C020`) is not modeled as a mix source.
 
 `ScheduledEventKind.AudioTick` exists. The speaker does not schedule it. Synthesis is driven by bus-access timestamps plus the wall-clock flush timer.
 
@@ -113,7 +113,6 @@ flowchart LR
     TAPS["Tap fan-out<br/>non-blocking"]
     SINK["Host sink(s)<br/>OpenAL/WASAPI/..."]
     REC["Recorder / hash / visualizer taps"]
-    CASI["CassetteInSource<br/>stream -> threshold -> $C060 bit 7"]
   end
 
   CPU --> CX --> VIA
@@ -126,7 +125,6 @@ flowchart LR
   MIX --> LINE --> TAPS
   TAPS --> SINK
   TAPS --> REC
-  TAPS --> CASI
 ```
 
 The hot thread does three small things for audio. It applies register writes on the bus access that caused them. It fires a VIA underflow from a `ScheduledEventKind.DeviceTimer` event, which updates IFR and the signal bus. It renders a quantum of PCM on `ScheduledEventKind.AudioTick` into a buffer the mixer already owns and publishes one line-out block. Host playback, recording, and visualization consume published blocks from taps outside the emulation core.
@@ -140,11 +138,13 @@ Every machine instance owns one `line out` stream. The stream contract is host-i
 The stream publishes fixed-size PCM quanta with:
 
 - `AudioLineOutFormat`: sample rate, sample type, channel count, and channel layout metadata.
-- `AudioLineOutBlock`: sample payload plus `[fromCycle, toCycle)` coverage in emulated time.
+- `AudioLineOutBlock`: sample payload plus `[fromCycle, toCycle)` coverage in emulated time and a `Discontinuity` flag.
 
-For v1, the format is 44 100 Hz, signed 16-bit PCM, mono. The contract MUST still carry channel count/layout so stereo is a format change, not an interface change (decision 16).
+For v1, the format is 44 100 Hz, signed 16-bit PCM, mono. The contract MUST still carry channel count/layout so stereo is a format change, not an interface change (decision 16). The line-out format is fixed for a powered-on machine; it can change only across a power cycle (for example when a stereo card is attached while the machine is Off). Taps receive the current `AudioLineOutFormat` when they attach.
 
 Ownership rules in #606 are reconciled as follows: the mixer owns line-out production; host sinks are subscribers (taps) registered by the client host (`emudbg`, `bpui`, MCP tools), not by speaker/sound-card/core device construction. The emulation thread MUST NOT block on tap delivery. A slow tap drops blocks and records a drop counter; emulation timeline progress wins over tap completeness.
+
+The payload is a view over a buffer the mixer owns and reuses. It is valid only for the duration of the tap's delivery call. A tap that needs the samples later MUST copy them into its own storage before returning. Publishing a block MUST NOT allocate per quantum.
 
 Suggested types, all new unless named as existing:
 
@@ -157,7 +157,7 @@ Suggested types, all new unless named as existing:
 | `PhasorCard` | Same shape plus the mode latch, four PSGs, and the native / Echo+ maps. `[DeviceType("phasor")]`. |
 | `IAudioSource` | `Render(Span<int> into, Cycle from, Cycle to)` adding into a 32-bit mix. |
 | `AudioLineOutFormat` | Host-independent stream descriptor (rate, sample type, channel count/layout). |
-| `AudioLineOutBlock` | One PCM block plus covered emulated cycle range. |
+| `AudioLineOutBlock` | One PCM block plus covered emulated cycle range and a `Discontinuity` flag. The payload is `ReadOnlyMemory<short>`. |
 | `IAudioTap` | Non-blocking subscriber for published line-out blocks. |
 | `AudioMixer` | Owns line-out production and fan-out to registered taps. Sums sources. Implements speed policy in §11. |
 | `IAudioOutput` | Legacy sink contract, adapted at the client boundary as one `IAudioTap` implementation. |
@@ -330,11 +330,13 @@ Timer IRQs are not delayed to the quantum. They fire from `DeviceTimer` on their
 
 ### 11.1 Stream contract
 
-`AudioMixer` produces one host-independent line-out stream per machine. The stream contract is `AudioLineOutFormat` + `AudioLineOutBlock` (`short[]` payload plus `[fromCycle, toCycle)` stamp). v1 format is 44 100 Hz, signed 16-bit PCM, mono. The format descriptor MUST include channel count/layout so a later stereo rollout does not require an interface change.
+`AudioMixer` produces one host-independent line-out stream per machine. The stream contract is `AudioLineOutFormat` + `AudioLineOutBlock` (`ReadOnlyMemory<short>` payload plus `[fromCycle, toCycle)` stamp and a `Discontinuity` flag). v1 format is 44 100 Hz, signed 16-bit PCM, mono. The format descriptor MUST include channel count/layout so a later stereo rollout does not require an interface change. The payload is a view over a buffer the mixer owns and reuses. It is valid only for the duration of the tap's delivery call. A tap that needs the samples later MUST copy them into its own storage before returning. Publishing a block MUST NOT allocate per quantum. `Discontinuity` is true on the first block published after the timeline skipped audio (unthrottled or #443 acceleration window, §11.6) or after the idle stop described in §11.4. The line-out format is fixed for a powered-on machine; it can change only across a power cycle (for example when a stereo card is attached while the machine is Off). Taps receive the current `AudioLineOutFormat` when they attach.
 
 ### 11.2 Tap fan-out and back-pressure
 
-The mixer publishes each quantum to zero or more `IAudioTap` subscribers (host sink, WAV recorder, golden/hash recorder, visualizer, cassette input threshold path). Tap delivery MUST be non-blocking for emulation. If a tap cannot keep up, that tap drops older blocks and updates a drop counter; emulated cycle progression and source state updates continue with no stall.
+The mixer publishes each quantum to zero or more `IAudioTap` subscribers (host sink, WAV recorder, golden/hash recorder, visualizer). Tap delivery MUST be non-blocking for emulation. If a tap cannot keep up, that tap drops older blocks and updates a drop counter; emulated cycle progression and source state updates continue with no stall.
+
+Delivery to a tap runs on the machine thread and MUST only copy the block into that tap's bounded ring and return. The ring holds 8 blocks per tap by default (80 ms at the v1 quantum) and drops the oldest block when full, incrementing the drop counter; each consumer drains its ring on its own thread. Taps MUST NOT call back into the machine, take `machine.Gate`, or block.
 
 The OpenAL backend is one tap attached by `emudbg`/`bpui` composition and is not owned by core devices. Headless runs attach no host sink.
 
@@ -346,11 +348,11 @@ Left and right chips both add at full scale. Mute (§16) zeros a channel before 
 
 ### 11.4 Quantum and latency
 
-The mixer schedules `AudioTick` on a fixed host-sample quantum: 441 samples, which is 10 ms at 44.1 kHz. That sample count does not change with `ClockSpeedHz`. What changes is how many bus cycles those 441 samples cover. The pitch divisor is `ClockSpeedHz` when it is greater than zero, else `1_020_484`, the same split `SpeakerController.GetCyclesPerSecond` uses. At the nominal clock a tick spans about 10 205 cycles. At a throttled 4 MHz it spans about four times that many cycles, so the same latch sounds higher, and each tick is still 10 ms of host audio. Wall-clock latency stays put because the ring is filled in sample time, not in bus-cycle time. The tick runs on the machine thread, renders, and enqueues.
+The mixer schedules `AudioTick` on a fixed host-sample quantum: 441 samples, which is 10 ms at 44.1 kHz. That sample count does not change with `ClockSpeedHz`. What changes is how many bus cycles those 441 samples cover. The pitch divisor is `ClockSpeedHz` when it is greater than zero, else `1_020_484`, the same split `SpeakerController.GetCyclesPerSecond` uses. At the nominal clock a tick spans about 10 205 cycles. At a throttled 4 MHz it spans about four times that many cycles, so the same latch sounds higher, and each tick is still 10 ms of host audio. Wall-clock latency stays put because sample rendering follows the host-sample quantum, not bus-cycle time. The tick runs on the machine thread, renders and publishes one line-out block to the taps.
 
-The OpenAL ring SHOULD shrink from 200 ms to about 60 ms (three quanta plus one buffer of slack) so a register write is audible in under 100 ms at 1×. The three 1024-sample AL buffers stay. End-to-end target at 1× is ≤ 100 ms. The speaker's 50 ms `System.Timers.Timer` goes away once the mixer tick is flushing it; the decay math does not change, and the existing sample-count tests keep passing because they drive `Flush` themselves.
+The ~60 ms ring and the three 1024-sample OpenAL buffers are properties of the OpenAL sink tap (#832), not of the mixer. End-to-end target at 1× is ≤ 100 ms. The speaker's 50 ms `System.Timers.Timer` goes away once the mixer tick is flushing it; the decay math does not change, and the existing sample-count tests keep passing because they drive `Flush` themselves.
 
-`AudioTick` does no work when nothing is playing and no consumer is recording: a silent, idle PSG and a resting speaker produce a single zero quantum and then the mixer stops scheduling until the next toggle or register write. That is the same "no consumer, no work" idea the video pipeline uses, applied to a much cheaper tick.
+`AudioTick` does no work when nothing is playing and no consumer is recording: a silent, idle PSG and a resting speaker produce a single zero quantum and then the mixer stops scheduling until the next toggle or register write. That is the same "no consumer, no work" idea the video pipeline uses, applied to a much cheaper tick. The next published block's `fromCycle` shows the gap and carries `Discontinuity = true`; a sink that needs continuous output (for example the OpenAL sink) fills silence itself.
 
 ### 11.5 Throttled non-stock clocks
 
@@ -360,7 +362,7 @@ The OpenAL ring SHOULD shrink from 200 ms to about 60 ms (three quanta plus one 
 
 When `ClockSpeedHz` is 0, the machine runs as fast as the host allows. Synthesizing every cycle into the ring would overrun it and play garbage, which is what the speaker can do today.
 
-While the clock is 0, the mixer MUST NOT enqueue. It drops the cycle range, leaves PSG and speaker phase where a single "advance to now, discard samples" step puts them (state stays coherent, audio does not backlog), and enqueues again on the first quantum after the clock is non-zero. The listener hears silence for the burst and then the notes that are current, with no catch-up glissando.
+While the clock is 0, the mixer advances source state and discards audio ("advance to now, discard") for the cycle range and publishes nothing. State stays coherent and audio does not backlog. The mixer publishes again on the first quantum after the clock is non-zero, and that block carries `Discontinuity = true`. The listener hears silence for the burst and then the notes that are current, with no catch-up glissando.
 
 `#444` will add a window that accelerates while a Disk II motor is on and then restores the profile clock. The mixer treats that window the same way, behind a flag the speed epic sets (`IAudioMixer.HoldPlayback`). Until that flag exists, only `ClockSpeedHz == 0` holds playback. This epic does not detect the Disk II motor.
 
@@ -575,7 +577,7 @@ Stimuli, each small enough to run in well under a second:
 2. The same period with a register write at sample 50. The hash changes, and a second run matches.
 3. Noise on, tone off, 50 ms. Hash, proving the LFSR seed.
 4. Speaker toggle at a known cycle plus one PSG tone. The sum differs from each source alone.
-5. Unthrottled: no samples enqueued (§11.6).
+5. Unthrottled: no samples are published (§11.6), and the first block after resuming has `Discontinuity = true`.
 6. Double clock: the tone's zero-crossing count doubles.
 
 ### 17.4 Guest probe
@@ -617,13 +619,13 @@ Appendix A is the issue split. Sizes: S is one component and a handful of tests,
 16. **Stereo is a follow-up after the hash goldens exist.** v1 stays mono. Josh, 2026-11-19.
 17. **The unread speaker `sampleRate` key is deleted by S11.** The mixer does not grow a reader for it. Josh, 2026-11-19.
 18. **Line out is the machine-owned audio contract.** Host backends are taps and never block emulation. Josh, 2026-11-24.
-19. **Cassette out and cassette in use the same stream family.** `$C020` is an `IAudioSource`; cassette input thresholds subscribed stream blocks into `$C060` bit 7. Josh, 2026-11-24.
+19. **Cassette out is an `IAudioSource`.** `$C020` mixes into line out like the speaker. Cassette input is out of scope for this spec and gets its own issue. Josh, 2026-11-24.
 
 Decisions 4, 5, 6, and 8 were confirmed the same day: period 0 is 1, v1 is mono, unthrottled and #443 bursts are silence, and reset restores the configured Phasor mode. Decisions 18 and 19 align this spec with #691 and supersede the earlier ownership sketch in #606.
 
 ## 20. Open questions
 
-None. The questions that were here are decisions 4, 5, 6, 8, and 12 through 19. Josh, 2026-11-19.
+None. The questions that were here are decisions 4, 5, 6, 8, and 12 through 19. Josh, 2026-11-24.
 
 ## 21. Sources
 
@@ -662,7 +664,7 @@ This appendix does not file issues. Sizes and owners are suggestions. "Depends o
 | S1 | Forward `$Cn00–$CnFF` writes to a card `ROMRegion` | `CompositeIOTarget.WriteSlotRom` calls `Write8` when the card published a region; `RomTarget` still drops guest writes; `INTCXROM` still blocks the window. Bus tests only. | S | — | Copilot |
 | S2 | Reusable `Via6522` | Registers in §9, N+2 timers, scheduler `DeviceTimer`, IFR/IER, port listeners, per-instance IRQ callback, side-effect-free reads, reset. Unit tests in §17.2. No AY and no slot. | L | — | Cursor |
 | S3 | `Ay3Psg`, `AyBus`, and the exact renderer | Datasheet register file, port protocol, period 0 = 1, logarithmic DAC from the GI table, integer ZOH renderer, LFSR seed. Hash goldens 1–3 in §17.3. No VIA. | M | — | Copilot |
-| S4 | `AudioMixer` and speaker as a source | Mixer owns line-out production and recording/null taps. Speaker stops building its own sink. 10 ms `AudioTick`. 60 ms ring target. Unthrottled hold (§11.6). Existing speaker sample tests stay green. Goldens 4–6. | M | — | Cursor |
+| S4 | `AudioMixer` and speaker as a source | Mixer produces line out and fans out to taps. Speaker becomes an `IAudioSource` and stops building its own sink. 10 ms `AudioTick`. Unthrottled behavior (§11.6). Existing speaker tests stay green. Goldens 4–6. | M | S12 | Cursor |
 | S5 | `MockingboardCard` | Two VIAs, two PSGs, §8.1 decode, §10.3 wiring, two IRQ ids, factory `mockingboard` that rejects `rom`. Guest probe and the end-to-end hash (§17.4). | M | S1, S2, S3, S4 | Cursor |
 | S6 | Music profile and schema | `profiles/pocket2e-mockingboard.json`: slot 4 Mockingboard, PocketWatch in slot 5, slot 2 empty, Disk II in slot 6. A worked example may add a Phasor in slot 1. Schema and the Machine Profile Configuration Guide. Do not edit the other Pocket2e profiles. | S | S5 | Copilot |
 | S7 | `mb` command, mute, WAV, `get_sound_card` | §16. Snapshot does not clear IFR. JSON is source-generated. WAV under the sandbox. MCP tool returns the snapshot. | M | S5, S4 | Copilot |
@@ -670,10 +672,8 @@ This appendix does not file issues. Sizes and owners are suggestions. "Depends o
 | S9 | SSI-263 speech | Phoneme registers, CA1 IRQ on the C, direct IRQ on the Phasor, address windows that phase 4 left as `$FF`. No SC-01, no Votrax, no vendor ROM or phoneme dump. | L | S5, and S8 for the Phasor path | Cursor |
 | S10 | Honor the #443 acceleration window | When #444 exposes the "hold audio" window, the mixer already treats it like `ClockSpeedHz == 0`. Playback during the burst is silence (decision 6). This issue is the wiring, not a new policy. | S | S4, #444 | Copilot |
 | S11 | Delete unread speaker `sampleRate` | Remove `config.sampleRate` from the checked-in speaker entries. The mixer stays at 44 100 Hz and does not read the key. Independent of the cards. | S | — | Copilot |
-| S12 | Standard line-out stream and tap contract (this issue, #691) | Add host-independent `AudioLineOutFormat` + cycle-stamped block contract, tap fan-out/drop policy, and #606 ownership reconciliation in §7/§11. Host sink moved to client composition (#832). | M | S4 | Copilot |
-| S13 | Cassette line-out/line-in stream integration | Model `$C020` as an `IAudioSource` mixed into line out. Add cassette input consumer that thresholds a standard stream into `$C060` bit 7. Include headless WAV-driven tests. | M | S12 | Copilot |
-| S14 | Stream taps follow-up issues filed | Track implementation follow-ups for host sink tap plumbing and cassette in/out stream adapters under epic #831; link rows to the filed implementation issues once created. | S | S12, S13 | Copilot |
+| S12 | Standard line-out stream and tap contract (this issue, #691) | Add host-independent `AudioLineOutFormat` + cycle-stamped block contract, tap fan-out/drop policy, and #606 ownership reconciliation in §7/§11. Host sink moved to client composition (#832). | M | — | Copilot |
 
-S1–S4 are phase 1 and can land in any order, including in parallel. S5 is the first issue that makes a title's probe succeed. S6 and S7 follow S5 and can be parallel with each other. S8 follows S5. S9 follows the card it attaches to. S10 waits on the speed epic's design, not on the Phasor. S11 can land at any time. S12 precedes S13. S14 tracks filed follow-ups under #831.
+S12 precedes S4. S1–S4 are phase 1 and can land in any order after S12, including in parallel. S5 is the first issue that makes a title's probe succeed. S6 and S7 follow S5 and can be parallel with each other. S8 follows S5. S9 follows the card it attaches to. S10 waits on the speed epic's design, not on the Phasor. S11 can land at any time.
 
 Out of this split: band-limited synthesis (§5, §10.4), stereo (decision 16, after the hash goldens), Mockingboard D, Sound I, SC-01, and any change to the speaker's decay.
