@@ -9,8 +9,20 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\benchmarks\BadMango.Emulator.Benchmarks\BadMango.Emulator.Benchmarks.csproj" />
     <ProjectReference Include="..\BadMango.Unit.Components\BadMango.Unit.Components.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Debug.Infrastructure\BadMango.Emulator.Debug.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Devices\BadMango.Emulator.Devices.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Storage\BadMango.Emulator.Storage.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Systems\BadMango.Emulator.Systems.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Vectors\wdc65c02-subset.bin.gz" />
+    <EmbeddedResource Include="Vectors\wdc65c02-subset.bin.gz">
+      <LogicalName>wdc65c02-subset.bin.gz</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

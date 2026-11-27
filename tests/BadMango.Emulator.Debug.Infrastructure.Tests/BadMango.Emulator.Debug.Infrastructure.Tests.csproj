@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Autofac" />
+    <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Moq" />
   </ItemGroup>
 
@@ -14,6 +15,8 @@
     <ProjectReference Include="..\BadMango.Unit.Components.Storage\BadMango.Unit.Components.Storage.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Debug.Infrastructure\BadMango.Emulator.Debug.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Debug.Mcp\BadMango.Emulator.Debug.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Devices\BadMango.Emulator.Devices.csproj" />
     <ProjectReference Include="..\..\src\BadMango.Emulator.Storage\BadMango.Emulator.Storage.csproj" />
   </ItemGroup>
 
