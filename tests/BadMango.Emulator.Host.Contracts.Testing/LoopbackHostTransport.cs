@@ -2,7 +2,9 @@
 // Copyright (c) Bad Mango Solutions. All rights reserved.
 // </copyright>
 
-namespace BadMango.Emulator.Host.Contracts;
+namespace BadMango.Emulator.Host.Contracts.Testing;
+
+using BadMango.Emulator.Host.Contracts;
 
 /// <summary>
 /// In-process transport. <see cref="Connect(int)"/> returns the host session itself.

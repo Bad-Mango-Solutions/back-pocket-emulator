@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>BadMango.Emulator.Host.Contracts.Testing</RootNamespace>
+    <IsTestProject>false</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <Product>BackPocket Emulator - Host Contract Test Support</Product>
+    <Description>Stub in-process host used by host-contract tests. The production binding onto a real machine is a later change.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Host.Contracts\BadMango.Emulator.Host.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

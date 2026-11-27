@@ -96,7 +96,7 @@ back-pocket-emulator/
 ├── BackPocketEmulator.slnx          # Solution
 ├── src/
 │   ├── BadMango.Emulator.Core/                 # CPU, bus, and emulation; Bus and Emulation namespaces stay
-│   ├── BadMango.Emulator.Host.Contracts/       # Host API contracts and the in-process loopback
+│   ├── BadMango.Emulator.Host.Contracts/       # Host API contracts (interfaces, DTOs, version)
 │   ├── BadMango.Emulator.Devices/              # Peripherals (video, keyboard, speaker, Disk II, cards)
 │   ├── BadMango.Emulator.Storage/              # Disk images, block media, GCR nibblizing
 │   ├── BadMango.Emulator.Rendering/            # Pixel buffers and character rendering
@@ -110,6 +110,7 @@ back-pocket-emulator/
 │   ├── BadMango.Unit.Components/                        # Shared NUnit and Serilog test helpers
 │   ├── BadMango.Emulator.Tests/                         # CPU, machine, and cross-project tests
 │   ├── BadMango.Emulator.Core.Tests/                    # Bus, memory map, and device-registry tests
+│   ├── BadMango.Emulator.Host.Contracts.Testing/        # Stub loopback used by host-contract tests
 │   ├── BadMango.Emulator.Host.Contracts.Tests/          # Host API loopback tests
 │   ├── BadMango.Emulator.Debug.Infrastructure.Tests/
 │   ├── BadMango.Emulator.Debug.Tests/
@@ -138,7 +139,7 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | Project | Role | Project references |
 | --- | --- | --- |
 | `BadMango.Emulator.Core` | CPU contracts and state (registers, opcode table, status flags), signal bus, machine-profile models and loader, debug-step listener contracts, `MainBus`, layered memory mapping, I/O page dispatch, device registry, `Machine` and `MachineBuilder`, peripheral contracts, and `Cpu65C02` (`Cpu65816` and `Cpu65832` are placeholders). Namespaces `BadMango.Emulator.Bus`, `BadMango.Emulator.Bus.Interfaces`, and `BadMango.Emulator.Emulation` stay | none |
-| `BadMango.Emulator.Host.Contracts` | Versioned host API: control, presentation, and input, plus the in-process loopback. Clients do not reference `IMachine`, `VideoDevice`, or `IAudioOutput`. See `specs/architecture/host-api.md` | none |
+| `BadMango.Emulator.Host.Contracts` | Versioned host API: control, presentation, and input interfaces and DTOs. Clients do not reference `IMachine`, `VideoDevice`, or `IAudioOutput`. See `specs/architecture/host-api.md` | none |
 | `BadMango.Emulator.Storage` | Storage backends, sector and block media, disk-image factory, GCR 6-and-2 nibblizer | none |
 | `BadMango.Emulator.TextEditor` | Reusable Avalonia text editor (assembly source and other file types) | none |
 | `BadMango.Emulator.Devices` | Keyboard, video, speaker, language card, 80-column card, game I/O, Disk II, Thunderclock, and PocketWatch | Core, Storage |
@@ -151,7 +152,8 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | `BadMango.Unit.Components` | Test support only: `Generator` (including `Generator.Log()`), NUnit Serilog sink, performance-test helper. Every test project references it | none |
 | `BadMango.Emulator.Tests` | CPU, disassembler, machine-builder, profile, device, storage, and debug-infrastructure tests. This is the cross-suite for the CPU, Systems, and Core until the test split | Unit.Components, Core, Debug.Infrastructure, Devices, Storage, Systems |
 | `BadMango.Emulator.Core.Tests` | Bus, memory map, and device-registry tests (namespace `BadMango.Emulator.Bus.Tests`) | Unit.Components, Core |
-| `BadMango.Emulator.Host.Contracts.Tests` | Loopback tests for lifecycle, disks, input, presentation, and two machines on one host | Unit.Components, Host.Contracts |
+| `BadMango.Emulator.Host.Contracts.Testing` | Stub loopback for tests. Not a test suite and not packable. The real in-process binding is #735 | Host.Contracts |
+| `BadMango.Emulator.Host.Contracts.Tests` | Loopback tests for lifecycle, disks, input, presentation, and two machines on one host | Unit.Components, Host.Contracts, Host.Contracts.Testing |
 | `BadMango.Emulator.Debug.Infrastructure.Tests` | REPL command tests | Unit.Components, Core, Debug.Infrastructure, Storage |
 | `BadMango.Emulator.Debug.Tests` | Console host module tests | Unit.Components, Debug |
 | `BadMango.Emulator.Debug.UI.Tests` | Debug window and video-window tests | Unit.Components, Debug.Infrastructure, Debug.UI |
@@ -173,7 +175,7 @@ Machine construction runs from the contracts outward:
 4. `Debug.Infrastructure` drives that machine from a REPL. `Debug.UI` and `TextEditor` add Avalonia windows. `Debug` is the executable that hosts both (`dotnet run --project src/BadMango.Emulator.Debug/BadMango.Emulator.Debug.csproj`).
 5. `UI` is the graphical host (`dotnet run --project src/BadMango.Emulator.UI/BadMango.Emulator.UI.csproj`). It references `Core` and contains the event aggregator, application settings, and UI contracts (`BadMango.Emulator.Infrastructure`, `BadMango.Emulator.Configuration`, and `BadMango.Emulator.UI.Abstractions`).
 6. Those host-shell types sit beside the machine. The machine projects do not reference them.
-7. `Host.Contracts` is the client-facing host API. It references none of the projects above. `bpui` and `emudbg` are not wired to it yet.
+7. `Host.Contracts` is the client-facing host API. It references none of the projects above. The stub loopback is `tests/BadMango.Emulator.Host.Contracts.Testing`. `bpui` and `emudbg` are not wired to the API yet.
 
 Solution virtual folders, for orientation in an IDE:
 

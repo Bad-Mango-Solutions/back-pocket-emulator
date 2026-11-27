@@ -2,7 +2,7 @@
 // Copyright (c) Bad Mango Solutions. All rights reserved.
 // </copyright>
 
-namespace BadMango.Emulator.Host.Contracts;
+namespace BadMango.Emulator.Host.Contracts.Testing;
 
 /// <summary>
 /// Activity a machine-edge tap reports for one drive. This is not a client mount request.

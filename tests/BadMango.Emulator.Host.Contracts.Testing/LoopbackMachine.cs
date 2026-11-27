@@ -2,7 +2,9 @@
 // Copyright (c) Bad Mango Solutions. All rights reserved.
 // </copyright>
 
-namespace BadMango.Emulator.Host.Contracts;
+namespace BadMango.Emulator.Host.Contracts.Testing;
+
+using BadMango.Emulator.Host.Contracts;
 
 /// <summary>
 /// In-memory machine held by the loopback. The session locks <see cref="Gate"/> around every mutation.
