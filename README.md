@@ -66,8 +66,7 @@ back-pocket-emulator/
 │
 ├── tests/
 │   ├── BadMango.Unit.Components/               # Shared test helpers
-│   ├── BadMango.Emulator.Tests/                # CPU, machine, and cross-project tests
-│   ├── BadMango.Emulator.Core.Tests/           # Bus, memory map, and device-registry tests
+│   ├── BadMango.Emulator.Core.Tests/           # CPU, bus, emulation, and Pocket2e tests
 │   ├── BadMango.Emulator.Debug.Infrastructure.Tests/
 │   ├── BadMango.Emulator.Debug.Tests/
 │   ├── BadMango.Emulator.Debug.UI.Tests/

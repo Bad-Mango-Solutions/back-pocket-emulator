@@ -26,9 +26,9 @@ The contributor-facing map, including every project reference, is [CONTRIBUTING.
 
 ## Tests
 
-`tests/BadMango.Unit.Components` is the shared test library. Every `tests/BadMango.Emulator.*.Tests` project references it and the library it covers. `BadMango.Emulator.Core.Tests` covers the bus, memory map, and device registry. `BadMango.Emulator.Debug.Infrastructure.Tests` covers the REPL and the debug session contracts (namespace `BadMango.Emulator.Debug.Abstractions.Tests` stays). `BadMango.Emulator.Tests` is the cross-project suite for the CPU, machine builder, Systems, and Core.
+`tests/BadMango.Unit.Components` is the shared test library. Every `tests/BadMango.Emulator.*.Tests` project references it and the library it covers. `BadMango.Emulator.Core.Tests` covers the CPU, bus, emulation, machine builder, and Pocket2e (Systems has no test project of its own). `BadMango.Emulator.Debug.Infrastructure.Tests` covers the REPL, the debug session contracts, and the guest-OS boot monitor. Namespaces `BadMango.Emulator.Bus.Tests`, `BadMango.Emulator.Tests`, and `BadMango.Emulator.Debug.Abstractions.Tests` stay.
 
 ## Naming
 
 - CPU types are `Cpu65C02`, `Cpu65816`, and `Cpu65832`.
-- A library and its tests share the library name plus a `.Tests` suffix, except for the cross-project suite `BadMango.Emulator.Tests` and the helper library `BadMango.Unit.Components`.
+- A library and its tests share the library name plus a `.Tests` suffix, except for the helper library `BadMango.Unit.Components`.

@@ -9,7 +9,7 @@ dotnet build BackPocketEmulator.slnx -c Release -warnaserror
 dotnet test BackPocketEmulator.slnx -c Release
 ```
 
-The 65C02 SingleStepTests full category (`SingleStepFull`) is not part of that test command. CI runs it with `tests/BadMango.Emulator.Tests/singlestep-full.runsettings`.
+The 65C02 SingleStepTests full category (`SingleStepFull`) is not part of that test command. CI runs it with `tests/BadMango.Emulator.Core.Tests/singlestep-full.runsettings`.
 
 The debug host project is `src/BadMango.Emulator.Debug`. Its assembly name is `emudbg`.
 

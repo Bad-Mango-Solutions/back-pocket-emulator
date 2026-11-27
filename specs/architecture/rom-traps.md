@@ -561,16 +561,13 @@ the composite `$CFFF` path is in `tests/BadMango.Emulator.Core.Tests`:
 - [`SlotManagerTests`](../../tests/BadMango.Emulator.Core.Tests/SlotManagerTests.cs)
 - [`CompositeIOTargetTests`](../../tests/BadMango.Emulator.Core.Tests/CompositeIOTargetTests.cs)
 
-Cross-suite coverage of the component `Build` installs, fetch-time
-execution, and `WithStubRom` is in `tests/BadMango.Emulator.Tests`:
+Coverage of the component `Build` installs, fetch-time execution, and
+`WithStubRom` is in `tests/BadMango.Emulator.Core.Tests` (namespace
+`BadMango.Emulator.Tests` unchanged):
 
-- [`MachineBuilderIntegrationTests`](../../tests/BadMango.Emulator.Tests/MachineBuilderIntegrationTests.cs)
-- [`TrapRegistryIntegrationTests`](../../tests/BadMango.Emulator.Tests/TrapRegistryIntegrationTests.cs)
-- [`TrapRegistryComprehensiveIntegrationTests`](../../tests/BadMango.Emulator.Tests/TrapRegistryComprehensiveIntegrationTests.cs)
-
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests`
-> cross-suite tests cover trap and machine paths; target: subject-specific
-> test projects (namespace unchanged).
+- [`MachineBuilderIntegrationTests`](../../tests/BadMango.Emulator.Core.Tests/MachineBuilderIntegrationTests.cs)
+- [`TrapRegistryIntegrationTests`](../../tests/BadMango.Emulator.Core.Tests/TrapRegistryIntegrationTests.cs)
+- [`TrapRegistryComprehensiveIntegrationTests`](../../tests/BadMango.Emulator.Core.Tests/TrapRegistryComprehensiveIntegrationTests.cs)
 
 [`MachineFactoryTests`](../../tests/BadMango.Emulator.Debug.Infrastructure.Tests/MachineFactoryTests.cs)
 covers assigning the component onto `Cpu65C02`. That test project is already

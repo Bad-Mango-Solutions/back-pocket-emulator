@@ -108,8 +108,7 @@ back-pocket-emulator/
 │   └── BadMango.Emulator.Debug/                # Console host, assembly name emudbg
 ├── tests/
 │   ├── BadMango.Unit.Components/                        # Shared NUnit and Serilog test helpers
-│   ├── BadMango.Emulator.Tests/                         # CPU, machine, and cross-project tests
-│   ├── BadMango.Emulator.Core.Tests/                    # Bus, memory map, and device-registry tests
+│   ├── BadMango.Emulator.Core.Tests/                    # CPU, bus, emulation, and Pocket2e tests
 │   ├── BadMango.Emulator.Host.Contracts.Testing/        # Stub loopback used by host-contract tests
 │   ├── BadMango.Emulator.Host.Contracts.Tests/          # Host API loopback tests
 │   ├── BadMango.Emulator.Debug.Infrastructure.Tests/
@@ -150,11 +149,10 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | `BadMango.Emulator.Debug` | `emudbg` console host. Configures Serilog and starts the REPL | Core, Debug.Infrastructure, Debug.UI |
 | `BadMango.Emulator.UI` | `bpui` Avalonia application (MVVM, Autofac, generic host). Configures Serilog at startup. Holds the event aggregator, application settings and path validation, and the theme, settings, and pop-out contracts (namespaces `BadMango.Emulator.Infrastructure`, `BadMango.Emulator.Configuration`, and `BadMango.Emulator.UI.Abstractions`) | Core |
 | `BadMango.Unit.Components` | Test support only: `Generator` (including `Generator.Log()`), NUnit Serilog sink, performance-test helper. Every test project references it | none |
-| `BadMango.Emulator.Tests` | CPU, disassembler, machine-builder, profile, device, storage, and debug-infrastructure tests. This is the cross-suite for the CPU, Systems, and Core until the test split | Unit.Components, Core, Debug.Infrastructure, Devices, Storage, Systems |
-| `BadMango.Emulator.Core.Tests` | Bus, memory map, and device-registry tests (namespace `BadMango.Emulator.Bus.Tests`) | Unit.Components, Core |
+| `BadMango.Emulator.Core.Tests` | CPU, disassembler, machine-builder, profile, Pocket2e, bus, memory-map, and device-registry tests. Namespaces `BadMango.Emulator.Tests` and `BadMango.Emulator.Bus.Tests` stay. Workload-coverage tests reference Benchmarks | Unit.Components, Benchmarks, Core, Debug.Infrastructure, Devices, Storage, Systems |
 | `BadMango.Emulator.Host.Contracts.Testing` | Stub loopback for tests. Not a test suite and not packable. The real in-process binding is #735 | Host.Contracts |
 | `BadMango.Emulator.Host.Contracts.Tests` | Loopback tests for lifecycle, disks, input, presentation, and two machines on one host | Unit.Components, Host.Contracts, Host.Contracts.Testing |
-| `BadMango.Emulator.Debug.Infrastructure.Tests` | REPL command tests and debug-contract JSON golden tests. Namespace `BadMango.Emulator.Debug.Abstractions.Tests` stays | Unit.Components, Core, Debug.Infrastructure, Storage |
+| `BadMango.Emulator.Debug.Infrastructure.Tests` | REPL command tests, debug-contract JSON golden tests, and the guest-OS boot monitor. Namespaces `BadMango.Emulator.Debug.Abstractions.Tests` and `BadMango.Emulator.Tests` stay | Unit.Components, Unit.Components.Storage, Core, Debug.Infrastructure, Debug.Mcp, Devices, Storage |
 | `BadMango.Emulator.Debug.Tests` | Console host module tests | Unit.Components, Debug |
 | `BadMango.Emulator.Debug.UI.Tests` | Debug window and video-window tests | Unit.Components, Debug.Infrastructure, Debug.UI |
 | `BadMango.Emulator.Devices.Tests` | Peripheral tests | Unit.Components, Core, Devices, Storage |
@@ -163,7 +161,7 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | `BadMango.Emulator.TextEditor.Tests` | Editor and syntax-highlighting tests | Unit.Components, Debug.Infrastructure, TextEditor |
 | `BadMango.Emulator.UI.Tests` | Avalonia headless tests for the GUI host, plus settings, path-validation, and event-aggregator tests | Unit.Components, UI |
 
-`BadMango.Emulator.Systems` and the CPU tests for code in `BadMango.Emulator.Core` are covered by `BadMango.Emulator.Tests`. Bus, memory-map, and device-registry tests are in `BadMango.Emulator.Core.Tests`.
+`BadMango.Emulator.Systems` does not have its own test project. Pocket2e, machine-builder, and CPU tests for code in `BadMango.Emulator.Core` are in `BadMango.Emulator.Core.Tests`, with the bus, memory-map, and device-registry tests.
 
 ### How the projects relate
 

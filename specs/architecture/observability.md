@@ -96,18 +96,12 @@ editor still lives in the TextEditor project under `BadMango.Emulator.TextEditor
 > target: `tests/BadMango.Emulator.Debug.UI.Tests` (namespace unchanged).
 
 `BadMango.Emulator.Debug` (`emudbg`) and `BadMango.Emulator.Debug.Mcp`
-(`emudbg-mcp`) stay separate thin hosts and do not move. The target direct
-references are `Debug.Infrastructure` and `Debug.UI` for `emudbg`, and
-`Debug.Infrastructure` only for `emudbg-mcp`. The MCP project already has that
-single reference. The `emudbg` project file still also references Core, Bus,
-and Emulation.
+(`emudbg-mcp`) stay separate thin hosts. `emudbg` references Core,
+Debug.Infrastructure, and Debug.UI. `emudbg-mcp` references Debug.Infrastructure
+only.
 
-CPU trace tests and mapping-trace tests still live in the cross-suite test
-project.
-
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests` CPU trace
-> and mapping-trace coverage; target: subject-specific test projects, including
-> `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
+CPU trace tests and mapping-trace tests live in
+`tests/BadMango.Emulator.Core.Tests` (namespace `BadMango.Emulator.Tests` unchanged).
 
 ## Debugger
 
@@ -330,15 +324,11 @@ Debugger command and listener tests already live in
 - [`TracingDebugListenerTests`](../../tests/BadMango.Emulator.Debug.Infrastructure.Tests/TracingDebugListenerTests.cs)
 - [`MachineDebugSessionFaultRegisterTests`](../../tests/BadMango.Emulator.Debug.Infrastructure.Tests/MachineDebugSessionFaultRegisterTests.cs)
 
-CPU instruction-trace coverage and the mapping-trace tests live in the
-cross-suite project.
+CPU instruction-trace coverage and the mapping-trace tests live in
+`tests/BadMango.Emulator.Core.Tests` (namespace `BadMango.Emulator.Tests` unchanged).
 
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests`; target:
-> subject-specific test projects, including `tests/BadMango.Emulator.Core.Tests`
-> (namespace unchanged).
-
-- [`CpuDebugSupportTests`](../../tests/BadMango.Emulator.Tests/CpuDebugSupportTests.cs)
-- [`MappingTraceTests`](../../tests/BadMango.Emulator.Tests/MappingTraceTests.cs)
+- [`CpuDebugSupportTests`](../../tests/BadMango.Emulator.Core.Tests/CpuDebugSupportTests.cs)
+- [`MappingTraceTests`](../../tests/BadMango.Emulator.Core.Tests/MappingTraceTests.cs)
 
 Session DTO tests live in `tests/BadMango.Emulator.Debug.Infrastructure.Tests`
 (namespace `BadMango.Emulator.Debug.Abstractions.Tests` unchanged).
