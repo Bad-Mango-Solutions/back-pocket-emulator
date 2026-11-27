@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>BadMango.Emulator.Bus.Tests</RootNamespace>
+    <RootNamespace>BadMango.Emulator.Core.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BadMango.Unit.Components\BadMango.Unit.Components.csproj" />
-    <ProjectReference Include="..\..\src\BadMango.Emulator.Bus\BadMango.Emulator.Bus.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
