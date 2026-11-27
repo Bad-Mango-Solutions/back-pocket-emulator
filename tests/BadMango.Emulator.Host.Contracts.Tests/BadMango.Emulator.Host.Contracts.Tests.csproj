@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>BadMango.Emulator.Host.Contracts.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BadMango.Unit.Components\BadMango.Unit.Components.csproj" />
+    <ProjectReference Include="..\..\src\BadMango.Emulator.Host.Contracts\BadMango.Emulator.Host.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
