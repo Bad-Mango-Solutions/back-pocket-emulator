@@ -119,12 +119,10 @@ Devices. It stays a separate assembly. `BadMango.Emulator.Core` holds
 Profiles stay under `profiles/`. The `bpui` shell does not reference the machine.
 
 Systems references Core and Devices. The Systems source path does not move.
-
-> **Current location (until #565):** Pocket2e and machine cross-suite tests in
-> `tests/BadMango.Emulator.Tests` (`MachineBuilderIntegrationTests`,
-> `ResetSignalMachineTests`, `MachineProfileLoaderTests`,
-> `MachineProfileSerializerTests`); target: `tests/BadMango.Emulator.Core.Tests`
-> (namespace unchanged). Systems does not gain a test project.
+Systems does not have a test project. Pocket2e and machine tests
+(`MachineBuilderIntegrationTests`, `ResetSignalMachineTests`,
+`MachineProfileLoaderTests`, `MachineProfileSerializerTests`) live in
+`tests/BadMango.Emulator.Core.Tests` (namespace `BadMango.Emulator.Tests` unchanged).
 
 > **Conditional removal (#566):** `IBringUpHandler`, `BringUpHandlerBase`,
 > `IBringUpResult`, `BringUpResult`, `BringUpValidationResult`,

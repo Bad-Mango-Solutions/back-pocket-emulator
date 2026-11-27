@@ -21,7 +21,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="BadMango.Emulator.Core.Tests" />
-    <InternalsVisibleTo Include="BadMango.Emulator.Tests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -80,8 +80,8 @@ Versioned module host support is **not** claimed as implemented yet.
 | Bus faults (`FaultKind`, fault registers, `ABORT`) | `src/BadMango.Emulator.Core/` + `specs/Bus Fast Path and Fault Registers Specification.md` | `src/BadMango.Emulator.Core/` + `specs/Bus Fast Path and Fault Registers Specification.md` |
 | Soft switches / I/O page behavior | `src/BadMango.Emulator.Devices/` with machine wiring in `src/BadMango.Emulator.Systems/` | `src/BadMango.Emulator.Devices/` with machine wiring in `src/BadMango.Emulator.Systems/` |
 | Host API (control, presentation, input) | `src/BadMango.Emulator.Host.Contracts/` and [`specs/architecture/host-api.md`](specs/architecture/host-api.md) | `src/BadMango.Emulator.Host.Contracts/` and [`specs/architecture/host-api.md`](specs/architecture/host-api.md) |
-
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests` cross-suite tests cover CPU/machine paths; target: subject-specific test projects (namespace unchanged).
+| CPU, bus, emulation, and Pocket2e tests | `tests/BadMango.Emulator.Core.Tests/` | `tests/BadMango.Emulator.Core.Tests/` (namespace `BadMango.Emulator.Tests` unchanged) |
+| Debugger and guest-OS boot monitor tests | `tests/BadMango.Emulator.Debug.Infrastructure.Tests/` | `tests/BadMango.Emulator.Debug.Infrastructure.Tests/` (boot monitor namespace `BadMango.Emulator.Tests` unchanged) |
 
 ## Architecture pages and issue tracking
 

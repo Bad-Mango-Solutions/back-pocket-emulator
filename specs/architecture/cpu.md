@@ -34,12 +34,8 @@ assembly:
 - [`ICpu`](../../src/BadMango.Emulator.Core/Interfaces/Cpu/ICpu.cs) — the CPU
   contract.
 
-Bus and Emulation live in Core. Bus tests live in `BadMango.Emulator.Core.Tests`.
-CPU, Core, and Emulation coverage currently in `BadMango.Emulator.Tests` moves under #565.
-
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests` cross-suite
-> CPU/Core/Emulation coverage; target: subject-specific test projects, including
-> Core.Tests (namespace unchanged).
+Bus and Emulation live in Core. CPU, bus, and emulation tests live in
+`tests/BadMango.Emulator.Core.Tests` (namespace `BadMango.Emulator.Tests` unchanged).
 
 ## 65C02 implementation
 
@@ -271,17 +267,14 @@ state for run-loop and debugger control:
 ## Tests and evidence
 
 CPU behavior is covered by CPU, opcode, bus-cycle, hardware-vector, interrupt,
-halt, reset, and fast-path tests in `BadMango.Emulator.Tests`.
+halt, reset, and fast-path tests in `tests/BadMango.Emulator.Core.Tests`
+(namespace `BadMango.Emulator.Tests` unchanged).
 
-> **Current location (until #565):** `tests/BadMango.Emulator.Tests` CPU and
-> 65C02 test files; target: subject-specific test projects, including
-> `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
+Representative test files include:
 
-Representative current test files include:
-
-- [`Cpu65C02Tests`](../../tests/BadMango.Emulator.Tests/Cpu65C02Tests.cs)
-- [`Cpu65C02AbortReactionTests`](../../tests/BadMango.Emulator.Tests/Cpu65C02AbortReactionTests.cs)
-- [`Cpu65C02HardwareVectorTests`](../../tests/BadMango.Emulator.Tests/Cpu65C02HardwareVectorTests.cs)
-- [`InterruptAndHaltTests`](../../tests/BadMango.Emulator.Tests/InterruptAndHaltTests.cs)
-- [`W65C02OpcodeMetadataTests`](../../tests/BadMango.Emulator.Tests/W65C02OpcodeMetadataTests.cs)
+- [`Cpu65C02Tests`](../../tests/BadMango.Emulator.Core.Tests/Cpu65C02Tests.cs)
+- [`Cpu65C02AbortReactionTests`](../../tests/BadMango.Emulator.Core.Tests/Cpu65C02AbortReactionTests.cs)
+- [`Cpu65C02HardwareVectorTests`](../../tests/BadMango.Emulator.Core.Tests/Cpu65C02HardwareVectorTests.cs)
+- [`InterruptAndHaltTests`](../../tests/BadMango.Emulator.Core.Tests/InterruptAndHaltTests.cs)
+- [`W65C02OpcodeMetadataTests`](../../tests/BadMango.Emulator.Core.Tests/W65C02OpcodeMetadataTests.cs)
 

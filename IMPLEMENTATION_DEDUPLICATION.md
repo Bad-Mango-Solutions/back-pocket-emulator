@@ -390,7 +390,7 @@ DWord r0 = state.Registers.R0;                     // General purpose registers
 - **src/BadMango.Emulator.Core/ProcessorStatusFlagsHelpers.cs** - Flag operations (273 lines)
 - **src/BadMango.Emulator.Core/ControlRegisterHelpers.cs** - Control register helpers (153 lines)
 - **src/BadMango.Emulator.Emulation/Cpu/Instructions.*.cs** - 11 partial class files by category
-- **tests/BadMango.Emulator.Tests/*Tests.cs** - Comprehensive test coverage
+- **tests/BadMango.Emulator.Core.Tests/*Tests.cs** - Comprehensive test coverage
 
 ### Modified Files
 - **src/BadMango.Emulator.Emulation/Cpu/AddressingModes.cs** - Mode-aware implementations
