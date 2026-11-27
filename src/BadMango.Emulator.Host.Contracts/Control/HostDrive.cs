@@ -19,6 +19,7 @@ namespace BadMango.Emulator.Host.Contracts;
 /// <param name="Error">The host's last error for this drive, or <see langword="null"/>.</param>
 /// <param name="Track">The quarter-track or track the host reports, or <see langword="null"/>.</param>
 /// <param name="Block">The block the host reports, or <see langword="null"/>.</param>
+/// <param name="Category">Whether this drive is removable media or fixed storage.</param>
 public sealed record HostDrive(
     DriveId Id,
     string Label,
@@ -31,4 +32,5 @@ public sealed record HostDrive(
     bool IsBootDrive,
     string? Error,
     int? Track,
-    int? Block);
+    int? Block,
+    HostStorageCategory Category = HostStorageCategory.RemovableMedia);

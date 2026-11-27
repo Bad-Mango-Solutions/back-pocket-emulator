@@ -12,6 +12,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\..\schemas\machine-profile.schema.json" Link="Schemas\machine-profile.schema.json">
+      <LogicalName>BadMango.Emulator.Host.Schemas.machine-profile.schema.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\BadMango.Emulator.Host.Contracts\BadMango.Emulator.Host.Contracts.csproj" />
     <ProjectReference Include="..\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
     <ProjectReference Include="..\BadMango.Emulator.Debug.Infrastructure\BadMango.Emulator.Debug.Infrastructure.csproj" />

@@ -171,6 +171,60 @@ public abstract class HostControlContractTests
     }
 
     /// <summary>
+    /// Removable media and fixed storage stay distinct. Fixed storage changes only while the machine is off.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task Storage_SeparatesRemovableMediaFromFixedStorage()
+    {
+        using IHostSession session = Open();
+        MachineId id = Add(session, "Workshop");
+        DriveId unit = new(5, 1);
+
+        InvalidOperationException? wrongDisk = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await session.Control.MountDiskAsync(id, new DriveId(6, 1), "library://drives/volume.hdv", false));
+        InvalidOperationException? wrongDrive = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await session.Control.AttachFixedStorageAsync(id, unit, "library://disks/game.dsk", false));
+        await session.Control.AttachFixedStorageAsync(id, unit, "volume.hdv", writeProtect: true);
+        HostDrive attached = FindDrive(session.Control.ListDisks(id), unit);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(wrongDisk!.Message, Does.Contain("library://disks/"));
+            Assert.That(wrongDrive!.Message, Does.Contain("library://drives/"));
+            Assert.That(attached.Category, Is.EqualTo(HostStorageCategory.FixedStorage));
+            Assert.That(attached.ImagePath, Is.EqualTo("volume.hdv"));
+            Assert.That(attached.ImageName, Is.EqualTo("volume.hdv"));
+            Assert.That(attached.WriteProtected, Is.True);
+        });
+
+        foreach (HostDiskController controller in session.Control.ListDisks(id))
+        {
+            Assert.That(controller.Drives, Is.Not.Empty);
+            foreach (HostDrive drive in controller.Drives)
+            {
+                Assert.That(drive.Category, Is.EqualTo(controller.Category));
+            }
+        }
+
+        Assert.That(
+            session.Control.ListSlots(id).Select(slot => slot.Id),
+            Is.EqualTo(new[] { "aux", "1", "2", "3", "4", "5", "6", "7" }));
+
+        await session.Control.PowerOnAsync(id);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await session.Control.DetachFixedStorageAsync(id, unit));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await session.Control.AttachFixedStorageAsync(id, new DriveId(5, 2), "other.hdv", false));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await session.Control.SetWriteProtectAsync(id, unit, false));
+        Assert.That(FindDrive(session.Control.ListDisks(id), unit).ImagePath, Is.EqualTo("volume.hdv"));
+
+        await session.Control.PowerOffAsync(id);
+        await session.Control.SetWriteProtectAsync(id, unit, false);
+        Assert.That(FindDrive(session.Control.ListDisks(id), unit).WriteProtected, Is.False);
+        await session.Control.DetachFixedStorageAsync(id, unit);
+        Assert.That(TryFindDrive(session.Control.ListDisks(id), unit), Is.Null);
+    }
+
+    /// <summary>
     /// A canceled command does not change state.
     /// </summary>
     /// <returns>The test task.</returns>
@@ -203,6 +257,29 @@ public abstract class HostControlContractTests
     /// <param name="startPaused">Whether Power On leaves the machine paused.</param>
     /// <returns>The machine id.</returns>
     protected abstract MachineId Add(IHostSession session, string name, PowerCapabilities? power = null, bool startPaused = false);
+
+    private static HostDrive FindDrive(IReadOnlyList<HostDiskController> controllers, DriveId id)
+    {
+        HostDrive? drive = TryFindDrive(controllers, id);
+        Assert.That(drive, Is.Not.Null, $"Drive {id.Label} was not listed.");
+        return drive!;
+    }
+
+    private static HostDrive? TryFindDrive(IReadOnlyList<HostDiskController> controllers, DriveId id)
+    {
+        foreach (HostDiskController controller in controllers)
+        {
+            foreach (HostDrive drive in controller.Drives)
+            {
+                if (drive.Id == id)
+                {
+                    return drive;
+                }
+            }
+        }
+
+        return null;
+    }
 
     private static async Task<T[]> WaitForAsync<T>(Func<T[]> read, int count)
     {

@@ -10,4 +10,9 @@ namespace BadMango.Emulator.Host.Contracts;
 /// <param name="Slot">The slot number, 1–7.</param>
 /// <param name="Name">The controller name.</param>
 /// <param name="Drives">The drives, in drive-number order.</param>
-public sealed record HostDiskController(int Slot, string Name, IReadOnlyList<HostDrive> Drives);
+/// <param name="Category">Whether every drive on this controller is removable media or fixed storage.</param>
+public sealed record HostDiskController(
+    int Slot,
+    string Name,
+    IReadOnlyList<HostDrive> Drives,
+    HostStorageCategory Category = HostStorageCategory.RemovableMedia);

@@ -197,7 +197,8 @@ public interface IHostControl
     Task SetThrottleAsync(MachineId machineId, HostThrottle throttle, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Mounts an image. The loopback records the path and does not open it.
+    /// Mounts removable media. The loopback records the path and does not open it.
+    /// A <c>library://</c> path must be <c>library://disks/...</c>. Fixed storage is <see cref="AttachFixedStorageAsync"/>.
     /// </summary>
     /// <param name="machineId">The machine.</param>
     /// <param name="drive">The drive.</param>
@@ -206,7 +207,7 @@ public interface IHostControl
     /// <param name="cancellationToken">Cancels before the command is applied.</param>
     /// <returns>A task that completes when the host has accepted the mount.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="path"/> is empty.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the drive is not in the topology or the drive is busy.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the drive is not removable media, the path is in the wrong library folder, or the drive is busy.</exception>
     /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
     Task MountDiskAsync(MachineId machineId, DriveId drive, string path, bool writeProtect, CancellationToken cancellationToken = default);
 
@@ -217,7 +218,7 @@ public interface IHostControl
     /// <param name="drive">The drive.</param>
     /// <param name="cancellationToken">Cancels before the command is applied.</param>
     /// <returns>A task that completes when the drive is empty.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the drive is empty, unknown, or busy.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the drive is empty, unknown, fixed storage, or busy.</exception>
     /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
     Task EjectDiskAsync(MachineId machineId, DriveId drive, CancellationToken cancellationToken = default);
 
@@ -229,12 +230,39 @@ public interface IHostControl
     /// <param name="writeProtect">Whether writes are refused.</param>
     /// <param name="cancellationToken">Cancels before the command is applied.</param>
     /// <returns>A task that completes when the flag is stored.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the drive is empty, unknown, or busy.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the drive is empty, unknown, or busy. Fixed storage accepts this only while the machine is off.</exception>
     /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
     Task SetWriteProtectAsync(MachineId machineId, DriveId drive, bool writeProtect, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists controllers and drives.
+    /// Attaches a fixed-storage image. Legal only while the machine is off. The attachment is applied on the next power-on.
+    /// A <c>library://</c> path must be <c>library://drives/...</c>.
+    /// </summary>
+    /// <param name="machineId">The machine.</param>
+    /// <param name="drive">The slot and unit. Slot is 1–7. The unit is 1–8.</param>
+    /// <param name="path">The image path the client supplied.</param>
+    /// <param name="writeProtect">Whether the image is write-protected.</param>
+    /// <param name="cancellationToken">Cancels before the command is applied.</param>
+    /// <returns>A task that completes when the host has stored the attachment.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="path"/> is empty.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="drive"/> is outside slot 1–7 or unit 1–8.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the machine is not off, the slot is removable media, or the path is in the wrong library folder.</exception>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
+    Task AttachFixedStorageAsync(MachineId machineId, DriveId drive, string path, bool writeProtect, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Detaches a fixed-storage image. Legal only while the machine is off. The slot is empty of that unit on the next power-on.
+    /// </summary>
+    /// <param name="machineId">The machine.</param>
+    /// <param name="drive">The slot and unit.</param>
+    /// <param name="cancellationToken">Cancels before the command is applied.</param>
+    /// <returns>A task that completes when the unit is no longer attached.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the machine is not off or the unit is not fixed storage.</exception>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
+    Task DetachFixedStorageAsync(MachineId machineId, DriveId drive, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists controllers and drives. Removable media and fixed storage are separate controllers.
     /// </summary>
     /// <param name="machineId">The machine.</param>
     /// <returns>The topology the host reports. The client does not assume a Disk II count.</returns>

@@ -169,7 +169,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
             }
 
             machineId = MachineId.New();
-            MachineHandle handle = new(this, machineId, spec, machine, info);
+            MachineHandle handle = new(this, machineId, spec, machine, info, libraryRoot, profileDocument.Json, profile.Boot?.StartupSlot);
             machines.Add(handle);
             machinesById.Add(machineId.Value, handle);
         }
@@ -212,7 +212,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
         HostMachineInfo[] infos = new HostMachineInfo[snapshot.Length];
         for (int i = 0; i < snapshot.Length; i++)
         {
-            infos[i] = snapshot[i].ReadInfo();
+            infos[i] = snapshot[i].ReadInfo(FindBootDrive(ListDisks(snapshot[i].Id)));
         }
 
         return infos;
@@ -221,7 +221,8 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
     /// <inheritdoc />
     public HostMachineInfo GetMachineInfo(MachineId machineId)
     {
-        return Find(machineId).ReadInfo();
+        MachineHandle handle = Find(machineId);
+        return handle.ReadInfo(FindBootDrive(ListDisks(machineId)));
     }
 
     /// <inheritdoc />
@@ -397,36 +398,6 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
         }
 
         return SetThrottleCoreAsync(machineId, throttle, cancellationToken);
-    }
-
-    /// <inheritdoc />
-    public Task MountDiskAsync(MachineId machineId, DriveId drive, string path, bool writeProtect, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException("Disk control is not implemented in host slice #808.");
-    }
-
-    /// <inheritdoc />
-    public Task EjectDiskAsync(MachineId machineId, DriveId drive, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException("Disk control is not implemented in host slice #808.");
-    }
-
-    /// <inheritdoc />
-    public Task SetWriteProtectAsync(MachineId machineId, DriveId drive, bool writeProtect, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException("Disk control is not implemented in host slice #808.");
-    }
-
-    /// <inheritdoc />
-    public IReadOnlyList<HostDiskController> ListDisks(MachineId machineId)
-    {
-        throw new NotSupportedException("Disk control is not implemented in host slice #808.");
-    }
-
-    /// <inheritdoc />
-    public IReadOnlyList<HostSlotInfo> ListSlots(MachineId machineId)
-    {
-        throw new NotSupportedException("Slot control is not implemented in host slice #808.");
     }
 
     /// <inheritdoc />
@@ -977,10 +948,6 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
             lock (handle.Sync)
             {
                 overlay = handle.OverlayJson;
-                if (handle.BuiltFrom(overlay))
-                {
-                    return;
-                }
             }
 
             string profileJson;
@@ -990,8 +957,39 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
                 profileJson = profiles[handle.ProfileId].Json;
             }
 
-            MachineProfile profile = serializer.Deserialize(MergeProfileJson(profileJson, overlay));
+            string merged = MergeProfileJson(profileJson, overlay);
+            MachineProfileSchema.Validate(merged);
+
+            lock (handle.Sync)
+            {
+                if (!string.Equals(handle.OverlayJson, overlay, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (handle.BuiltFrom(overlay, profileJson))
+                {
+                    return;
+                }
+            }
+
+            MachineProfile profile = serializer.Deserialize(merged);
             (IMachine machine, _, MachineInfo info) = MachineFactory.CreateDebugSystem(profile, new ProfilePathResolver(libraryRoot));
+            lock (tableLock)
+            {
+                if (disposed)
+                {
+                    machine.Dispose();
+                    ThrowIfDisposed();
+                }
+
+                if (!string.Equals(profiles[handle.ProfileId].Json, profileJson, StringComparison.Ordinal))
+                {
+                    machine.Dispose();
+                    continue;
+                }
+            }
+
             lock (handle.Sync)
             {
                 if (!string.Equals(handle.OverlayJson, overlay, StringComparison.Ordinal))
@@ -1001,8 +999,8 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
                 }
 
                 long clock = EffectiveClock(handle.NominalClockHz, handle.Throttle);
-                handle.ReplaceMachine(machine, clock, info);
-                handle.NoteBuiltOverlay(overlay);
+                handle.ReplaceMachine(machine, clock, info, profile.Boot?.StartupSlot);
+                handle.NoteBuilt(overlay, profileJson);
                 return;
             }
         }

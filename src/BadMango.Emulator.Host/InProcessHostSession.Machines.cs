@@ -29,6 +29,7 @@ public sealed partial class InProcessHostSession
         private Task? runTask;
         private SpeedSample? speedSample;
         private string? builtOverlay;
+        private string? builtProfileJson;
         private bool builtFromTemplate = true;
         private int disposed;
 
@@ -37,7 +38,10 @@ public sealed partial class InProcessHostSession
             MachineId id,
             HostInstanceSpec spec,
             IMachine machine,
-            MachineInfo info)
+            MachineInfo info,
+            string libraryRoot,
+            string profileJson,
+            int? startupSlot)
         {
             this.session = session;
             Id = id;
@@ -51,6 +55,9 @@ public sealed partial class InProcessHostSession
             CpuSummary = spec.CpuSummary ?? info.CpuType;
             SchedulerSummary = spec.SchedulerSummary;
             Machine = machine;
+            StartupSlot = startupSlot;
+            Io = new HostDiskBinding(machine, libraryRoot);
+            NoteBuilt(null, profileJson);
             stateChanged = session.OnMachineStateChanged;
             machine.StateChanged += OnMachineStateChanged;
         }
@@ -85,6 +92,12 @@ public sealed partial class InProcessHostSession
 
         internal string? OverlayJson { get; set; }
 
+        internal int? StartupSlot { get; set; }
+
+        internal HostDiskBinding Io { get; }
+
+        internal List<FixedVolume> FixedVolumes { get; } = [];
+
         internal Exception? RunFault { get; set; }
 
         /// <summary>
@@ -107,7 +120,7 @@ public sealed partial class InProcessHostSession
 
         internal Task CurrentRun => Volatile.Read(ref runTask) ?? Task.CompletedTask;
 
-        internal HostMachineInfo ReadInfo()
+        internal HostMachineInfo ReadInfo(string? bootDriveId)
         {
             lock (Sync)
             {
@@ -125,10 +138,23 @@ public sealed partial class InProcessHostSession
                     DebuggerAttached: false,
                     CpuSummary,
                     SchedulerSummary,
-                    BootDriveId: null,
+                    bootDriveId,
                     OutputKind,
                     StartPaused);
             }
+        }
+
+        internal FixedVolume? FindFixed(DriveId drive)
+        {
+            for (int index = 0; index < FixedVolumes.Count; index++)
+            {
+                if (FixedVolumes[index].Id == drive)
+                {
+                    return FixedVolumes[index];
+                }
+            }
+
+            return null;
         }
 
         internal bool IsReported(HostRunState desired)
@@ -193,22 +219,27 @@ public sealed partial class InProcessHostSession
             return true;
         }
 
-        internal bool BuiltFrom(string? overlay)
+        internal bool BuiltFrom(string? overlay, string profileJson)
         {
-            return builtFromTemplate && string.Equals(builtOverlay, overlay, StringComparison.Ordinal);
+            return builtFromTemplate
+                && string.Equals(builtOverlay, overlay, StringComparison.Ordinal)
+                && string.Equals(builtProfileJson, profileJson, StringComparison.Ordinal);
         }
 
-        internal void NoteBuiltOverlay(string? overlay)
+        internal void NoteBuilt(string? overlay, string profileJson)
         {
             builtFromTemplate = true;
             builtOverlay = overlay;
+            builtProfileJson = profileJson;
         }
 
-        internal void ReplaceMachine(IMachine replacement, long clockHz, MachineInfo info)
+        internal void ReplaceMachine(IMachine replacement, long clockHz, MachineInfo info, int? startupSlot)
         {
             Machine.StateChanged -= OnMachineStateChanged;
             Machine.Dispose();
             Machine = replacement;
+            StartupSlot = startupSlot;
+            Io.Retarget(replacement);
             replacement.ClockSpeedHz = clockHz;
             replacement.StateChanged += OnMachineStateChanged;
             if (!cpuSummaryFromSpec)
@@ -350,8 +381,15 @@ public sealed partial class InProcessHostSession
             }
             finally
             {
-                Machine.Dispose();
-                Lifecycle.Dispose();
+                try
+                {
+                    Machine.Dispose();
+                }
+                finally
+                {
+                    Io.Dispose();
+                    Lifecycle.Dispose();
+                }
             }
 
             if (error is not null)
