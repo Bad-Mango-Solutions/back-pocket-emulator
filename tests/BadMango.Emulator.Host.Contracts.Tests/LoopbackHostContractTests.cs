@@ -65,6 +65,41 @@ public class LoopbackHostContractTests
     }
 
     /// <summary>
+    /// Two ids with the same string are equal, and a blank string is rejected.
+    /// </summary>
+    [Test]
+    public void MachineId_EqualsByOpaqueString()
+    {
+        MachineId left = new("workshop");
+        MachineId right = new("workshop");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(left, Is.EqualTo(right));
+            Assert.That(left.GetHashCode(), Is.EqualTo(right.GetHashCode()));
+            Assert.That(left == right, Is.True);
+            Assert.Throws<ArgumentException>(() => new MachineId(" "));
+        });
+    }
+
+    /// <summary>
+    /// Disposing a window twice is safe, and a later audio publish does not touch it.
+    /// </summary>
+    [Test]
+    public void DisposedSubscription_IsIgnoredByALaterAudioPublish()
+    {
+        using LoopbackHostSession session = HostSessions.Open();
+        MachineId id = HostSessions.Add(session, "Workshop");
+        IPresentationSubscription window = session.Presentation.Subscribe(id, "main");
+        window.Dispose();
+        window.Dispose();
+
+        ((ILoopbackMachineEdge)session).PublishAudio(id, new HostAudioBlock(1, 1, new byte[] { 0, 0 }));
+
+        Assert.That(window.TryReadAudio(out _), Is.False);
+    }
+
+    /// <summary>
     /// The contract assembly does not reference the machine, the video device, or the audio output.
     /// </summary>
     [Test]

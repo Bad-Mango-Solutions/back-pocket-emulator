@@ -73,6 +73,11 @@ public sealed class LoopbackHostSession : IHostSession, IHostControl, IHostPrese
             lock (machine.Gate)
             {
                 machine.Removed = true;
+                foreach (LoopbackSubscription subscription in machine.Subscriptions)
+                {
+                    subscription.MarkDisposed();
+                }
+
                 machine.Subscriptions.Clear();
             }
         }
@@ -1219,6 +1224,12 @@ public sealed class LoopbackHostSession : IHostSession, IHostControl, IHostPrese
     {
         lock (subscription.Machine.Gate)
         {
+            if (subscription.IsDisposed)
+            {
+                return;
+            }
+
+            subscription.MarkDisposed();
             subscription.Machine.Subscriptions.Remove(subscription);
         }
     }
@@ -1559,7 +1570,14 @@ public sealed class LoopbackHostSession : IHostSession, IHostControl, IHostPrese
             action();
             return Task.CompletedTask;
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ObjectDisposedException or OperationCanceledException)
+        catch (OperationCanceledException ex)
+        {
+            CancellationToken token = ex.CancellationToken.IsCancellationRequested
+                ? ex.CancellationToken
+                : new CancellationToken(canceled: true);
+            return Task.FromCanceled(token);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ObjectDisposedException)
         {
             return Task.FromException(ex);
         }

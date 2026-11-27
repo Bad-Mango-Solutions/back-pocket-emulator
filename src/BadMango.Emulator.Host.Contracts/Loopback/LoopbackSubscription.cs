@@ -75,13 +75,15 @@ internal sealed class LoopbackSubscription : IPresentationSubscription
     /// <inheritdoc />
     public void Dispose()
     {
-        if (disposed)
-        {
-            return;
-        }
-
-        disposed = true;
         session.RemoveSubscription(this);
+    }
+
+    /// <summary>
+    /// Marks this window disposed. The caller holds <see cref="Machine"/>'s gate.
+    /// </summary>
+    internal void MarkDisposed()
+    {
+        disposed = true;
     }
 
     /// <summary>

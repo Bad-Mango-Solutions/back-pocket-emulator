@@ -153,7 +153,9 @@ public class LoopbackLifecycleTests
         using CancellationTokenSource source = new();
         await source.CancelAsync();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(async () => await session.Control.PowerOnAsync(id, source.Token));
+        Task powerOn = session.Control.PowerOnAsync(id, source.Token);
+        Assert.That(powerOn.IsCanceled, Is.True);
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await powerOn);
         Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Off));
     }
 
