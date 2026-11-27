@@ -58,6 +58,7 @@ graph TD
 | `BadMango.Emulator.Debug` (`emudbg`) | debug console executable host | `Debug.Infrastructure`, `Debug.UI` |
 | `BadMango.Emulator.Debug.Mcp` (`emudbg-mcp`) | MCP stdio host | `Debug.Infrastructure` only |
 | `BadMango.Emulator.Host.Contracts` | Host API leaf (control, presentation, input). Added by #734. Not a #478 fold target. The stub loopback is test support. | none |
+| `BadMango.Emulator.Host` | Real in-process host transport that binds Host.Contracts to live machines. | Host.Contracts, Core, Debug.Infrastructure |
 
 > **Current location (until #561):** `src/BadMango.Emulator.TextEditor`; target: `src/BadMango.Emulator.Debug.UI` (namespace `BadMango.Emulator.TextEditor` unchanged).
 

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>BadMango.Emulator.Host</RootNamespace>
+    <Product>BackPocket Emulator - Host</Product>
+    <Description>In-process host transport binding the host contracts to live machine instances.</Description>
+    <PackageTags>emulator;host;loopback;machine;lifecycle;throttle</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BadMango.Emulator.Host.Contracts\BadMango.Emulator.Host.Contracts.csproj" />
+    <ProjectReference Include="..\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
+    <ProjectReference Include="..\BadMango.Emulator.Debug.Infrastructure\BadMango.Emulator.Debug.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
