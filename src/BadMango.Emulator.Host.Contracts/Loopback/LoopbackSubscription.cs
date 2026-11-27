@@ -11,7 +11,7 @@ internal sealed class LoopbackSubscription : IPresentationSubscription
 {
     private readonly LoopbackHostSession session;
     private readonly Queue<HostAudioBlock> audio = new();
-    private HostMonitorChoice monitor;
+    private HostMonitorChoice monitorChoice;
     private bool disposed;
 
     /// <summary>
@@ -26,7 +26,7 @@ internal sealed class LoopbackSubscription : IPresentationSubscription
         this.session = session;
         Machine = machine;
         WindowId = windowId;
-        this.monitor = monitor;
+        monitorChoice = monitor;
     }
 
     /// <inheritdoc />
@@ -36,7 +36,7 @@ internal sealed class LoopbackSubscription : IPresentationSubscription
     public string WindowId { get; }
 
     /// <inheritdoc />
-    public HostMonitorChoice Monitor => monitor;
+    public HostMonitorChoice Monitor => monitorChoice;
 
     /// <inheritdoc />
     public HostAudioFormat AudioFormat => session.ReadAudioFormat(this);
@@ -128,6 +128,6 @@ internal sealed class LoopbackSubscription : IPresentationSubscription
     /// <param name="choice">The choice.</param>
     internal void ApplyMonitor(HostMonitorChoice choice)
     {
-        monitor = choice;
+        monitorChoice = choice;
     }
 }
