@@ -20,10 +20,6 @@ In the target layout, CPU implementations live in `BadMango.Emulator.Core` under
 `BadMango.Emulator.Core.Cpu`. Moved source and namespace names keep their existing
 names; this page does not propose namespace renames.
 
-> **Current location (until #562):** `src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs`,
-> `src/BadMango.Emulator.Emulation/Cpu/Cpu65C02OpcodeTableBuilder.cs`, and the other
-> CPU implementation files; target: `src/BadMango.Emulator.Core/Cpu/` (namespace unchanged).
-
 The shared register and mode-helper files already live in the surviving Core
 assembly:
 
@@ -38,13 +34,9 @@ assembly:
 - [`ICpu`](../../src/BadMango.Emulator.Core/Interfaces/Cpu/ICpu.cs) — the CPU
   contract.
 
-The target Core assembly also absorbs the Bus assembly. `Bus.Tests` is the test
-location that moves under #562, while CPU/Core/Emulation coverage currently in
-`BadMango.Emulator.Tests` moves under #565.
+Bus and Emulation live in Core. Bus tests live in `BadMango.Emulator.Core.Tests`.
+CPU, Core, and Emulation coverage currently in `BadMango.Emulator.Tests` moves under #565.
 
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`; target:
-> `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
->
 > **Current location (until #565):** `tests/BadMango.Emulator.Tests` cross-suite
 > CPU/Core/Emulation coverage; target: subject-specific test projects, including
 > Core.Tests (namespace unchanged).
@@ -67,14 +59,11 @@ companion implementations and do not replace this behavior.
 
 Key implementation paths:
 
-- [`Cpu65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs)
-- [`Cpu65C02OpcodeTableBuilder`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02OpcodeTableBuilder.cs)
-- [`Instructions`](../../src/BadMango.Emulator.Emulation/Cpu/Instructions.cs)
-- [`Instructions.65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Instructions.65C02.cs)
-- [`CpuBase`](../../src/BadMango.Emulator.Emulation/Cpu/CpuBase.cs)
-
-> **Current location (until #562):** `src/BadMango.Emulator.Emulation/Cpu/`;
-> target: `src/BadMango.Emulator.Core/Cpu/` (namespaces unchanged).
+- [`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs)
+- [`Cpu65C02OpcodeTableBuilder`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02OpcodeTableBuilder.cs)
+- [`Instructions`](../../src/BadMango.Emulator.Core/Cpu/Instructions.cs)
+- [`Instructions.65C02`](../../src/BadMango.Emulator.Core/Cpu/Instructions.65C02.cs)
+- [`CpuBase`](../../src/BadMango.Emulator.Core/Cpu/CpuBase.cs)
 
 ### Execution and cycle behavior
 

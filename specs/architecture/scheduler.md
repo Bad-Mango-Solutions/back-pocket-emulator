@@ -33,10 +33,6 @@ during the assembly fold.
 The status names below use the #536 audit. They describe the implementation
 that exists now, not the broader text in the legacy v1.0 specification.
 
-> **Current location (until #562):** `src/BadMango.Emulator.Bus/`; target:
-> `src/BadMango.Emulator.Core/` (the `BadMango.Emulator.Bus` namespace and
-> `BadMango.Emulator.Bus.Interfaces` interfaces namespace remain unchanged).
-
 `BadMango.Emulator.Devices` retains `VideoDevice`; it is a scheduler client,
 not part of the target `Core` fold. Its tests remain in
 `BadMango.Emulator.Devices.Tests`.
@@ -48,7 +44,7 @@ machine-time value. It is a `ulong`-backed, type-safe cycle count with
 arithmetic and comparison operators. `IScheduler.Now` and event callbacks
 observe this same clock; no wall-clock timer advances it implicitly.
 
-[`ScheduledEventKind`](../../src/BadMango.Emulator.Bus/ScheduledEventKind.cs)
+[`ScheduledEventKind`](../../src/BadMango.Emulator.Core/ScheduledEventKind.cs)
 classifies scheduled work for profiling and diagnostics. The implementation
 has the kinds represented in the v1.0 plan plus `None`, `VideoBlank`, and
 `DeferredWork`. Deferred work is host-initiated machine-thread work, such as
@@ -60,13 +56,10 @@ priority values dispatch first, and equal-cycle/equal-priority events retain
 deterministic schedule order. Events are one-shot: dispatch removes them from
 the queue.
 
-> **Current location (until #562):** `src/BadMango.Emulator.Bus/ScheduledEventKind.cs`;
-> target: `src/BadMango.Emulator.Core/` (namespace unchanged).
-
 ## 6.2 Scheduler Interface — **Implemented**
 
-[`IScheduler`](../../src/BadMango.Emulator.Bus/Interfaces/IScheduler.cs) and
-[`Scheduler`](../../src/BadMango.Emulator.Bus/Scheduler.cs) provide the
+[`IScheduler`](../../src/BadMango.Emulator.Core/Interfaces/IScheduler.cs) and
+[`Scheduler`](../../src/BadMango.Emulator.Core/Scheduler.cs) provide the
 implemented queue.
 
 The interface can:
@@ -86,7 +79,7 @@ cycle is reached, so callbacks execute at their scheduled cycle even when the
 caller jumps across several cycles. `DispatchDue()` performs due-work dispatch
 without moving the clock.
 
-Callbacks receive [`IEventContext`](../../src/BadMango.Emulator.Bus/Interfaces/IEventContext.cs),
+Callbacks receive [`IEventContext`](../../src/BadMango.Emulator.Core/Interfaces/IEventContext.cs),
 which exposes the current cycle, scheduler, signal bus, memory bus, and
 registered machine components. The context is set on the concrete scheduler
 before dispatch.
@@ -96,19 +89,9 @@ cancellation, advancement, flushing, and callbacks must occur on that thread.
 Host threads and UI or REPL code must post work through the machine
 dispatcher rather than touching the scheduler directly.
 
-> **Current location (until #562):** `src/BadMango.Emulator.Bus/Interfaces/IScheduler.cs`,
-> `src/BadMango.Emulator.Bus/Scheduler.cs`, and
-> `src/BadMango.Emulator.Bus/Interfaces/IEventContext.cs`; target:
-> `src/BadMango.Emulator.Core/` (existing `BadMango.Emulator.Bus` namespaces
-> unchanged).
->
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests/SchedulerTests.cs`
-> and `tests/BadMango.Emulator.Bus.Tests/ISchedulerTests.cs`; target:
-> `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
-
 ## 6.3 CPU-Scheduler Integration — **Partly implemented**
 
-[`Cpu65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs) is the
+[`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs) is the
 implemented integration. After an instruction, trap, interrupt, RESET hold
 cycle, or RESET release sequence consumes cycles, the CPU adds those cycles to
 the context scheduler through `IScheduler.Advance`. The CPU caches the concrete
@@ -125,9 +108,6 @@ in scheduler advancement yet. A future CPU must use the same explicit
 cycle-commit model rather than claim cycle accuracy before an implementation
 exists.
 
-> **Current location (until #562):** `src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs`;
-> target: `src/BadMango.Emulator.Core/Cpu/` (namespace unchanged).
->
 > **Current location (until #565):** `tests/BadMango.Emulator.Tests/Cpu65C02Tests.cs`
 > and related CPU integration tests; target: the subject-specific CPU test
 > project (namespace unchanged).
@@ -146,8 +126,8 @@ start or end cycle, preserving the frame phase rather than resetting video time.
 
 ## Gap 4: Scheduler Reset — **Partly implemented**
 
-[`IScheduler.Reset`](../../src/BadMango.Emulator.Bus/Interfaces/IScheduler.cs)
-and [`Scheduler.Reset`](../../src/BadMango.Emulator.Bus/Scheduler.cs) are
+[`IScheduler.Reset`](../../src/BadMango.Emulator.Core/Interfaces/IScheduler.cs)
+and [`Scheduler.Reset`](../../src/BadMango.Emulator.Core/Scheduler.cs) are
 implemented: reset clears the event queue and cancelled handles and rewinds
 `Now` to cycle zero. Handle IDs and sequence numbers remain monotonic across
 resets so stale cancellations cannot collide with newly scheduled events.
@@ -157,21 +137,18 @@ RESET assertion calls `FlushPending`, preserving `DeferredWork` and discarding
 periodic machine events. Device reset receivers then re-arm periodic work,
 including video VBlank, while the timeline continues instead of being reset
 to zero. Hard reset clears power-on state and can schedule post-reset work,
-but [`Machine.Reset`](../../src/BadMango.Emulator.Bus/Machine.cs) does not
+but [`Machine.Reset`](../../src/BadMango.Emulator.Core/Machine.cs) does not
 currently call `IScheduler.Reset`. Therefore the Gap 4 API exists, but the
 machine's ordinary/warm RESET path still does not mean "rewind every machine
 clock"; the current implementation is partly implemented.
 
 Relevant reset coverage includes:
 
-- [`SchedulerTests`](../../tests/BadMango.Emulator.Bus.Tests/SchedulerTests.cs)
-- [`MachineTests.Reset_HardReset_DeviceEventsArePresentAfterReset`](../../tests/BadMango.Emulator.Bus.Tests/MachineTests.cs)
+- [`SchedulerTests`](../../tests/BadMango.Emulator.Core.Tests/SchedulerTests.cs)
+- [`MachineTests.Reset_HardReset_DeviceEventsArePresentAfterReset`](../../tests/BadMango.Emulator.Core.Tests/MachineTests.cs)
 - [`Pocket2eIntegrationTests`](../../tests/BadMango.Emulator.Tests/Pocket2eIntegrationTests.cs)
 - [`ResetSignalMachineTests`](../../tests/BadMango.Emulator.Tests/ResetSignalMachineTests.cs)
 
-> **Current location (until #562):** `src/BadMango.Emulator.Bus/Machine.cs`;
-> target: `src/BadMango.Emulator.Core/` (namespace unchanged).
->
 > **Current location (until #565):** `tests/BadMango.Emulator.Tests/ResetSignalMachineTests.cs`
 > and `Pocket2eIntegrationTests.cs`; target: subject-specific machine test
 > projects (namespace unchanged).

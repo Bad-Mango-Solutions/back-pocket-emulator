@@ -17,7 +17,7 @@ Coverage and status are audited by
 [`Architecture Docs Restructure Proposal.md`](../Architecture%20Docs%20Restructure%20Proposal.md).
 Target layout follows [#478](https://github.com/Bad-Mango-Solutions/back-pocket-emulator/issues/478)
 and [`Solution Consolidation Design.md`](../Solution%20Consolidation%20Design.md); the namespace
-names below are existing namespaces and do not change during the pending project fold.
+names below are existing namespaces and stay unchanged.
 
 ## Target module placement
 
@@ -34,20 +34,10 @@ The existing Core signal files already occupy the target assembly:
 - [`SignalLine`](../../src/BadMango.Emulator.Core/Signaling/SignalLine.cs)
 - [`SignalBus`](../../src/BadMango.Emulator.Core/Signaling/SignalBus.cs)
 
-The 65C02 implementation is not yet folded into Core.
+The 65C02 implementation lives in Core (`src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs`, namespace `BadMango.Emulator.Emulation.Cpu`).
 
-> **Current location (until #562):** `src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs`;
-> target: `src/BadMango.Emulator.Core/Cpu/` (namespace unchanged).
+Bus fault code that drives `ABORT` lives in Core (`MainBus` and `MainBus.FaultRegisters`).
 
-Bus fault code that drives `ABORT` is also pending the Core fold.
-
-> **Current location (until #562):** `src/BadMango.Emulator.Bus/MainBus.cs` and
-> `src/BadMango.Emulator.Bus/MainBus.FaultRegisters.cs`; target: `src/BadMango.Emulator.Core/`
-> (namespaces unchanged).
->
-> **Current location (until #562):** `tests/BadMango.Emulator.Bus.Tests`; target:
-> `tests/BadMango.Emulator.Core.Tests` (namespace unchanged).
->
 > **Current location (until #565):** `tests/BadMango.Emulator.Tests` cross-suite CPU
 > tests; target: subject-specific test projects (namespace unchanged).
 
@@ -82,9 +72,9 @@ Relevant implementation and tests:
 - [`ISignalBus`](../../src/BadMango.Emulator.Core/Interfaces/Signaling/ISignalBus.cs)
 - [`SignalBus`](../../src/BadMango.Emulator.Core/Signaling/SignalBus.cs)
 - [`SignalLine`](../../src/BadMango.Emulator.Core/Signaling/SignalLine.cs)
-- [`Cpu65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs)
-- [`SignalBusTests`](../../tests/BadMango.Emulator.Bus.Tests/SignalBusTests.cs)
-- [`MainBusAbortSignalTests`](../../tests/BadMango.Emulator.Bus.Tests/MainBusAbortSignalTests.cs)
+- [`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs)
+- [`SignalBusTests`](../../tests/BadMango.Emulator.Core.Tests/SignalBusTests.cs)
+- [`MainBusAbortSignalTests`](../../tests/BadMango.Emulator.Core.Tests/MainBusAbortSignalTests.cs)
 
 ### 5.1.1 Apple II Interrupt Model
 
@@ -100,7 +90,7 @@ itself. Thus the generic wired-OR behavior and device-ID observability are imple
 a completed Apple II card-identification and dispatch model is not.
 
 Relevant tests include [`InterruptAndHaltTests`](../../tests/BadMango.Emulator.Tests/InterruptAndHaltTests.cs)
-and [`SignalBusTests`](../../tests/BadMango.Emulator.Bus.Tests/SignalBusTests.cs).
+and [`SignalBusTests`](../../tests/BadMango.Emulator.Core.Tests/SignalBusTests.cs).
 
 ### 5.1.2 Interrupt Service Conventions
 
@@ -129,7 +119,7 @@ The 65C02 loads hardware vectors through:
 
 Hardware IRQ and NMI entry each load `PC` from the corresponding vector after the normal
 65C02 interrupt sequence. The implemented 65C02 vector constants are
-[`Cpu65C02Constants`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02Constants.cs).
+[`Cpu65C02Constants`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02Constants.cs).
 
 Apple II $03F0 and $03FE addresses are ordinary RAM in the Pocket2e map; the emulator does
 not treat them as special-owned interrupt vectors. Guest ROM or software may use those page-3
@@ -144,7 +134,7 @@ debugger setting unchanged.
 Relevant implementation and tests:
 
 - [`AbortReaction`](../../src/BadMango.Emulator.Core/Cpu/AbortReaction.cs)
-- [`Cpu65C02`](../../src/BadMango.Emulator.Emulation/Cpu/Cpu65C02.cs)
+- [`Cpu65C02`](../../src/BadMango.Emulator.Core/Cpu/Cpu65C02.cs)
 - [`Cpu65C02AbortReactionTests`](../../tests/BadMango.Emulator.Tests/Cpu65C02AbortReactionTests.cs)
 - [`InterruptAndHaltTests`](../../tests/BadMango.Emulator.Tests/InterruptAndHaltTests.cs)
 - [`Cpu65C02Tests`](../../tests/BadMango.Emulator.Tests/Cpu65C02Tests.cs)

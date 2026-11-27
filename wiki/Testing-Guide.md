@@ -27,7 +27,7 @@ dotnet test --filter FullyQualifiedName~InterruptAndHaltTests
 dotnet test --filter Name~Cycle
 
 # Run one test project
-dotnet test tests/BadMango.Emulator.Bus.Tests/BadMango.Emulator.Bus.Tests.csproj
+dotnet test tests/BadMango.Emulator.Core.Tests/BadMango.Emulator.Core.Tests.csproj
 ```
 
 ### Visual Studio
@@ -58,7 +58,7 @@ With .NET Core Test Explorer extension:
 tests/
 ├── BadMango.Unit.Components/                        # Shared helpers
 ├── BadMango.Emulator.Tests/                         # CPU, machine, and cross-project tests
-├── BadMango.Emulator.Bus.Tests/
+├── BadMango.Emulator.Core.Tests/                    # Bus, memory map, and device-registry tests
 ├── BadMango.Emulator.Debug.Infrastructure.Tests/
 ├── BadMango.Emulator.Debug.Tests/
 ├── BadMango.Emulator.Debug.UI.Tests/
