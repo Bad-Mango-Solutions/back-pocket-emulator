@@ -14,8 +14,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BadMango.Emulator.Core\BadMango.Emulator.Core.csproj" />
-    <ProjectReference Include="..\BadMango.Emulator.Infrastructure\BadMango.Emulator.Infrastructure.csproj" />
-    <ProjectReference Include="..\BadMango.Emulator.UI.Abstractions\BadMango.Emulator.UI.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,7 +40,10 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
     <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" />
 
-    <!-- Logging with Serilog -->
+    <!-- Logging with Serilog. Logging.Abstractions is inbox on net11.0; NU1510 is suppressed so the folded host-shell reference stays explicit. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions">
+      <NoWarn>NU1510</NoWarn>
+    </PackageReference>
     <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
     <PackageReference Include="Serilog.Settings.Configuration" />
@@ -65,6 +66,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="BadMango.Emulator.UI.Tests" />
+    <InternalsVisibleTo Include="BadMango.Emulator.Infrastructure.Tests" />
+    <InternalsVisibleTo Include="BadMango.Emulator.Configuration.Tests" />
+    <InternalsVisibleTo Include="BadMango.Emulator.UI" />
   </ItemGroup>
 
   <ItemGroup>
