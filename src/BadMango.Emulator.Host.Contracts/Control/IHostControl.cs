@@ -122,12 +122,12 @@ public interface IHostControl
     Task PauseAsync(MachineId machineId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resumes a paused or sleeping machine.
+    /// Resumes a paused, sleeping, or stopped machine. A stopped guest that halted with STP is warm-reset first.
     /// </summary>
     /// <param name="machineId">The machine.</param>
     /// <param name="cancellationToken">Cancels before the command is applied.</param>
     /// <returns>A task that completes when the host has accepted the command.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the machine is not paused or sleeping.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the machine is not paused, sleeping, or stopped.</exception>
     /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
     Task ResumeAsync(MachineId machineId, CancellationToken cancellationToken = default);
 
@@ -142,7 +142,7 @@ public interface IHostControl
     Task SleepAsync(MachineId machineId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resets the machine and keeps the run state. Legal while the machine is on.
+    /// Resets the machine and keeps the run state. Legal while the machine is on. From <see cref="HostRunState.Stopped"/>, the halt is cleared and the run loop starts.
     /// </summary>
     /// <param name="machineId">The machine.</param>
     /// <param name="cancellationToken">Cancels before the command is applied.</param>
@@ -152,7 +152,7 @@ public interface IHostControl
     Task ResetAsync(MachineId machineId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Power-cycles the machine and keeps the run state. Legal while the machine is on, when Hard Reset is in the capability set.
+    /// Power-cycles the machine and keeps the run state. Legal while the machine is on, when Hard Reset is in the capability set. From <see cref="HostRunState.Stopped"/>, the run loop starts again.
     /// </summary>
     /// <param name="machineId">The machine.</param>
     /// <param name="cancellationToken">Cancels before the command is applied.</param>

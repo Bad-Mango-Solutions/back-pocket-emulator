@@ -4,6 +4,8 @@
 
 namespace BadMango.Emulator.Host.Contracts.Tests;
 
+using System.Collections.Concurrent;
+
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Signaling;
@@ -304,6 +306,107 @@ public class InProcessHostMachineTests
     }
 
     /// <summary>
+    /// A posted failure faults the run task, the host reports Stopped, and the client gets that notice.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task RunLoopFault_ReportsStoppedAndRaisesANotice()
+    {
+        using InProcessHostSession session = Open();
+        StateSink sink = new();
+        using IDisposable subscription = session.Control.Subscribe(sink);
+        MachineId id = Add(session, "Fault");
+        await session.Control.PowerOnAsync(id);
+        HoldIrq(session, id);
+        _ = await WaitForAdvanceAsync(session, id, session.ReadSchedulerCycles(id));
+
+        session.GetMachine(id).Post(() => throw new InvalidOperationException("injected fault"));
+        await WaitForStateAsync(session, id, HostRunState.Stopped);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Stopped));
+            Assert.That(session.ReadRunFault(id)!.Message, Does.Contain("injected fault"));
+            Assert.That(sink.States(), Does.Contain(HostRunState.Stopped));
+            Assert.That(session.LiveRunLoops, Is.Zero);
+        });
+
+        await session.Control.ResumeAsync(id);
+        HoldIrq(session, id);
+        Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Running));
+        _ = await WaitForAdvanceAsync(session, id, session.ReadSchedulerCycles(id));
+    }
+
+    /// <summary>
+    /// STP stops the guest. Resume warm-resets and runs again. Hard Reset from Stopped does the same.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task Stp_ReportsStopped_AndResumeOrResetRestartsTheLoop()
+    {
+        using InProcessHostSession session = Open();
+        StateSink sink = new();
+        using IDisposable subscription = session.Control.Subscribe(sink);
+        MachineId id = Add(session, "Halt", startPaused: true);
+        await session.Control.PowerOnAsync(id);
+
+        // STP, then a NOP and a jump that must not run until the halt is cleared.
+        byte[] program = [0xDB, 0xEA, 0x4C, 0x01, 0x08];
+        WriteProgram(session, id, 0x0800, program);
+        await session.Control.ResumeAsync(id);
+        await WaitForStateAsync(session, id, HostRunState.Stopped);
+
+        ulong halted = session.ReadSchedulerCycles(id);
+        await Task.Delay(200);
+        Assert.Multiple(() =>
+        {
+            Assert.That(session.ReadSchedulerCycles(id), Is.EqualTo(halted));
+            Assert.That(session.ReadMachineState(id), Is.EqualTo(MachineState.Stopped));
+            Assert.That(session.LiveRunLoops, Is.Zero);
+            Assert.That(sink.States(), Does.Contain(HostRunState.Stopped));
+        });
+
+        await session.Control.ResumeAsync(id);
+        HoldIrq(session, id);
+        Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Running));
+        _ = await WaitForAdvanceAsync(session, id, session.ReadSchedulerCycles(id));
+
+        await session.Control.PauseAsync(id);
+        ReleaseIrq(session, id);
+        WriteProgram(session, id, 0x0800, program);
+        await session.Control.ResumeAsync(id);
+        await WaitForStateAsync(session, id, HostRunState.Stopped);
+
+        await session.Control.HardResetAsync(id);
+        HoldIrq(session, id);
+        Assert.That(session.Control.GetMachineInfo(id).State, Is.EqualTo(HostRunState.Running));
+        _ = await WaitForAdvanceAsync(session, id, session.ReadSchedulerCycles(id));
+    }
+
+    /// <summary>
+    /// A pending overlay is merged into the profile on the next power-on, and clearing it restores the template.
+    /// </summary>
+    /// <returns>The test task.</returns>
+    [Test]
+    public async Task Overlay_IsAppliedOnTheNextPowerOn()
+    {
+        using InProcessHostSession session = Open();
+        MachineId id = Add(session, "Overlay", startPaused: true);
+        await session.Control.PowerOnAsync(id);
+        Assert.That(ReadByte(session, id, 0x2000), Is.EqualTo(0xFF));
+
+        await session.Control.PowerOffAsync(id);
+        session.Control.SetInstanceOverlay(id, """{"boot":{"powerOnMemory":{"pattern":"zero","seed":1}}}""");
+        await session.Control.PowerOnAsync(id);
+        Assert.That(ReadByte(session, id, 0x2000), Is.EqualTo(0));
+
+        await session.Control.PowerOffAsync(id);
+        session.Control.SetInstanceOverlay(id, null);
+        await session.Control.PowerOnAsync(id);
+        Assert.That(ReadByte(session, id, 0x2000), Is.EqualTo(0xFF));
+    }
+
+    /// <summary>
     /// Remove drops an off machine, and Dispose joins every run loop.
     /// </summary>
     /// <returns>The test task.</returns>
@@ -342,10 +445,56 @@ public class InProcessHostMachineTests
         }
     }
 
+    private static async Task WaitForStateAsync(InProcessHostSession session, MachineId id, HostRunState state)
+    {
+        for (int attempt = 0; attempt < 50; attempt++)
+        {
+            if (session.Control.GetMachineInfo(id).State == state)
+            {
+                return;
+            }
+
+            await Task.Delay(20);
+        }
+
+        Assert.Fail($"State stayed {session.Control.GetMachineInfo(id).State}.");
+    }
+
+    private static byte ReadByte(InProcessHostSession session, MachineId id, uint address)
+    {
+        IMachine machine = session.GetMachine(id);
+        BusResult<byte> read = machine.Bus.TryRead8(Access(address, AccessIntent.DataRead));
+        Assert.That(read.Ok, Is.True, $"Read of ${address:X4} faulted with {read.Fault.Kind}.");
+        return read.Value;
+    }
+
+    private static void WriteProgram(InProcessHostSession session, MachineId id, uint address, byte[] program)
+    {
+        IMachine machine = session.GetMachine(id);
+        for (int index = 0; index < program.Length; index++)
+        {
+            BusResult written = machine.Bus.TryWrite8(Access((uint)(address + index), AccessIntent.DataWrite), program[index]);
+            Assert.That(written.Fault.Kind, Is.EqualTo(FaultKind.None), $"Write of ${address + index:X4} faulted.");
+        }
+
+        machine.Cpu.SetPC(address);
+    }
+
+    private static BusAccess Access(uint address, AccessIntent intent)
+    {
+        return new(address, 0, 8, BusAccessMode.Atomic, true, intent, 0, 0, AccessFlags.NoSideEffects);
+    }
+
     private static void HoldIrq(InProcessHostSession session, MachineId id)
     {
         IMachine machine = session.GetMachine(id);
         machine.Post(() => machine.Signals.Assert(SignalLine.IRQ, deviceId: 1, machine.Now));
+    }
+
+    private static void ReleaseIrq(InProcessHostSession session, MachineId id)
+    {
+        IMachine machine = session.GetMachine(id);
+        machine.Post(() => machine.Signals.Deassert(SignalLine.IRQ, deviceId: 1, machine.Now));
     }
 
     private static async Task<ulong> WaitForAdvanceAsync(InProcessHostSession session, MachineId id, ulong previous)
@@ -374,5 +523,21 @@ public class InProcessHostMachineTests
     {
         BootProfile.Ensure(session.Control);
         return session.Control.CreateInstance(new HostInstanceSpec(name, BootProfile.Id, startPaused, power));
+    }
+
+    private sealed class StateSink : IHostNotificationSink
+    {
+        private readonly ConcurrentQueue<HostRunState> states = new();
+
+        /// <inheritdoc />
+        public void OnStateChanged(HostStateNotice notice)
+        {
+            states.Enqueue(notice.State);
+        }
+
+        internal HostRunState[] States()
+        {
+            return states.ToArray();
+        }
     }
 }

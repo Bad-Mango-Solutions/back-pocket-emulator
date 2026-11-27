@@ -201,7 +201,7 @@ public sealed partial class LoopbackHostSession
             HostStateNotice? notice = null;
             Update(machineId, machine =>
             {
-                if (machine.State is not (HostRunState.Paused or HostRunState.Sleeping))
+                if (machine.State is not (HostRunState.Paused or HostRunState.Sleeping or HostRunState.Stopped))
                 {
                     throw new InvalidOperationException($"Cannot resume while {machine.State}.");
                 }
@@ -562,6 +562,7 @@ public sealed partial class LoopbackHostSession
     private void Reset(MachineId machineId, bool hard)
     {
         HostResetNotice? notice = null;
+        HostStateNotice? resumed = null;
         Update(machineId, machine =>
         {
             RequireOn(machine, hard ? "hard reset" : "reset");
@@ -570,12 +571,23 @@ public sealed partial class LoopbackHostSession
                 throw new InvalidOperationException("Hard Reset is not available on this machine.");
             }
 
+            if (machine.State == HostRunState.Stopped)
+            {
+                machine.State = HostRunState.Running;
+                resumed = new HostStateNotice(machine.Id, HostRunState.Running);
+            }
+
             notice = new HostResetNotice(machine.Id, hard);
         });
 
         if (notice is not null)
         {
             Notify(sink => sink.OnReset(notice));
+        }
+
+        if (resumed is not null)
+        {
+            Notify(sink => sink.OnStateChanged(resumed));
         }
     }
 

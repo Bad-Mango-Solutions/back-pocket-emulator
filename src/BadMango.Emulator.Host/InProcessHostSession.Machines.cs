@@ -5,6 +5,7 @@
 namespace BadMango.Emulator.Host;
 
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
@@ -22,9 +23,13 @@ public sealed partial class InProcessHostSession
 
         private readonly InProcessHostSession session;
         private readonly Action<MachineHandle, MachineState> stateChanged;
+        private readonly List<StateWait> stateWaits = [];
+        private readonly bool cpuSummaryFromSpec;
         private CancellationTokenSource? runCancellation;
         private Task? runTask;
         private SpeedSample? speedSample;
+        private string? builtOverlay;
+        private bool builtFromTemplate = true;
         private int disposed;
 
         internal MachineHandle(
@@ -42,6 +47,7 @@ public sealed partial class InProcessHostSession
             PowerCapabilities = spec.PowerCapabilities;
             NominalClockHz = spec.NominalClockHz;
             OutputKind = spec.OutputKind;
+            cpuSummaryFromSpec = spec.CpuSummary is not null;
             CpuSummary = spec.CpuSummary ?? info.CpuType;
             SchedulerSummary = spec.SchedulerSummary;
             Machine = machine;
@@ -55,7 +61,7 @@ public sealed partial class InProcessHostSession
 
         internal MachineId Id { get; }
 
-        internal IMachine Machine { get; }
+        internal IMachine Machine { get; private set; }
 
         internal string Name { get; }
 
@@ -69,7 +75,7 @@ public sealed partial class InProcessHostSession
 
         internal HostVideoKind OutputKind { get; }
 
-        internal string? CpuSummary { get; }
+        internal string? CpuSummary { get; private set; }
 
         internal string? SchedulerSummary { get; }
 
@@ -78,6 +84,8 @@ public sealed partial class InProcessHostSession
         internal HostThrottle Throttle { get; set; } = HostThrottle.Normal;
 
         internal string? OverlayJson { get; set; }
+
+        internal Exception? RunFault { get; set; }
 
         /// <summary>
         /// When set, a pause is reported as <see cref="HostRunState.Sleeping"/>.
@@ -151,6 +159,7 @@ public sealed partial class InProcessHostSession
                 MachineState.Running => HostRunState.Running,
                 MachineState.Paused when ReportSleep => HostRunState.Sleeping,
                 MachineState.Paused => HostRunState.Paused,
+                MachineState.Stopped when ReportedState is not (HostRunState.Off or HostRunState.ShuttingDown) => HostRunState.Stopped,
                 _ => null,
             };
         }
@@ -172,7 +181,67 @@ public sealed partial class InProcessHostSession
                 speedSample = null;
             }
 
+            for (int index = stateWaits.Count - 1; index >= 0; index--)
+            {
+                if (stateWaits[index].Desired == value)
+                {
+                    stateWaits[index].Signal.TrySetResult();
+                    stateWaits.RemoveAt(index);
+                }
+            }
+
             return true;
+        }
+
+        internal bool BuiltFrom(string? overlay)
+        {
+            return builtFromTemplate && string.Equals(builtOverlay, overlay, StringComparison.Ordinal);
+        }
+
+        internal void NoteBuiltOverlay(string? overlay)
+        {
+            builtFromTemplate = true;
+            builtOverlay = overlay;
+        }
+
+        internal void ReplaceMachine(IMachine replacement, long clockHz, MachineInfo info)
+        {
+            Machine.StateChanged -= OnMachineStateChanged;
+            Machine.Dispose();
+            Machine = replacement;
+            replacement.ClockSpeedHz = clockHz;
+            replacement.StateChanged += OnMachineStateChanged;
+            if (!cpuSummaryFromSpec)
+            {
+                CpuSummary = info.CpuType;
+            }
+        }
+
+        internal async Task WaitForReportedAsync(HostRunState desired, CancellationToken cancellationToken)
+        {
+            StateWait wait;
+            lock (Sync)
+            {
+                if (ReportedState == desired)
+                {
+                    return;
+                }
+
+                wait = new StateWait(desired, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+                stateWaits.Add(wait);
+            }
+
+            try
+            {
+                await wait.Signal.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                lock (Sync)
+                {
+                    stateWaits.Remove(wait);
+                }
+            }
         }
 
         internal void SeedSpeedWindow()
@@ -233,7 +302,18 @@ public sealed partial class InProcessHostSession
         internal void AwaitRun()
         {
             Task? run = Volatile.Read(ref runTask);
-            run?.GetAwaiter().GetResult();
+            if (run is null)
+            {
+                return;
+            }
+
+            if (run.IsFaulted && RunFault is not null)
+            {
+                _ = run.Exception;
+                return;
+            }
+
+            run.GetAwaiter().GetResult();
         }
 
         internal void StopLoop()
@@ -276,7 +356,7 @@ public sealed partial class InProcessHostSession
 
             if (error is not null)
             {
-                throw error;
+                ExceptionDispatchInfo.Capture(error).Throw();
             }
         }
 
@@ -290,7 +370,8 @@ public sealed partial class InProcessHostSession
             Interlocked.Decrement(ref session.liveRunLoops);
             if (completed.IsFaulted)
             {
-                _ = completed.Exception;
+                Exception fault = completed.Exception!.GetBaseException();
+                session.OnRunFaulted(this, fault);
             }
 
             Interlocked.CompareExchange(ref runCancellation, null, cts);
@@ -342,6 +423,13 @@ public sealed partial class InProcessHostSession
         }
 
         private readonly record struct SpeedSample(ulong Cycles, long Timestamp);
+
+        private sealed class StateWait(HostRunState desired, TaskCompletionSource signal)
+        {
+            internal HostRunState Desired { get; } = desired;
+
+            internal TaskCompletionSource Signal { get; } = signal;
+        }
     }
 
     private sealed class SinkSubscription : IDisposable

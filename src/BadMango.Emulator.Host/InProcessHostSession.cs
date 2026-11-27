@@ -5,12 +5,13 @@
 namespace BadMango.Emulator.Host;
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
 using BadMango.Emulator.Bus;
 using BadMango.Emulator.Bus.Interfaces;
 using BadMango.Emulator.Core.Configuration;
+using BadMango.Emulator.Core.Cpu;
 using BadMango.Emulator.Debug.Infrastructure;
 using BadMango.Emulator.Host.Contracts;
 
@@ -486,6 +487,16 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
         return Find(machineId).Machine.State;
     }
 
+    /// <summary>
+    /// Reads the exception from a run loop that faulted after it started.
+    /// </summary>
+    /// <param name="machineId">The machine.</param>
+    /// <returns>The fault, or <see langword="null"/> when the loop has not faulted.</returns>
+    internal Exception? ReadRunFault(MachineId machineId)
+    {
+        return Find(machineId).RunFault;
+    }
+
     private async Task PowerOnCoreAsync(MachineId machineId, CancellationToken cancellationToken)
     {
         MachineHandle handle = Find(machineId);
@@ -501,6 +512,7 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
                 }
             }
 
+            ApplyPendingOverlay(handle);
             await handle.Machine.PowerOnAsync(cancellationToken).ConfigureAwait(false);
             if (handle.StartPaused)
             {
@@ -593,19 +605,34 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
         EnterOperation();
         try
         {
+            bool fromStopped;
             lock (handle.Sync)
             {
-                if (handle.ReportedState is not (HostRunState.Paused or HostRunState.Sleeping))
+                if (handle.ReportedState is not (HostRunState.Paused or HostRunState.Sleeping or HostRunState.Stopped))
                 {
                     throw new InvalidOperationException($"Cannot resume while {handle.ReportedState}.");
                 }
 
+                fromStopped = handle.ReportedState == HostRunState.Stopped;
                 handle.ReportSleep = false;
+            }
+
+            if (fromStopped && handle.Machine.Cpu.HaltReason == HaltState.Stp)
+            {
+                handle.Machine.Reset(hardReset: false);
             }
 
             try
             {
-                handle.StartRun(static (machine, token) => machine.ResumeAsync(token));
+                if (fromStopped)
+                {
+                    handle.StartRun(static (machine, token) => machine.RunAsync(token));
+                }
+                else
+                {
+                    handle.StartRun(static (machine, token) => machine.ResumeAsync(token));
+                }
+
                 await WaitUntilReportedAsync(handle, HostRunState.Running, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -697,6 +724,11 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
             }
 
             Notify(sink => sink.OnReset(new HostResetNotice(handle.Id, hardReset)));
+            if (before == HostRunState.Stopped)
+            {
+                handle.StartRun(static (machine, token) => machine.RunAsync(token));
+                await WaitUntilReportedAsync(handle, HostRunState.Running, cancellationToken).ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -841,28 +873,152 @@ public sealed partial class InProcessHostSession : IHostSession, IHostControl
 
     private async Task WaitUntilReportedAsync(MachineHandle handle, HostRunState desired, CancellationToken cancellationToken)
     {
-        long started = Stopwatch.GetTimestamp();
-        while (!handle.IsReported(desired))
+        using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        wait.CancelAfter(RunStartTimeout);
+        Task reported = handle.WaitForReportedAsync(desired, wait.Token);
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
             Task run = handle.CurrentRun;
+            Task finished = await Task.WhenAny(reported, run).ConfigureAwait(false);
+            if (ReferenceEquals(finished, reported) || handle.IsReported(desired))
+            {
+                await reported.ConfigureAwait(false);
+                return;
+            }
+
             if (run.IsFaulted)
             {
                 await run.ConfigureAwait(false);
             }
 
-            if (run.IsCompleted)
+            if (run.IsCompleted && desired == HostRunState.Running && handle.IsReported(HostRunState.Stopped))
             {
-                throw new InvalidOperationException($"The run loop ended before the machine was {desired}.");
+                // The loop started and the guest halted before this wait observed Running.
+                return;
             }
 
-            if (Stopwatch.GetElapsedTime(started) > RunStartTimeout)
-            {
-                throw new InvalidOperationException($"The machine did not reach {desired}.");
-            }
-
-            await Task.Delay(5, cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException($"The run loop ended before the machine was {desired}.");
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException($"The machine did not reach {desired}.");
+        }
+        finally
+        {
+            await wait.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await reported.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // The wait was canceled because the run loop ended or the caller gave up.
+            }
+        }
+    }
+
+    private void OnRunFaulted(MachineHandle handle, Exception fault)
+    {
+        bool changed;
+        lock (handle.Sync)
+        {
+            handle.RunFault = fault;
+            changed = handle.SetReportedState(HostRunState.Stopped);
+        }
+
+        if (changed || handle.ReportedState == HostRunState.Stopped)
+        {
+            NotifyStateChanged(handle.Id, HostRunState.Stopped);
+        }
+    }
+
+    private void ApplyPendingOverlay(MachineHandle handle)
+    {
+        while (true)
+        {
+            string? overlay;
+            lock (handle.Sync)
+            {
+                overlay = handle.OverlayJson;
+                if (handle.BuiltFrom(overlay))
+                {
+                    return;
+                }
+            }
+
+            string profileJson;
+            lock (tableLock)
+            {
+                ThrowIfDisposed();
+                profileJson = profiles[handle.ProfileId].Json;
+            }
+
+            MachineProfile profile = serializer.Deserialize(MergeProfileJson(profileJson, overlay));
+            (IMachine machine, _, MachineInfo info) = MachineFactory.CreateDebugSystem(profile, new ProfilePathResolver(libraryRoot));
+            lock (handle.Sync)
+            {
+                if (!string.Equals(handle.OverlayJson, overlay, StringComparison.Ordinal))
+                {
+                    machine.Dispose();
+                    continue;
+                }
+
+                long clock = EffectiveClock(handle.NominalClockHz, handle.Throttle);
+                handle.ReplaceMachine(machine, clock, info);
+                handle.NoteBuiltOverlay(overlay);
+                return;
+            }
+        }
+    }
+
+    private string MergeProfileJson(string profileJson, string? overlayJson)
+    {
+        if (string.IsNullOrWhiteSpace(overlayJson))
+        {
+            return profileJson;
+        }
+
+        JsonNode? profileNode = JsonNode.Parse(profileJson);
+        JsonNode? overlayNode = JsonNode.Parse(overlayJson);
+        if (profileNode is null || overlayNode is null)
+        {
+            throw new InvalidOperationException("The profile overlay is not valid JSON.");
+        }
+
+        return MergeJson(profileNode, overlayNode).ToJsonString();
+    }
+
+    private JsonNode MergeJson(JsonNode template, JsonNode overlay)
+    {
+        if (template is not JsonObject templateObject || overlay is not JsonObject overlayObject)
+        {
+            return overlay.DeepClone();
+        }
+
+        JsonObject merged = [];
+        foreach (KeyValuePair<string, JsonNode?> property in templateObject)
+        {
+            merged[property.Key] = property.Value?.DeepClone();
+        }
+
+        foreach (KeyValuePair<string, JsonNode?> property in overlayObject)
+        {
+            if (property.Value is null)
+            {
+                merged.Remove(property.Key);
+                continue;
+            }
+
+            if (merged[property.Key] is JsonObject existing && property.Value is JsonObject patch)
+            {
+                merged[property.Key] = MergeJson(existing, patch);
+                continue;
+            }
+
+            merged[property.Key] = property.Value.DeepClone();
+        }
+
+        return merged;
     }
 
     private long EffectiveClock(long nominal, HostThrottle throttle)
