@@ -54,10 +54,10 @@ Control commands that may wait (`PowerOnAsync`, disk mount, throttle, attach) re
 | --- | --- |
 | Power On | From Off only. Runs, or pauses when the instance was created with start-paused. |
 | Pause | From Running only. |
-| Resume | From Paused or Sleeping. |
+| Resume | From Paused, Sleeping, or Stopped. From Stopped, STP is warm-reset first, then the run loop starts. |
 | Sleep | From Running only, and only when `PowerCapabilities.Sleep` is set. |
-| Reset | While the machine is on. The run state does not change. |
-| Hard Reset | While the machine is on, when the record is missing or `HardReset` is set. Cycles power. The run state does not change. |
+| Reset | While the machine is on. The run state does not change, except from Stopped: the halt is cleared and the run loop starts. |
+| Hard Reset | While the machine is on, when the record is missing or `HardReset` is set. Cycles power. The run state does not change, except from Stopped, where the run loop starts again. |
 | Shut Down | Soft-power path. State passes through Shutting down, then Off. |
 | Power Off | Cuts power. No shutting-down step. |
 
@@ -65,9 +65,11 @@ Control commands that may wait (`PowerOnAsync`, disk mount, throttle, attach) re
 
 `HostRunState.Sleeping` is the state after Sleep. The UI spec does not define the menu while sleeping. Resume wakes the machine. Reset, Hard Reset, and Shut Down or Power Off stay available. Pause does not.
 
+`HostRunState.Stopped` means power is still on and the CPU is not executing. The guest got there by STP, or the run loop threw after it had started. The host raises `HostStateNotice` for that transition, including when the run task faults. Pause and Sleep are not available. Resume starts the loop. STP leaves the CPU halted until RESET, so Resume warm-resets before running. Reset and Hard Reset from Stopped also clear the halt and start the loop. From any other on state they still leave the run state unchanged.
+
 Throttle is `Half`, `Normal`, `Double`, or `Max`. `Max` sets the effective clock to 0, which is unthrottled. Measured speed is a separate ratio. The nominal clock defaults to 1,020,484 Hz.
 
-Profiles are opaque JSON documents. The stub stores them and does not validate `schemas/machine-profile.schema.json`. An instance overlay can change only while the machine is off. Replacing a template does not rewrite a running instance. Applying a template on the next power-on is #799. The #735 binding is what applies it to a real machine.
+Profiles are opaque JSON documents. The stub stores them and does not validate `schemas/machine-profile.schema.json`. An instance overlay can change only while the machine is off. It is a JSON object merged onto the stored profile: objects merge field by field, and any other nested value replaces that field. A document that is not a JSON object is rejected and does not replace the profile. The in-process host builds that merged profile on the next power-on. Clearing the overlay builds the template alone on the power-on after that. Replacing a stored template does not rewrite an instance that is already on. The stub stores the overlay and does not build a machine.
 
 Disks are `MountDisk`, `EjectDisk`, `ListDisks`, and `SetWriteProtect`. The UI drive panel toggles the host write-protect flag, so that flag is part of the contract even though #734 names only the three `IMachineIoSession` methods. The stub records the path and does not open it. Its topology is a Disk II in slot 6 with drives 1 and 2. Drive 1 is the boot drive (`S6 D1`). `ListSlots` is the read-only strip (aux and slots 1–7). Slot edits are profile-document writes while Off.
 

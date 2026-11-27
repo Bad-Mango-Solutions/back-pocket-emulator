@@ -97,6 +97,7 @@ back-pocket-emulator/
 ├── src/
 │   ├── BadMango.Emulator.Core/                 # CPU, bus, and emulation; Bus and Emulation namespaces stay
 │   ├── BadMango.Emulator.Host.Contracts/       # Host API contracts (interfaces, DTOs, version)
+│   ├── BadMango.Emulator.Host/                 # Real in-process host transport bound to live machines
 │   ├── BadMango.Emulator.Devices/              # Peripherals (video, keyboard, speaker, Disk II, cards)
 │   ├── BadMango.Emulator.Storage/              # Disk images, block media, GCR nibblizing
 │   ├── BadMango.Emulator.Rendering/            # Pixel buffers and character rendering
@@ -139,6 +140,7 @@ Editor and analyzer settings live in `.editorconfig`, `StyleCop.json`, and `Back
 | --- | --- | --- |
 | `BadMango.Emulator.Core` | CPU contracts and state (registers, opcode table, status flags), signal bus, machine-profile models and loader, debug-step listener contracts, `MainBus`, layered memory mapping, I/O page dispatch, device registry, `Machine` and `MachineBuilder`, peripheral contracts, and `Cpu65C02` (`Cpu65816` and `Cpu65832` are placeholders). Namespaces `BadMango.Emulator.Bus`, `BadMango.Emulator.Bus.Interfaces`, and `BadMango.Emulator.Emulation` stay | none |
 | `BadMango.Emulator.Host.Contracts` | Versioned host API: control, presentation, and input interfaces and DTOs. Clients do not reference `IMachine`, `VideoDevice`, or `IAudioOutput`. See `specs/architecture/host-api.md` | none |
+| `BadMango.Emulator.Host` | Real in-process host transport that binds Host.Contracts to live machines | Host.Contracts, Core, Debug.Infrastructure |
 | `BadMango.Emulator.Storage` | Storage backends, sector and block media, disk-image factory, GCR 6-and-2 nibblizer | none |
 | `BadMango.Emulator.TextEditor` | Reusable Avalonia text editor (assembly source and other file types) | none |
 | `BadMango.Emulator.Devices` | Keyboard, video, speaker, language card, 80-column card, game I/O, Disk II, Thunderclock, and PocketWatch | Core, Storage |

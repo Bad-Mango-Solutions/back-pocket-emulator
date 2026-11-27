@@ -14,6 +14,7 @@ using System.Text.Json.Serialization;
 /// Off, Running, Paused, and Shutting down are the states the power menu is specified for.
 /// <see cref="Sleeping"/> is the state after Sleep. The menu while sleeping is not specified;
 /// Resume wakes the machine, and Reset, Hard Reset, and Shut Down or Power Off stay available.
+/// <see cref="Stopped"/> means power is on and the CPU is not executing: the guest halted, or the run loop faulted.
 /// </para>
 /// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter<HostRunState>))]
@@ -43,4 +44,10 @@ public enum HostRunState
     /// Shut Down has been accepted and power is not off yet.
     /// </summary>
     ShuttingDown,
+
+    /// <summary>
+    /// Power is on and the CPU is not executing. STP and a faulted run loop land here.
+    /// Resume, Reset, and Hard Reset start the loop again.
+    /// </summary>
+    Stopped,
 }
